@@ -1,0 +1,68 @@
+.card {
+  width: 100%;
+  max-width: 525px;
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  padding: 50px 45px 45px;
+  text-align: center;
+}
+
+.logoWrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.logoMark {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #90c2ff 0%, #2f6cf6 100%);
+  box-shadow: 0 10px 20px rgba(47, 108, 246, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+.subtitle {
+  margin: 0 0 30px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.form {
+  text-align: left;
+}
+
+.formItem {
+  margin-bottom: 20px;
+}
+
+.input {
+  height: 56px;
+  border-radius: var(--radius-md);
+  border-color: var(--border-color);
+  background: #fdfefe;
+  box-shadow: none;
+  padding-inline: 16px;
+  font-size: 16px;
+}
+
+.submitButton {
+  height: 56px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 20px;
+  background: var(--primary);
+}

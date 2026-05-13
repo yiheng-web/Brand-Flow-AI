@@ -1,0 +1,22 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg-body);
+}
+
+.window {
+  width: 100%;
+  max-width: 1000px;
+  min-height: 680px;
+  background: var(--bg-app);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}

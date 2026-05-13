@@ -1,0 +1,77 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 5vw;
+  background: var(--bg-body);
+}
+
+.window {
+  width: 93vw;
+  height: 90vh;
+  max-width: 1480px;
+  max-height: 920px;
+  background: var(--bg-app);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  overflow: hidden;
+  display: flex;
+}
+
+.sidebar {
+  width: 84px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0;
+}
+
+.navTop {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.iconButton {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: none;
+  background: #6278f6;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.iconButtonActive {
+  background: #6278f6;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(98, 120, 246, 0.16);
+}
+
+.avatarButton {
+  line-height: 1.1;
+  padding: 0;
+  text-align: center;
+}
+
+.avatarButtonActive {
+  box-shadow: 0 0 0 4px rgba(98, 120, 246, 0.16);
+}
+
+.mainContent {
+  flex: 1;
+  padding: 12px 18px 12px 28px;
+  display: flex;
+}
