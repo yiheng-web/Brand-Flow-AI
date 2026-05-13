@@ -1,11 +1,7 @@
-import styles from './home.module.css'
+import React from 'react'
 
-const Home = () => {
-  return (
-    <div className={styles.wrapper}>
-      <div className={styles.content} />
-    </div>
-  )
+const Home: React.FC = () => {
+  return <div>home</div>
 }
 
 export default Home
