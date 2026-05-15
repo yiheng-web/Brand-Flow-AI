@@ -1,12 +1,121 @@
-.wrapper {
-  flex: 1;
+.wrapper { 
+  flex: 1; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  width: 100%; 
+} 
+
+.content { 
+  width: 100%; 
+  height: 100%; 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.textBox {
+  width: 700px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 43px;
+}
+
+.text {
+  width:340px;
+  height: 40px;
+  font-size:35px;
+  display: flex;
+  background: linear-gradient(to right, #5f6eeb, #d2667a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  align-items: center;
+  justify-content: center;
+}
+
+.selectBox {
+  width: 700px;
+  display: flex;
+  margin-bottom: 15px;
+}
+
+.select {
+  width: 220px;
+  height:30px;
+  margin-left: 10px;
+  padding: 5px 5px;
+  font-size: 10px;
+  border: 1px solid #ccc;
+  border-radius: 15px;
+  outline: none;
+  cursor: pointer;
+  background-color: #fff;
+}
+
+.select:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.inputBox {
+  width: 700px;
+  height: 70px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  position: relative;
 }
 
-.content {
-  width: 100%;
-  height: 100%;
+.input {
+  width: 680px;
+  height: 60px;
+  padding: 8px 70px 8px 16px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 30px;
+  background-color: #ffffff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.input::placeholder {
+  color: #8a98b6;
+}
+
+.button {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  background-color: #0b57d0;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.button:hover {
+  background-color: #0056b3;
+}
+
+.button:active {
+  background-color: #004494;
 }
