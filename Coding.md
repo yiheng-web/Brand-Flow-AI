@@ -3,7 +3,7 @@
 本规范适用于 **Brand-Flow AI** 智能图文创作平台的 Monorepo 仓库，覆盖 **`apps/web`**（前端）、**`apps/api`**（NestJS 后端）与 **`packages/agent`**（AI 逻辑库）。目标是：**类型安全、边界清晰、风格一致、便于多人并行开发**。
 
 - **包管理**：pnpm workspaces（根目录统一 `pnpm install`）。  
-- **任务编排**：Turborepo（`pnpm dev` / `pnpm build` / `pnpm lint`）。  
+- **任务编排**：Turborepo（`pnpm dev` / `pnpm build` / `pnpm lint`）；根目录 `pnpm dev` 会先构建 `@brand-flow/agent`，避免 API 读取不到 dist 产物。  
 - **静态检查与格式**：根目录 [eslint.config.js](eslint.config.js)（按目录分区）+ [.prettierrc.json](.prettierrc.json)；提交前请在仓库根执行 **`pnpm lint`**。
 
 ---
@@ -154,7 +154,7 @@ import { AGENT_VERSION } from '@brand-flow/agent'
 ```
 
 - **禁止**在 Controller 内堆叠大段 Prompt 字符串；与模型相关的文本与链式逻辑放在 **`packages/agent`**。  
-- 运行时代码加载的是 Agent 的 **`main`（编译产物 `dist`）**；若本地仅改 Agent 源码，请执行 **`pnpm --filter @brand-flow/agent build`** 或根目录 **`pnpm build`**。
+- 运行时代码加载的是 Agent 的 **`main`（编译产物 `dist`）**；本地联调优先从根目录执行 **`pnpm dev`**，会先构建 Agent 再启动 API。若单独启动 API，请先执行 **`pnpm --filter @brand-flow/agent build`** 或根目录 **`pnpm build`**。
 
 ### 3.3 Nest 编码习惯
 

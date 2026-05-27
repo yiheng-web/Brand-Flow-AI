@@ -50,6 +50,9 @@ importers:
       '@brand-flow/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@brand-flow/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       '@nestjs/bullmq':
         specifier: ^11.0.4
         version: 11.0.4(@nestjs/common@11.1.19(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.19)(bullmq@5.76.7)
@@ -138,6 +141,9 @@ importers:
       '@ant-design/icons':
         specifier: ^6.2.2
         version: 6.2.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@brand-flow/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       antd:
         specifier: ^6.3.7
         version: 6.3.7(luxon@3.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -193,6 +199,9 @@ importers:
 
   packages/agent:
     dependencies:
+      '@brand-flow/common':
+        specifier: workspace:*
+        version: link:../common
       '@langchain/core':
         specifier: ^1.1.48
         version: 1.1.48(openai@6.39.0(ws@8.20.0)(zod@4.4.3))(ws@8.20.0)
@@ -218,6 +227,8 @@ importers:
       typescript:
         specifier: ~6.0.2
         version: 6.0.3
+
+  packages/common: {}
 
 packages:
 

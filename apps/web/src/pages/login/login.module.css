@@ -7,7 +7,7 @@
 /* 白色圆角卡片，带轻微阴影和边框，在 AuthLayout 中水平垂直居中 */
 .card {
   width: 100%;
-  max-width: 525px;              /* 最大宽度，大屏上保持适中 */
+  max-width: 525px; /* 最大宽度，大屏上保持适中 */
   background: var(--bg-panel);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -19,7 +19,7 @@
 /* ---- Logo 区域 ---- */
 .logoWrap {
   display: flex;
-  justify-content: center;       /* Logo 图标居中 */
+  justify-content: center; /* Logo 图标居中 */
   margin-bottom: 24px;
 }
 
@@ -27,13 +27,13 @@
 .logoMark {
   width: 60px;
   height: 60px;
-  border-radius: 18px;           /* 圆角方块，区别于正圆 */
+  border-radius: 18px; /* 圆角方块，区别于正圆 */
   background: linear-gradient(135deg, #90c2ff 0%, #2f6cf6 100%);
   box-shadow: 0 10px 20px rgba(47, 108, 246, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30px;               /* 字母 B 的大小 */
+  font-size: 30px; /* 字母 B 的大小 */
 }
 
 /* ---- 标题区 ---- */
@@ -53,7 +53,7 @@
 
 /* ---- 表单通用 ---- */
 .form {
-  text-align: left;              /* 表单内容左对齐 */
+  text-align: left; /* 表单内容左对齐 */
 }
 
 /* 单个表单项的外层（覆盖 Ant Design 默认样式用） */

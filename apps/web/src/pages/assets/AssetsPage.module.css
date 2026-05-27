@@ -1,0 +1,64 @@
+.wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 48px;
+}
+
+.header {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--brand-outline-variant);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 24px;
+}
+
+.tab {
+  background: transparent;
+  color: var(--brand-on-surface-variant);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 500;
+  padding: 0 0 14px;
+  position: relative;
+}
+
+.tabActive {
+  color: var(--brand-primary);
+}
+
+.tabActive::after {
+  background: var(--brand-primary);
+  border-radius: 3px 3px 0 0;
+  bottom: -17px;
+  content: '';
+  height: 3px;
+  left: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.quotaText {
+  background: var(--brand-surface-variant);
+  border-radius: var(--radius-full);
+  color: var(--brand-on-surface-variant);
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}

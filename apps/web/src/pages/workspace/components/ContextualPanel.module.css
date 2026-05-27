@@ -1,0 +1,100 @@
+.panel {
+  background: var(--brand-surface);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.header {
+  border-bottom: 1px solid var(--brand-outline-variant);
+  padding: 18px 24px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 22px;
+  overflow: auto;
+  padding: 24px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  margin: 0;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  align-items: center;
+  background: var(--brand-primary-container);
+  border-radius: var(--radius-full);
+  color: var(--brand-on-primary-container);
+  display: flex;
+  gap: 6px;
+  padding: 7px 12px;
+}
+
+.remove {
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.assetCard {
+  align-items: center;
+  background: var(--brand-surface-variant);
+  border: 1px solid transparent;
+  border-radius: var(--radius-medium);
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+}
+
+.assetActive {
+  border-color: var(--brand-primary);
+}
+
+.swatch {
+  border-radius: 8px;
+  height: 32px;
+  width: 32px;
+}
+
+.summaryBox {
+  background: var(--brand-surface-variant);
+  border-radius: var(--radius-medium);
+  color: var(--brand-on-surface-variant);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+}
+
+.streamBox {
+  background: #f7f9fc;
+  border-radius: var(--radius-medium);
+  color: var(--brand-on-surface-variant);
+  font-size: 13px;
+  margin-top: auto;
+  padding: 14px;
+}

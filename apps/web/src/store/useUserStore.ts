@@ -1,21 +1,23 @@
-/**
- * 用户 / 空间全局状态 Store
- *
- * 管理：
- * - 当前选中的空间 ID，供全平台共享
- * - 切换空间的 action
- */
-
 import { create } from 'zustand'
 
+export type UserRole = 'personal' | 'member' | 'admin'
+
 interface UserState {
-  /** 当前选中的空间 ID */
+  id: string
+  name: string
+  email: string
   currentSpaceId: string
-  /** 切换到指定空间 */
+  role: UserRole
   setCurrentSpaceId: (spaceId: string) => void
+  setRole: (role: UserRole) => void
 }
 
 export const useUserStore = create<UserState>((set) => ({
-  currentSpaceId: 'ruixing',
-  setCurrentSpaceId: (spaceId) => set({ currentSpaceId: spaceId }),
+  id: 'demo-user',
+  name: '王同学',
+  email: 'wang@hdu.edu.cn',
+  currentSpaceId: 'personal',
+  role: 'personal',
+  setCurrentSpaceId: (currentSpaceId) => set({ currentSpaceId }),
+  setRole: (role) => set({ role }),
 }))

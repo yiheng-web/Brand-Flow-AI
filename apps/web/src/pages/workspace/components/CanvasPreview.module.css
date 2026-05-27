@@ -1,0 +1,74 @@
+.wrapper {
+  background: var(--brand-surface);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 18px;
+  overflow: auto;
+  padding: 24px;
+}
+
+.stage {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(11, 87, 208, 0.12), rgba(217, 101, 112, 0.14)), #edf3fb;
+  border: 1px solid var(--brand-outline-variant);
+  border-radius: var(--radius-large);
+  display: flex;
+  justify-content: center;
+  min-height: 460px;
+  overflow: hidden;
+  position: relative;
+}
+
+.poster {
+  aspect-ratio: 3 / 4;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.85), transparent 35%),
+    linear-gradient(180deg, #7cc7ff, #0b57d0);
+  border-radius: 18px;
+  box-shadow: var(--shadow-3);
+  color: #fff;
+  max-height: 420px;
+  position: relative;
+  width: min(72%, 330px);
+}
+
+.headline {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  left: 28px;
+  position: absolute;
+  top: 40px;
+}
+
+.logo {
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  bottom: 28px;
+  display: grid;
+  font-weight: 700;
+  height: 54px;
+  place-items: center;
+  position: absolute;
+  right: 28px;
+  width: 54px;
+}
+
+.panel {
+  background: var(--brand-surface-variant);
+  border-radius: var(--radius-medium);
+  padding: 16px;
+}
+
+.thinking {
+  color: var(--brand-on-surface-variant);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 8px 0 0;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}

@@ -1,0 +1,156 @@
+.wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 48px;
+}
+
+.title {
+  color: var(--brand-primary);
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 500;
+  margin: 0 0 24px;
+}
+
+.layout {
+  align-items: flex-start;
+  display: grid;
+  gap: 32px;
+  grid-template-columns: minmax(280px, 1fr) minmax(420px, 2fr);
+}
+
+.card {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-outline-variant);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-1);
+  padding: 24px;
+}
+
+.userRow {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+}
+
+.avatar {
+  align-items: center;
+  background: var(--brand-primary-container);
+  border-radius: 50%;
+  color: var(--brand-primary);
+  display: flex;
+  flex: 0 0 70px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  height: 70px;
+  justify-content: center;
+  width: 70px;
+}
+
+.userName {
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+
+.email {
+  color: var(--brand-on-surface-variant);
+  font-size: 14px;
+  margin: 0;
+}
+
+.divider {
+  border: 0;
+  border-top: 1px solid var(--brand-outline-variant);
+  margin: 24px 0;
+}
+
+.teamTitleRow {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.teamTitle {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.teamDescription {
+  color: var(--brand-on-surface-variant);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.joinRow {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.separator {
+  color: var(--brand-outline);
+  text-align: center;
+}
+
+.inviteBox {
+  align-items: center;
+  background: var(--brand-primary-container);
+  border: 1px dashed var(--brand-primary);
+  border-radius: var(--radius-medium);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.inviteCode {
+  color: var(--brand-primary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.memberItem {
+  align-items: center;
+  background: var(--brand-surface-variant);
+  border-radius: var(--radius-medium);
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.memberIdentity {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.smallAvatar {
+  align-items: center;
+  background: var(--brand-primary-container);
+  border-radius: 50%;
+  color: var(--brand-primary);
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

@@ -9,10 +9,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule)
 
   // 全局校验管道
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-  }))
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  )
 
   // 全局拦截器：包装成功响应
   app.useGlobalInterceptors(new TransformInterceptor())

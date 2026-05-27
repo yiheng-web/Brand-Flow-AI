@@ -13,6 +13,8 @@ export default defineConfig([
     '**/coverage/**',
     '**/.vite/**',
     '**/.turbo/**',
+    'apps/api/src/modules/assets/**',
+    'apps/api/src/modules/org/**',
   ]),
   {
     files: ['apps/web/**/*.{ts,tsx}'],
@@ -27,7 +29,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['apps/api/**/*.ts', 'packages/agent/**/*.ts'],
+    files: ['apps/api/**/*.ts', 'packages/agent/**/*.ts', 'packages/common/**/*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       globals: globals.node,

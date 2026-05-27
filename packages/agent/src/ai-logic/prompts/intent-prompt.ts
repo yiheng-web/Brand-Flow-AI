@@ -10,4 +10,4 @@ export const INTENT_ANALYSIS_PROMPT = `
   "reason": "判断原因",
   "suggestedAction": "执行动作"
 }}
-`;
+`

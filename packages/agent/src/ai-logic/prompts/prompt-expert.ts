@@ -13,4 +13,4 @@ export const PROMPT_GENERATE_TEMPLATE = `
   "finalPrompt": "可直接用于模型调用的完整提示词",
   "purpose": "生成目的"
 }}
-`;
+`

@@ -1,0 +1,14 @@
+.track {
+  background: #eef1f5;
+  border-radius: var(--radius-full);
+  height: 6px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.fill {
+  background: var(--brand-primary);
+  border-radius: inherit;
+  height: 100%;
+  min-width: 4px;
+}

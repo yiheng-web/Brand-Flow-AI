@@ -1,20 +1,20 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
-import { BullModule } from '@nestjs/bullmq';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { OrgModule } from './modules/org/org.module';
-import { AssetsModule } from './modules/assets/assets.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { WorkflowModule } from './modules/workflow/workflow.module';
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { MongooseModule } from '@nestjs/mongoose'
+import { BullModule } from '@nestjs/bullmq'
+import { AppController } from './app.controller'
+import { AppService } from './app.service'
+import { AuthModule } from './modules/auth/auth.module'
+import { WorkflowModule } from './modules/workflow/workflow.module'
+import { TeamModule } from './modules/team/team.module'
+import { KnowledgeModule } from './modules/knowledge/knowledge.module'
 
 @Module({
   imports: [
-    OrgModule,
-    AssetsModule,
     AuthModule,
     WorkflowModule,
+    TeamModule,
+    KnowledgeModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -44,4 +44,4 @@ import { WorkflowModule } from './modules/workflow/workflow.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

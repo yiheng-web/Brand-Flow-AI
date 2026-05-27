@@ -1,134 +1,68 @@
-export const WORKSPACE_VIEW_TABS = ['节点流视图', '画板']
-
-export const WORKSPACE_SIDE_TABS = ['知识资产', '历史记录']
-
-export const WORKSPACE_GROUP_OPTIONS = [
-  { key: 'member', icon: '👥', label: '瑞幸项目组（成员视角）' },
-  { key: 'personal', icon: '🏠', label: '个人知识库' },
-  { key: 'admin', icon: '👑', label: '瑞幸项目组（管理员视角）' },
-]
-
-export const WORKSPACE_HISTORY_RECORDS = [
-  {
-    id: 'history-preview',
-    tag: '画板预览',
-    time: '刚刚',
-    title: '瑞幸夏日海报_v1 生成记录',
-    description: '已调用品牌资产与标准 Logo 输出预览结果',
-  },
-  {
-    id: 'history-search',
-    tag: '节点流视图',
-    time: '10 分钟前',
-    title: '项目组知识库检索',
-    description: '查看"品牌规范 / 颜色 / Logo"相关引用链路',
-  },
-  {
-    id: 'history-switch',
-    tag: '成员操作',
-    time: '今天 09:12',
-    title: '个人知识库切换记录',
-    description: '从"瑞幸项目组"切换到"个人知识库"并查看最近内容',
-  },
-]
-
-export const WORKSPACE_ASSET_ITEMS = [
-  {
-    id: 'asset-brand-blue',
-    type: 'color' as const,
-    label: '品牌蓝 #0022AB',
-    value: '#0022AB',
-  },
-  {
-    id: 'asset-logo-white',
-    type: 'file' as const,
-    label: '标准白底 Logo.svg',
-    badge: 'Luckin',
-  },
-]
-
-/** 右侧属性面板 —— 默认标签 */
-export const DEFAULT_TAGS = ['品牌蓝', '标准Logo', '瑞幸元素']
-
-/** 右侧属性面板 —— 滑杆默认值 */
-export const SLIDER_CONFIG = {
-  min: 0,
-  max: 100,
-  defaultValue: 70,
-  label: '匹配逻辑阈值',
-  unit: '%',
-  rangeLabels: ['宽泛', '精准'],
-}
-
-/** 节点流节点定义 */
-export type FlowNodeId = 'intent' | 'brand-kb' | 'prompt' | 'image-gen' | 'compose' | 'eval'
-
-export type NodeExecStatus = 'done' | 'running' | 'pending'
-export type LayoutDir = 'vertical' | 'horizontal'
+import type { WorkflowNodeId } from '@brand-flow/common'
 
 export interface FlowNodeDefinition {
-  id: FlowNodeId
-  type: 'input' | 'process' | 'output'
+  id: WorkflowNodeId
   step: string
   title: string
-  emoji: string
   subtitle: string
-  execStatus: NodeExecStatus
+  icon: string
+  x: number
+  y: number
 }
 
 export const FLOW_NODES: FlowNodeDefinition[] = [
   {
     id: 'intent',
-    type: 'input',
     step: '1',
     title: '意图解析',
-    emoji: '🧩',
-    subtitle: '主题/风格',
-    execStatus: 'done',
+    subtitle: '主题 / 场景 / 风格',
+    icon: '🧠',
+    x: 60,
+    y: 100,
   },
   {
     id: 'brand-kb',
-    type: 'process',
     step: '2',
     title: '知识匹配',
-    emoji: '📦',
-    subtitle: '品牌资产',
-    execStatus: 'running',
+    subtitle: '品牌资产检索',
+    icon: '📚',
+    x: 360,
+    y: 100,
   },
   {
     id: 'prompt',
-    type: 'process',
     step: '3',
-    title: 'Prompt专家',
-    emoji: '✍️',
-    subtitle: '绘图指令',
-    execStatus: 'pending',
+    title: 'Prompt 专家',
+    subtitle: '英文绘图指令',
+    icon: '✍️',
+    x: 660,
+    y: 100,
   },
   {
     id: 'image-gen',
-    type: 'process',
     step: '4',
     title: '图像生成',
-    emoji: '🎨',
     subtitle: '生成底图',
-    execStatus: 'pending',
+    icon: '🎨',
+    x: 660,
+    y: 340,
   },
   {
     id: 'compose',
-    type: 'process',
     step: '5',
     title: '排版合成',
-    emoji: '📐',
-    subtitle: '文字/LOGO',
-    execStatus: 'pending',
+    subtitle: '文字 / Logo',
+    icon: '🧩',
+    x: 360,
+    y: 340,
   },
-  {
-    id: 'eval',
-    type: 'output',
-    step: '6',
-    title: '自我评估',
-    emoji: '✅',
-    subtitle: '质检评分',
-    execStatus: 'pending',
-  },
+  { id: 'eval', step: '6', title: '自我评估', subtitle: '质检评分', icon: '✅', x: 60, y: 340 },
 ]
+
+export const FLOW_EDGES = [
+  ['intent', 'brand-kb'],
+  ['brand-kb', 'prompt'],
+  ['prompt', 'image-gen'],
+  ['image-gen', 'compose'],
+  ['compose', 'eval'],
+] as const

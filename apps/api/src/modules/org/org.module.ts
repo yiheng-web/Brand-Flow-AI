@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { User, UserSchema } from './schemas/user.schema';
-import { Team, TeamSchema } from './schemas/team.schema';
-import { Enterprise, EnterpriseSchema } from './schemas/enterprise.schema';
-import { OrgService } from './org.service';
-import { OrgController } from './org.controller';
+import { Module } from '@nestjs/common'
+import { MongooseModule } from '@nestjs/mongoose'
+import { User, UserSchema } from './schemas/user.schema'
+import { Team, TeamSchema } from './schemas/team.schema'
+import { Enterprise, EnterpriseSchema } from './schemas/enterprise.schema'
+import { OrgService } from './org.service'
+import { OrgController } from './org.controller'
 
 @Module({
   imports: [

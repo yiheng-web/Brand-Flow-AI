@@ -1,0 +1,45 @@
+.flow-node {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-outline-variant);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  min-width: 220px;
+  overflow: hidden;
+  transition: var(--transition-standard);
+}
+
+.flow-node-active {
+  border-color: var(--brand-primary);
+  box-shadow:
+    0 0 0 2px var(--brand-primary-container),
+    var(--shadow-2);
+}
+
+.flow-node-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+}
+
+.flow-node-title {
+  align-items: center;
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.flow-node-sub,
+.flow-node-status {
+  color: var(--brand-on-surface-variant);
+  font-size: 12px;
+}
+
+.flow-node-handle {
+  background: var(--brand-primary) !important;
+  border: 2px solid #fff !important;
+  height: 10px !important;
+  width: 10px !important;
+}

@@ -1,0 +1,44 @@
+.wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 48px;
+}
+
+.title {
+  color: var(--brand-primary);
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 500;
+  margin: 0 0 24px;
+}
+
+.card {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-outline-variant);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-1);
+  max-width: 760px;
+  padding: 24px;
+}
+
+.row {
+  align-items: center;
+  border-bottom: 1px solid var(--brand-outline-variant);
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.desc {
+  color: var(--brand-on-surface-variant);
+  font-size: 13px;
+  margin-top: 4px;
+}

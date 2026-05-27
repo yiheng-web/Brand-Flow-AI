@@ -1,51 +1,55 @@
-import { useState } from 'react'
-import styles from '../workspace.module.css'
+import { Button } from 'antd'
 
-type Tool = 'hand' | 'pen' | 'eraser' | 'undo'
+import type { ComposeLayer, EvaluationReport } from '@brand-flow/common'
 
-const TOOLS: { key: Tool; icon: string; label: string }[] = [
-  { key: 'hand', icon: '🖐️', label: '手' },
-  { key: 'pen', icon: '✏️', label: '笔' },
-  { key: 'eraser', icon: '🧹', label: '橡皮擦' },
-  { key: 'undo', icon: '↩️', label: '回退' },
-]
+import styles from './CanvasPreview.module.css'
 
 interface CanvasPreviewProps {
-  onSaveKnowledge?: () => void
+  layers?: ComposeLayer[]
+  evaluationReport?: EvaluationReport
+  showEvaluation: boolean
+  onApproveRerun: () => void
+  onSaveKnowledge: () => void
 }
 
-const CanvasPreview = ({ onSaveKnowledge }: CanvasPreviewProps) => {
-  const [activeTool, setActiveTool] = useState<Tool>('hand')
+export function CanvasPreview({
+  layers,
+  evaluationReport,
+  showEvaluation,
+  onApproveRerun,
+  onSaveKnowledge,
+}: CanvasPreviewProps) {
+  const headline = layers?.find((layer) => layer.type === 'text')?.content ?? 'SUMMER ICE'
 
   return (
-    <div className={styles.previewArea}>
-      <div className={styles.previewToolbar}>
-        <div className={styles.previewToolGroup}>
-          {TOOLS.map((tool) => (
-            <button
-              key={tool.key}
-              type="button"
-              className={`${styles.previewToolBtn} ${
-                activeTool === tool.key ? styles.previewToolBtnActive : ''
-              }`}
-              onClick={() => setActiveTool(tool.key)}
-              title={tool.label}
-            >
-              <span className={styles.previewToolIcon}>{tool.icon}</span>
-            </button>
-          ))}
+    <div className={styles.wrapper}>
+      <div className={styles.stage}>
+        <div className={styles.poster}>
+          <div className={styles.headline}>{headline}</div>
+          <div className={styles.logo}>BF</div>
         </div>
-        <button
-          type="button"
-          className={styles.saveKnowledgeBtn}
-          onClick={onSaveKnowledge}
-        >
-          存入个人知识库
-        </button>
       </div>
-      <div className={styles.previewCanvas} />
+
+      {showEvaluation && evaluationReport ? (
+        <section className={styles.panel}>
+          <strong>AI 质检评分：{evaluationReport.score}/10</strong>
+          <div className={styles.thinking}>
+            {evaluationReport.thinking.map((item) => (
+              <div key={item}>{item}</div>
+            ))}
+          </div>
+          <div className={styles.actions}>
+            {!evaluationReport.passed ? (
+              <Button danger onClick={onApproveRerun}>
+                允许 AI 回溯重构
+              </Button>
+            ) : null}
+            <Button type="primary" onClick={onSaveKnowledge}>
+              保存到知识库
+            </Button>
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }
-
-export default CanvasPreview

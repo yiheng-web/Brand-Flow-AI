@@ -1,18 +1,18 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
+import { Document, Types } from 'mongoose'
 
-export type TeamDocument = Team & Document;
+export type TeamDocument = Team & Document
 
 @Schema({ timestamps: true })
 export class Team {
   @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true })
-  enterpriseId!: Types.ObjectId;
+  enterpriseId!: Types.ObjectId
 
   @Prop({ required: true })
-  name!: string;
+  name!: string
 
   @Prop()
-  description!: string;
+  description!: string
 }
 
-export const TeamSchema = SchemaFactory.createForClass(Team);
+export const TeamSchema = SchemaFactory.createForClass(Team)

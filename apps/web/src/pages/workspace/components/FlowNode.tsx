@@ -1,39 +1,26 @@
-import { memo } from 'react'
-import { Handle, Position, type NodeProps } from 'reactflow'
-import type { FlowNodeDefinition, LayoutDir } from '../workspace.const'
+import type { NodeProps } from 'reactflow'
+import { Handle, Position } from 'reactflow'
 
-type FlowNodeData = FlowNodeDefinition & { label?: string; layoutDir?: LayoutDir }
+import type { FlowNodeDefinition } from '../workspace.const'
 
-const STATUS_CONFIG: Record<string, { bg: string; border?: string }> = {
-  done: { bg: '#22c55e' },
-  running: { bg: '#3b82f6', border: '#3b82f6' },
-  pending: { bg: '#d1d5db' },
+interface FlowNodeData extends FlowNodeDefinition {
+  active: boolean
+  statusLabel: string
 }
 
-const FlowNode = memo(({ data }: NodeProps<FlowNodeData>) => {
-  const statusCfg = STATUS_CONFIG[data.execStatus]
-  const isRunning = data.execStatus === 'running'
-  const isHorizontal = data.layoutDir === 'horizontal'
-
+export function FlowNode({ data }: NodeProps<FlowNodeData>) {
   return (
-    <div
-      className="flow-node"
-      style={isRunning ? { borderColor: statusCfg.border, boxShadow: '0 0 0 1px #3b82f6, 0 4px 16px rgba(59,130,246,0.2)' } : undefined}
-    >
+    <div className={`flow-node ${data.active ? 'flow-node-active' : ''}`}>
+      <Handle className="flow-node-handle" position={Position.Left} type="target" />
       <div className="flow-node-body">
         <div className="flow-node-title">
-          <span className="flow-node-emoji">{data.emoji}</span>
-          {data.title}
-          <span className="flow-node-dot" style={{ background: statusCfg.bg }} />
+          <span>{data.icon}</span>
+          {data.step}. {data.title}
         </div>
         <div className="flow-node-sub">{data.subtitle}</div>
+        <div className="flow-node-status">{data.statusLabel}</div>
       </div>
-      <Handle type="target" position={isHorizontal ? Position.Left : Position.Top} className="flow-node-handle" />
-      <Handle type="source" position={isHorizontal ? Position.Right : Position.Bottom} className="flow-node-handle" />
+      <Handle className="flow-node-handle" position={Position.Right} type="source" />
     </div>
   )
-})
-
-FlowNode.displayName = 'FlowNode'
-
-export default FlowNode
+}

@@ -1,2 +1,2 @@
-export * from "./generate-types";
-export * from "./generate-service";
+export * from './generate-types'
+export * from './generate-service'

@@ -1,56 +1,19 @@
-/**
- * 团队 / 空间管理 API
- *
- * 接口：
- * - getSpaces: 获取所有可用空间列表
- * - getTeamMembers: 获取指定空间的团队成员列表
- * - inviteMember: 邀请成员加入空间
- */
+import type { InviteCodeDto, JoinTeamRequest, TeamDto } from '@brand-flow/common'
 
-import apiClient from './index'
+import { apiClient } from './client'
 
-// ============================================================
-// 类型定义
-// ============================================================
-
-/** 空间数据 */
-export interface SpaceData {
-  id: string
-  name: string
-  isCurrent: boolean
+export function getTeam() {
+  return apiClient.get<TeamDto>('/team/current')
 }
 
-/** 团队成员数据 */
-export interface TeamMemberData {
-  id: string
-  name: string
-  role: string
-  roleType: 'admin' | 'member'
-  isSelf?: boolean
+export function createTeam(name: string) {
+  return apiClient.post<TeamDto>('/team/create', { name })
 }
 
-/** 邀请成员请求参数 */
-export interface InviteMemberParams {
-  email: string
-  spaceId: string
-  roleType: 'admin' | 'member'
+export function generateInviteCode() {
+  return apiClient.post<InviteCodeDto>('/team/invite-code')
 }
 
-// ============================================================
-// 导出 API 函数
-// ============================================================
-
-/** 获取所有可用空间列表 */
-export async function getSpaces() {
-  return apiClient.get('/team/spaces')
-}
-
-/** 获取指定空间的团队成员列表 */
-export async function getTeamMembers(spaceId: string) {
-  return apiClient.get(`/team/${spaceId}/members`)
-}
-
-/** 邀请成员加入空间 */
-export async function inviteMember(params: InviteMemberParams) {
-  return apiClient.post('/team/invite', params)
+export function joinTeam(params: JoinTeamRequest) {
+  return apiClient.post<TeamDto>('/team/join', params)
 }

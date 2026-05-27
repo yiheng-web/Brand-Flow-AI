@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@brand-flow/agent": "workspace:*",
+    "@brand-flow/common": "workspace:*",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.1.3",
     "@nestjs/config": "^4.0.4",

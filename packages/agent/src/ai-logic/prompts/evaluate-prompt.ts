@@ -13,4 +13,4 @@ promptEvaluation: {{ score, comment }} 提示词质量评估
 complianceEvaluation: {{ score, comment }} 品牌合规性评估
 suggestions: 改进建议数组
 status: success
-`;
+`

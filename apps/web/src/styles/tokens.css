@@ -1,0 +1,26 @@
+:root {
+  --brand-primary: #0b57d0;
+  --brand-on-primary: #ffffff;
+  --brand-primary-container: #d3e3fd;
+  --brand-on-primary-container: #041e49;
+  --brand-background: #f8fafd;
+  --brand-surface: #ffffff;
+  --brand-surface-variant: #f0f4f9;
+  --brand-outline: #c4c7c5;
+  --brand-outline-variant: #e1e5ea;
+  --brand-on-surface: #1f1f1f;
+  --brand-on-surface-variant: #444746;
+  --brand-error: #d93025;
+  --brand-success: #1e8e3e;
+  --brand-warning: #f9ab00;
+  --font-display: 'Google Sans', Inter, system-ui, sans-serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --radius-large: 16px;
+  --radius-medium: 12px;
+  --radius-small: 8px;
+  --radius-full: 9999px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 4px 8px 3px rgba(0, 0, 0, 0.05);
+  --shadow-3: 0 8px 24px 8px rgba(0, 0, 0, 0.15);
+  --transition-standard: 0.3s cubic-bezier(0.2, 0, 0, 1);
+}

@@ -1,0 +1,106 @@
+.navRail {
+  width: 80px;
+  background: var(--brand-surface);
+  border-right: 1px solid var(--brand-outline-variant);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding: 24px 16px;
+  transition: width var(--transition-standard);
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.expanded {
+  width: 220px;
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.navBottom {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.navItem,
+.avatarButton {
+  align-items: center;
+  background: transparent;
+  border-radius: var(--radius-full);
+  color: var(--brand-on-surface-variant);
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  height: 48px;
+  padding: 0 12px;
+  text-align: left;
+  transition:
+    background var(--transition-standard),
+    color var(--transition-standard);
+  width: 100%;
+}
+
+.navItem:hover,
+.avatarButton:hover {
+  background: var(--brand-surface-variant);
+}
+
+.active {
+  background: var(--brand-primary-container);
+  color: var(--brand-on-primary-container);
+}
+
+.icon {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 24px;
+  font-size: 18px;
+  justify-content: center;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.expanded .label {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.avatar {
+  align-items: center;
+  background: linear-gradient(135deg, #a8c7fa, #d3e3fd);
+  border-radius: 50%;
+  color: var(--brand-primary);
+  display: flex;
+  flex: 0 0 36px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.avatarText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.avatarRole {
+  color: var(--brand-on-surface-variant);
+  font-size: 11px;
+  font-weight: 400;
+}

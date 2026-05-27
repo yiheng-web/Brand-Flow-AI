@@ -1,41 +1,50 @@
-/**
- * 工作流 / 创意提交 API
- *
- * 接口：
- * - submitPrompt: 提交创意描述，创建 AI 创作工作流
- * - getWorkflowStatus: 查询工作流执行状态
- */
+import type {
+  CreateWorkflowRequest,
+  RerunWorkflowRequest,
+  WorkflowDto,
+  WorkflowStreamEvent,
+} from '@brand-flow/common'
 
-import apiClient from './index'
+import { apiClient, getApiBaseUrl } from './client'
 
-// ============================================================
-// 类型定义
-// ============================================================
-
-/** 提交创意请求参数 */
-export interface SubmitPromptParams {
-  prompt: string
-  spaceId: string
+export function submitPrompt(params: CreateWorkflowRequest) {
+  return apiClient.post<WorkflowDto>('/workflow/create', params)
 }
 
-/** 工作流数据 */
-export interface WorkflowData {
-  id: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  prompt: string
-  createdAt: string
+export function getWorkflowStatus(id: string) {
+  return apiClient.get<WorkflowDto>(`/workflow/${id}/status`)
 }
 
-// ============================================================
-// 导出 API 函数（页面层统一调用，不关心 mock 还是真实）
-// ============================================================
-
-/** 提交创意描述，创建 AI 创作工作流 */
-export async function submitPrompt(params: SubmitPromptParams) {
-  return apiClient.post('/workflow/create', params)
+export function rerunWorkflow(id: string, params: RerunWorkflowRequest) {
+  return apiClient.post<WorkflowDto>(`/workflow/${id}/rerun`, params)
 }
 
-/** 查询工作流执行状态 */
-export async function getWorkflowStatus(id: string) {
-  return apiClient.get(`/workflow/${id}/status`)
+interface WorkflowStreamHandlers {
+  onEvent?: (event: WorkflowStreamEvent) => void
+  onError?: (error: Event) => void
+  onClose?: () => void
+}
+
+export function streamWorkflow(id: string, handlers: WorkflowStreamHandlers) {
+  const url = new URL(`/api/workflow/${id}/stream`, getApiBaseUrl().replace(/\/api$/, ''))
+  const source = new EventSource(url.toString())
+
+  source.onmessage = (event) => {
+    try {
+      handlers.onEvent?.(JSON.parse(event.data) as WorkflowStreamEvent)
+    } catch {
+      handlers.onEvent?.({ type: 'progress', data: event.data })
+    }
+  }
+
+  source.onerror = (error) => {
+    handlers.onError?.(error)
+    source.close()
+    handlers.onClose?.()
+  }
+
+  return () => {
+    source.close()
+    handlers.onClose?.()
+  }
 }

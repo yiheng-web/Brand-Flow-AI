@@ -84,13 +84,13 @@ pnpm install
 
 API 依赖本地 MongoDB 与 Redis。仓库已提供 `apps/api/docker-compose.yml`，因此需要先确保 Docker Desktop 正在运行。
 
-在根目录一键拉起本地依赖与各包已声明的 `dev` 任务（例如 Web 的 Vite + API 的 Nest watch）：
+在根目录一键拉起完整本地环境（Docker → 检查 `.env` → 构建 Agent → Web + API + Agent watch）：
 
 ```bash
 pnpm dev
 ```
 
-**推荐：完整一键启动**（Docker → 检查 `.env` → 构建 Agent → Web + API + Agent）：
+`pnpm start` 与 `pnpm dev:all` 走同一条启动路径：
 
 ```bash
 pnpm dev:all
@@ -98,7 +98,7 @@ pnpm dev:all
 pnpm start
 ```
 
-首次运行前请在 `apps/api/.env` 中填写有效的 `OPENAI_API_KEY`（若不存在会从 `.env.example` 自动复制）。若密钥仍是占位符 `sk-xxxxxxx`，启动会中止；仅调试 UI 时可执行 `pnpm dev:all -- --skip-key-check`。
+首次运行前请在 `apps/api/.env` 中填写有效的 `OPENAI_API_KEY`（若不存在会从 `.env.example` 自动复制）。若密钥仍是占位符 `sk-xxxxxxx`，启动会中止；仅调试 UI 时可执行 `pnpm dev -- --skip-key-check`。
 
 等价于分步执行：
 
@@ -106,6 +106,8 @@ pnpm start
 pnpm dev:deps
 pnpm dev:code
 ```
+
+`pnpm dev:code` 会通过 Turbo 先等待依赖包完成 `build`，因此 API 启动前会先拿到 `@brand-flow/agent` 的 `dist` 产物。
 
 如果只想启动或停止基础设施：
 
@@ -126,7 +128,7 @@ pnpm --filter @brand-flow/agent dev
 
 ```bash
 pnpm install    # 安装依赖
-pnpm dev        # 并行开发（Turbo）
+pnpm dev        # 完整本地开发启动（依赖服务 + Agent build + Turbo dev）
 pnpm build      # 全量构建（依赖包会先 ^build，例如 Agent 先于 API）
 pnpm lint       # 全仓 ESLint
 ```
@@ -163,7 +165,7 @@ pnpm lint       # 全仓 ESLint
 import { AGENT_VERSION } from '@brand-flow/agent'
 ```
 
-> ⚠️ **运行时**：Node 加载的是 Agent 编译产物（`main` → `dist`）。若单独调试 API 且报错缺包，先在根目录执行 `pnpm --filter @brand-flow/agent build` 或全量 `pnpm build`。
+> ⚠️ **运行时**：Node 加载的是 Agent 编译产物（`main` → `dist`）。优先从根目录执行 `pnpm dev`；若单独调试 API 且报错缺包，先在根目录执行 `pnpm --filter @brand-flow/agent build` 或全量 `pnpm build`。
 
 你的使命：做 **可靠、可观测、可扩展** 的平台层 —— 让 AI 组专注「聪明」，你负责「稳」。
 
