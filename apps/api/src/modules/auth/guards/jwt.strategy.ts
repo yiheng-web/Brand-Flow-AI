@@ -30,7 +30,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    // 返回对象将挂载到 req.user
     return {
       userId: payload.sub,
       email: payload.email,
@@ -38,4 +37,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: payload.role,
     }
   }
+}
+
+/** MVP 开发演示：允许前端默认 demo-token（非生产环境） */
+export function validateDemoToken(request: Request): boolean {
+  if (process.env.NODE_ENV === 'production') return false
+  const auth = request.headers.authorization
+  if (auth === 'Bearer demo-token') return true
+  const q = request.query.token
+  return q === 'demo-token'
 }

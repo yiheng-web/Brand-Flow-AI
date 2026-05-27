@@ -23,7 +23,7 @@ interface NavItem {
 const primaryNavItems: NavItem[] = [
   { label: '新建创作', path: '/home', icon: <AppstoreAddOutlined /> },
   { label: '工作台', path: '/workspace', icon: <NodeIndexOutlined /> },
-  { label: '素材与知识库', path: '/assets', icon: <FolderOpenOutlined /> },
+  { label: '品牌档案', path: '/knowledge', icon: <FolderOpenOutlined /> },
 ]
 
 const bottomNavItems: NavItem[] = [

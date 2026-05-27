@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
+import { join } from 'node:path'
 import { MongooseModule } from '@nestjs/mongoose'
 import { BullModule } from '@nestjs/bullmq'
 import { AppController } from './app.controller'
@@ -17,7 +18,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module'
     KnowledgeModule,
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: [join(__dirname, '..', '.env'), '.env'],
     }),
 
     // 初始化 MongoDB 连接

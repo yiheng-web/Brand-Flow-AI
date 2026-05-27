@@ -1,4 +1,5 @@
-import { IsIn, IsNotEmpty, IsObject, IsString } from 'class-validator'
+import { IsBoolean, IsIn, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
+import { IMAGE_RATIOS, SCENE_TYPES } from '@brand-flow/common'
 import { WORKFLOW_NODE_IDS, type WorkflowNodeId } from '../workflow.constants'
 
 export class CreateWorkflowDto {
@@ -9,6 +10,26 @@ export class CreateWorkflowDto {
   @IsString({ message: '空间 ID 必须是字符串' })
   @IsNotEmpty({ message: '空间 ID 不能为空' })
   spaceId!: string
+
+  @IsOptional()
+  @IsIn(['personal', 'team'])
+  scope?: 'personal' | 'team'
+
+  @IsOptional()
+  @IsIn(SCENE_TYPES)
+  sceneType?: (typeof SCENE_TYPES)[number]
+
+  @IsOptional()
+  @IsIn(IMAGE_RATIOS)
+  imageRatio?: (typeof IMAGE_RATIOS)[number]
+
+  @IsOptional()
+  @IsBoolean()
+  useKnowledge?: boolean
+
+  @IsOptional()
+  @IsString()
+  brandProfileId?: string
 }
 
 export class RerunWorkflowDto {

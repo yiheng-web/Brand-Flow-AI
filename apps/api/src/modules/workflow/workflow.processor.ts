@@ -1,8 +1,9 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
-import { createAgentGraph, AgentStateType } from '@brand-flow/agent'
+import { createAgentGraph, AgentStateType, formatKnowledgeForPrompt } from '@brand-flow/agent'
 import { Job } from 'bullmq'
 import { Model } from 'mongoose'
+import { KnowledgeService } from '@/modules/knowledge/knowledge.service'
 import {
   AGENT_NODE_TO_WORKFLOW_NODE,
   DEFAULT_NODE_STATES,
@@ -22,6 +23,7 @@ export class WorkflowProcessor extends WorkerHost {
   constructor(
     @InjectModel(Workflow.name)
     private readonly workflowModel: Model<WorkflowDocument>,
+    private readonly knowledgeService: KnowledgeService,
   ) {
     super()
   }
@@ -47,6 +49,23 @@ export class WorkflowProcessor extends WorkerHost {
         workflow.result && typeof workflow.result === 'object'
           ? (workflow.result as Partial<AgentStateType>)
           : {}
+      const sessionContext =
+        workflow.sessionContext && typeof workflow.sessionContext === 'object'
+          ? workflow.sessionContext
+          : {}
+      const useKnowledge =
+        typeof sessionContext.useKnowledge === 'boolean' ? sessionContext.useKnowledge : true
+
+      let knowledgeContext: string | undefined
+      if (useKnowledge) {
+        const items = await this.knowledgeService.listBySpace(workflow.spaceId, {
+          enabled: true,
+        })
+        if (items.length > 0) {
+          knowledgeContext = formatKnowledgeForPrompt(items)
+        }
+      }
+
       const sessionState =
         workflow.sessionContext && typeof workflow.sessionContext === 'object'
           ? (workflow.sessionContext as Partial<AgentStateType>)
@@ -55,11 +74,13 @@ export class WorkflowProcessor extends WorkerHost {
         ...previousState,
         ...sessionState,
         userQuery: workflow.prompt,
+        knowledgeContext: knowledgeContext ?? sessionState.knowledgeContext,
         context: {
-          ...(workflow.sessionContext ?? {}),
+          ...sessionContext,
           workflowId: workflow._id.toString(),
           spaceId: workflow.spaceId,
           rerunFromNodeId: job.data.rerunFromNodeId,
+          useKnowledge,
         },
         retryCount: 0,
         nodeStates: {

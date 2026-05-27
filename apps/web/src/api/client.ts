@@ -45,6 +45,7 @@ interface ApiClient {
   get<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
   post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
   put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
+  patch<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
   delete<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>>
 }
 

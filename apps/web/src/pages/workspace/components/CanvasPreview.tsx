@@ -6,6 +6,7 @@ import styles from './CanvasPreview.module.css'
 
 interface CanvasPreviewProps {
   layers?: ComposeLayer[]
+  finalImageUrl?: string
   evaluationReport?: EvaluationReport
   showEvaluation: boolean
   onApproveRerun: () => void
@@ -14,13 +15,15 @@ interface CanvasPreviewProps {
 
 export function CanvasPreview({
   layers,
+  finalImageUrl,
   evaluationReport,
   showEvaluation,
   onApproveRerun,
   onSaveKnowledge,
 }: CanvasPreviewProps) {
   const headline = layers?.find((layer) => layer.type === 'text')?.content ?? 'SUMMER ICE'
-  const baseImageUrl = layers?.find((layer) => layer.type === 'image' && layer.url)?.url
+  const layerImageUrl = layers?.find((layer) => layer.type === 'image' && layer.url)?.url
+  const baseImageUrl = finalImageUrl ?? layerImageUrl
 
   return (
     <div className={styles.wrapper}>

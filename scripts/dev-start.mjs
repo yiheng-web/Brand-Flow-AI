@@ -13,7 +13,21 @@ const envPath = resolve(rootDir, 'apps/api/.env');
 const envExamplePath = resolve(rootDir, 'apps/api/.env.example');
 const isWindows = process.platform === 'win32';
 
-const PLACEHOLDER_KEYS = new Set(['', 'sk-xxxxxxx', 'sk-xxxxxxxx']);
+const PLACEHOLDER_KEYS = new Set([
+  '',
+  'sk-xxxxxxx',
+  'sk-xxxxxxxx',
+  'sk-your-siliconflow-api-key',
+]);
+
+function isPlaceholderApiKey(apiKey) {
+  const key = apiKey?.trim() ?? '';
+  if (PLACEHOLDER_KEYS.has(key)) return true;
+  if (/^sk-your-/i.test(key)) return true;
+  if (/^sk-x{4,}$/i.test(key)) return true;
+  if (/placeholder|example|changeme/i.test(key)) return true;
+  return false;
+}
 
 const skipKeyCheck =
   process.argv.includes('--skip-key-check') ||
@@ -82,11 +96,45 @@ function ensureEnvFile() {
   }
 }
 
-function validateEnv() {
+async function verifyOpenAiApiKey(env) {
+  if (env.AI_MOCK_MODE === 'true') {
+    return { ok: true, skipped: true };
+  }
+
+  const apiKey = env.OPENAI_API_KEY?.trim() ?? '';
+  const baseUrl = (env.OPENAI_BASE_URL ?? 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
+  const model = env.OPENAI_MODEL_NAME ?? 'deepseek-ai/DeepSeek-V3';
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'ping' }],
+      max_tokens: 1,
+    }),
+  });
+
+  if (response.ok) {
+    return { ok: true };
+  }
+
+  const body = (await response.text()).slice(0, 120);
+  return {
+    ok: false,
+    status: response.status,
+    body,
+  };
+}
+
+async function validateEnv() {
   const env = loadEnvFile(envPath);
   const apiKey = env.OPENAI_API_KEY?.trim() ?? '';
 
-  if (PLACEHOLDER_KEYS.has(apiKey)) {
+  if (isPlaceholderApiKey(apiKey)) {
     if (skipKeyCheck) {
       console.warn('');
       console.warn('      [跳过] OPENAI_API_KEY 仍为占位符，仅启动 Web/API/数据库');
@@ -104,10 +152,25 @@ function validateEnv() {
     console.error('  OPENAI_BASE_URL=https://api.siliconflow.cn/v1');
     console.error('  OPENAI_MODEL_NAME=deepseek-ai/DeepSeek-V3');
     console.error('');
-    console.error('若暂时只需启动前后端做 UI 调试，可执行：');
+    console.error('若暂时只需启动前后端做 UI 调试，可任选其一：');
+    console.error('  在 apps/api/.env 设置 AI_MOCK_MODE=true');
     console.error('  pnpm dev:all -- --skip-key-check');
     console.error('');
     process.exit(1);
+  }
+
+  if (!skipKeyCheck) {
+    const check = await verifyOpenAiApiKey(env);
+    if (!check.ok && !check.skipped) {
+      console.error('');
+      console.error(`大模型 API 密钥无效（HTTP ${check.status}）: ${check.body || '无响应体'}`);
+      console.error('请登录 https://cloud.siliconflow.cn/account/ak 创建密钥并写入 apps/api/.env');
+      console.error('');
+      console.error('本地演示可设置 AI_MOCK_MODE=true，或执行：');
+      console.error('  pnpm dev:all -- --skip-key-check');
+      console.error('');
+      process.exit(1);
+    }
   }
 
   return env;
@@ -123,7 +186,7 @@ run('node', ['scripts/dev-deps.mjs']);
 console.log('');
 console.log('[2/4] 检查 API 环境变量...');
 ensureEnvFile();
-const apiEnv = validateEnv();
+const apiEnv = await validateEnv();
 console.log('      apps/api/.env 已就绪');
 
 console.log('');

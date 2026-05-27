@@ -1,6 +1,17 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
+import { InjectModel } from '@nestjs/mongoose'
+import { Model } from 'mongoose'
 
-import type { KnowledgeOverviewDto, KnowledgeScope } from '@brand-flow/common'
+import type {
+  CreateKnowledgeRequest,
+  KnowledgeItem,
+  KnowledgeOverviewDto,
+  KnowledgeScope,
+  ListKnowledgeQuery,
+  UpdateKnowledgeRequest,
+} from '@brand-flow/common'
+
+import { KnowledgeItemDocument, KnowledgeItemEntity } from './schemas/knowledge-item.schema'
 
 @Injectable()
 export class KnowledgeService {
@@ -8,6 +19,11 @@ export class KnowledgeService {
     personal: this.createOverview('personal'),
     team: this.createOverview('team'),
   }
+
+  constructor(
+    @InjectModel(KnowledgeItemEntity.name)
+    private readonly knowledgeModel: Model<KnowledgeItemDocument>,
+  ) {}
 
   getOverview(scope: KnowledgeScope): KnowledgeOverviewDto {
     return this.overviews[scope]
@@ -29,6 +45,107 @@ export class KnowledgeService {
     })
     overview.quota.used = overview.bases.length
     return overview
+  }
+
+  async list(query: ListKnowledgeQuery): Promise<KnowledgeItem[]> {
+    const filter: Record<string, unknown> = { spaceId: query.spaceId }
+
+    if (query.type) filter.type = query.type
+    if (query.enabled !== undefined) filter.enabled = query.enabled
+    if (query.keyword) {
+      filter.$or = [
+        { title: { $regex: query.keyword, $options: 'i' } },
+        { description: { $regex: query.keyword, $options: 'i' } },
+      ]
+    }
+    if (query.tags) {
+      const tagList = query.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+      if (tagList.length > 0) filter.tags = { $in: tagList }
+    }
+
+    const docs = await this.knowledgeModel.find(filter).sort({ updatedAt: -1 }).exec()
+    return docs.map((doc) => this.toItem(doc))
+  }
+
+  async listBySpace(
+    spaceId: string,
+    options?: { enabled?: boolean; type?: ListKnowledgeQuery['type'] },
+  ): Promise<KnowledgeItem[]> {
+    return this.list({
+      spaceId,
+      enabled: options?.enabled,
+      type: options?.type,
+    })
+  }
+
+  async findById(id: string): Promise<KnowledgeItem> {
+    const doc = await this.knowledgeModel.findById(id).exec()
+    if (!doc) throw new NotFoundException('知识条目不存在')
+    return this.toItem(doc)
+  }
+
+  async create(dto: CreateKnowledgeRequest): Promise<KnowledgeItem> {
+    const doc = await this.knowledgeModel.create({
+      spaceId: dto.spaceId,
+      type: dto.type,
+      title: dto.title,
+      description: dto.description,
+      tags: dto.tags ?? [],
+      content: dto.content,
+      assetUrl: dto.assetUrl,
+      enabled: dto.enabled ?? true,
+    })
+    return this.toItem(doc)
+  }
+
+  async update(id: string, dto: UpdateKnowledgeRequest): Promise<KnowledgeItem> {
+    const doc = await this.knowledgeModel
+      .findByIdAndUpdate(
+        id,
+        {
+          ...(dto.title !== undefined ? { title: dto.title } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.tags !== undefined ? { tags: dto.tags } : {}),
+          ...(dto.content !== undefined ? { content: dto.content } : {}),
+          ...(dto.assetUrl !== undefined ? { assetUrl: dto.assetUrl } : {}),
+          ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
+        },
+        { new: true },
+      )
+      .exec()
+
+    if (!doc) throw new NotFoundException('知识条目不存在')
+    return this.toItem(doc)
+  }
+
+  async remove(id: string): Promise<void> {
+    const result = await this.knowledgeModel.findByIdAndDelete(id).exec()
+    if (!result) throw new NotFoundException('知识条目不存在')
+  }
+
+  async setEnabled(id: string, enabled: boolean): Promise<KnowledgeItem> {
+    const doc = await this.knowledgeModel.findByIdAndUpdate(id, { enabled }, { new: true }).exec()
+    if (!doc) throw new NotFoundException('知识条目不存在')
+    return this.toItem(doc)
+  }
+
+  private toItem(doc: KnowledgeItemDocument): KnowledgeItem {
+    return {
+      id: doc._id.toString(),
+      spaceId: doc.spaceId,
+      type: doc.type,
+      title: doc.title,
+      description: doc.description,
+      tags: doc.tags ?? [],
+      content: doc.content ?? {},
+      assetUrl: doc.assetUrl,
+      enabled: doc.enabled,
+      createdAt: doc.createdAt.toISOString(),
+      updatedAt: doc.updatedAt.toISOString(),
+    }
   }
 
   private createOverview(scope: KnowledgeScope): KnowledgeOverviewDto {

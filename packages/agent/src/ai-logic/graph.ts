@@ -9,7 +9,7 @@ import { generateService } from '../generate'
 import { brandService } from '../brand'
 import { conversationMemory } from './memory/conversation-memory'
 import { logger } from '../common/logger'
-import { isAiMockMode } from '../common/openai-config'
+import { formatLlmError, isAiMockMode } from '../common/openai-config'
 
 // ============================================================
 // 1. Workflow node contracts
@@ -71,7 +71,10 @@ export interface AgentStateType {
   context: Record<string, unknown> | undefined
   intentResult: IntentOutput | undefined
   tags: string[] | undefined
+  sceneType?: string
   knowledgeContext: string | undefined
+  matchedSummary?: string
+  useKnowledge?: boolean
   brandAssets: BrandAsset[] | undefined
   promptResult: PromptChainOutput | undefined
   positivePrompt: string | undefined
@@ -297,15 +300,19 @@ export async function intentNode(state: Partial<AgentStateType>): Promise<Partia
       userQuery: state.userQuery ?? '',
       context: state.context,
     })
+    const sceneType =
+      typeof state.context?.sceneType === 'string' ? state.context.sceneType : undefined
+
     return {
       activeNodeId: 'intent',
       intentResult: result,
       tags: extractTags(state.userQuery ?? '', result),
+      sceneType,
       nodeStates: markNode(state, 'intent', 'SUCCESS'),
       status: 'running',
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : '未知错误'
+    const message = formatLlmError(error)
     logger.error(`意图识别失败: ${message}`)
     return {
       activeNodeId: 'intent',
@@ -329,17 +336,26 @@ export async function knowledgeNode(
     const brandContext = brandService.formatBrandContext()
     const sessionId = state.context?.sessionId as string | undefined
     const history = sessionId ? conversationMemory.getFormattedHistory(sessionId) : ''
+    const preloaded = state.knowledgeContext?.trim()
+    const useKnowledge = state.context?.useKnowledge !== false
 
     const knowledgeContext = [
-      brandContext.formattedBrandText,
+      useKnowledge && preloaded ? preloaded : brandContext.formattedBrandText,
       history ? `对话历史：\n${history}` : '',
     ]
       .filter(Boolean)
       .join('\n\n')
 
+    const matchedSummary =
+      useKnowledge && preloaded
+        ? preloaded.slice(0, 500) + (preloaded.length > 500 ? '…' : '')
+        : undefined
+
     return {
       activeNodeId: 'brand-kb',
       knowledgeContext,
+      matchedSummary,
+      useKnowledge,
       brandAssets: buildBrandAssets(),
       nodeStates: markNode(state, 'brand-kb', 'SUCCESS'),
       status: 'running',
@@ -393,7 +409,7 @@ export async function promptNode(state: Partial<AgentStateType>): Promise<Partia
       status: 'running',
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : '未知错误'
+    const message = formatLlmError(error)
     logger.error(`提示词生成失败: ${message}`)
     return {
       activeNodeId: 'prompt',
@@ -598,7 +614,7 @@ export async function evaluateNode(
       status: 'success',
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : '未知错误'
+    const message = formatLlmError(error)
     logger.error(`评估失败: ${message}`)
     return {
       activeNodeId: 'eval',

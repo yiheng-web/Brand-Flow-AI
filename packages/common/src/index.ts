@@ -25,6 +25,157 @@ export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 export type KnowledgeScope = 'personal' | 'team'
 
+export const KNOWLEDGE_TYPES = [
+  'brand_profile',
+  'visual_guideline',
+  'asset',
+  'product',
+  'reference_case',
+  'negative_rule',
+  'layout_rule',
+] as const
+
+export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number]
+
+export const SCENE_TYPES = [
+  'brand_poster',
+  'product_image',
+  'xiaohongshu_cover',
+  'wechat_banner',
+  'general',
+] as const
+
+export type SceneType = (typeof SCENE_TYPES)[number]
+
+export const IMAGE_RATIOS = ['1:1', '3:4', '16:9', '1024x1024'] as const
+
+export type ImageRatio = (typeof IMAGE_RATIOS)[number]
+
+export interface BrandProfileContent {
+  brandName?: string
+  slogan?: string
+  industry?: string
+  targetAudience?: string
+  brandKeywords?: string[]
+  forbiddenKeywords?: string[]
+  description?: string
+}
+
+export interface VisualGuidelineContent {
+  primaryColors?: string[]
+  secondaryColors?: string[]
+  forbiddenColors?: string[]
+  fontStyle?: string
+  visualStyle?: string
+  compositionPreference?: string
+  lightingPreference?: string
+  texturePreference?: string
+}
+
+export interface AssetContent {
+  assetName?: string
+  assetType?: 'logo' | 'product_image' | 'icon' | 'mascot' | 'package' | 'other'
+  assetUrl?: string
+  usage?: string
+  isDefault?: boolean
+  tags?: string[]
+}
+
+export interface ProductContent {
+  productName?: string
+  productDescription?: string
+  sellingPoints?: string[]
+  scenario?: string
+  priceInfo?: string
+  productImageUrl?: string
+  tags?: string[]
+}
+
+export interface ReferenceCaseContent {
+  caseName?: string
+  imageUrl?: string
+  preference?: 'like' | 'dislike'
+  reason?: string
+  styleTags?: string[]
+  notes?: string
+}
+
+export interface NegativeRuleContent {
+  ruleTitle?: string
+  ruleContent?: string
+  forbiddenElements?: string[]
+  forbiddenStyles?: string[]
+  forbiddenScenes?: string[]
+  forbiddenCopywriting?: string[]
+  severity?: 'low' | 'medium' | 'high'
+}
+
+export interface LayoutRuleContent {
+  ruleTitle?: string
+  logoPosition?: string
+  titlePosition?: string
+  productPosition?: string
+  qrcodePosition?: string
+  safeArea?: string
+  posterRatio?: string
+  marginRule?: string
+}
+
+export type KnowledgeContent =
+  | BrandProfileContent
+  | VisualGuidelineContent
+  | AssetContent
+  | ProductContent
+  | ReferenceCaseContent
+  | NegativeRuleContent
+  | LayoutRuleContent
+
+export interface KnowledgeItem {
+  id: string
+  spaceId: string
+  type: KnowledgeType
+  title: string
+  description?: string
+  tags: string[]
+  content: KnowledgeContent
+  assetUrl?: string
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListKnowledgeQuery {
+  spaceId: string
+  type?: KnowledgeType
+  enabled?: boolean
+  keyword?: string
+  tags?: string
+}
+
+export interface CreateKnowledgeRequest {
+  spaceId: string
+  type: KnowledgeType
+  title: string
+  description?: string
+  tags?: string[]
+  content: KnowledgeContent
+  assetUrl?: string
+  enabled?: boolean
+}
+
+export interface UpdateKnowledgeRequest {
+  title?: string
+  description?: string
+  tags?: string[]
+  content?: KnowledgeContent
+  assetUrl?: string
+  enabled?: boolean
+}
+
+export interface SetKnowledgeEnabledRequest {
+  enabled: boolean
+}
+
 export interface BrandAsset {
   id: string
   type: 'color' | 'logo' | 'font' | 'image' | 'text'
@@ -71,6 +222,11 @@ export interface WorkflowSessionContext {
   negativePrompt?: string
   imageModel?: string
   imageSize?: string
+  imageRatio?: ImageRatio
+  sceneType?: SceneType
+  useKnowledge?: boolean
+  brandProfileId?: string
+  modelInfo?: string
   headline?: string
   [key: string]: unknown
 }
@@ -82,10 +238,13 @@ export interface NodeResultMap {
     reason?: string
     suggestedAction?: string
     tags?: string[]
+    sceneType?: SceneType
   }
   'brand-kb'?: {
     knowledgeContext?: string
     brandAssets?: BrandAsset[]
+    matchedSummary?: string
+    useKnowledge?: boolean
   }
   prompt?: {
     positivePrompt?: string
@@ -127,6 +286,10 @@ export interface CreateWorkflowRequest {
   prompt: string
   spaceId: string
   scope?: KnowledgeScope
+  sceneType?: SceneType
+  imageRatio?: ImageRatio
+  useKnowledge?: boolean
+  brandProfileId?: string
 }
 
 export interface RerunWorkflowRequest {

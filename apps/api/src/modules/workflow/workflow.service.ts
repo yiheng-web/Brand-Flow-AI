@@ -65,14 +65,22 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async create(dto: CreateWorkflowDto): Promise<WorkflowResponse> {
+    const sessionContext: WorkflowSessionContext = {
+      prompt: dto.prompt,
+      spaceId: dto.spaceId,
+      scope: dto.scope,
+      sceneType: dto.sceneType,
+      imageRatio: dto.imageRatio,
+      useKnowledge: dto.useKnowledge ?? true,
+      brandProfileId: dto.brandProfileId,
+      imageSize: dto.imageRatio,
+    }
+
     const workflow = await this.workflowModel.create({
       prompt: dto.prompt,
       spaceId: dto.spaceId,
       status: 'pending',
-      sessionContext: {
-        prompt: dto.prompt,
-        spaceId: dto.spaceId,
-      },
+      sessionContext,
       nodeStates: DEFAULT_NODE_STATES,
     })
 
