@@ -42,11 +42,13 @@ export function FlowView() {
 
   const edges = useMemo<Edge[]>(
     () =>
-      FLOW_EDGES.map(([source, target]) => ({
-        id: `${source}-${target}`,
-        source,
-        target,
-        animated: nodeStates[target as WorkflowNodeId] === 'RUNNING',
+      FLOW_EDGES.map((edge) => ({
+        id: `${edge.source}-${edge.target}`,
+        source: edge.source,
+        sourceHandle: edge.sourceHandle,
+        target: edge.target,
+        targetHandle: edge.targetHandle,
+        animated: nodeStates[edge.target as WorkflowNodeId] === 'RUNNING',
         type: 'smoothstep',
       })),
     [nodeStates],

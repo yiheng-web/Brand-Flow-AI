@@ -60,9 +60,34 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
 ]
 
 export const FLOW_EDGES = [
-  ['intent', 'brand-kb'],
-  ['brand-kb', 'prompt'],
-  ['prompt', 'image-gen'],
-  ['image-gen', 'compose'],
-  ['compose', 'eval'],
+  {
+    source: 'intent',
+    target: 'brand-kb',
+    sourceHandle: 'right-source',
+    targetHandle: 'left-target',
+  },
+  {
+    source: 'brand-kb',
+    target: 'prompt',
+    sourceHandle: 'right-source',
+    targetHandle: 'left-target',
+  },
+  {
+    source: 'prompt',
+    target: 'image-gen',
+    sourceHandle: 'bottom-source',
+    targetHandle: 'right-target',
+  },
+  {
+    source: 'image-gen',
+    target: 'compose',
+    sourceHandle: 'left-source',
+    targetHandle: 'right-target',
+  },
+  {
+    source: 'compose',
+    target: 'eval',
+    sourceHandle: 'left-source',
+    targetHandle: 'right-target',
+  },
 ] as const
