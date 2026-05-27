@@ -5,6 +5,7 @@ import { StringOutputParser } from '@langchain/core/output_parsers'
 import { INTENT_ANALYSIS_PROMPT } from '../prompts/intent-prompt'
 import { safeJsonParse } from '../../common'
 import { asRunnableLlm } from '../../common/langchain-utils'
+import { createChatOpenAIFields } from '../../common/openai-config'
 
 export type IntentType = '品牌描述' | '图片生成' | '风格调整' | '其他'
 
@@ -21,10 +22,7 @@ export interface IntentOutput {
 }
 
 export function createIntentChain() {
-  const llm = new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL_NAME || 'deepseek-ai/DeepSeek-V3',
-    temperature: 0.1,
-  })
+  const llm = new ChatOpenAI(createChatOpenAIFields(0.1))
   const prompt = PromptTemplate.fromTemplate(INTENT_ANALYSIS_PROMPT)
 
   return RunnableSequence.from([

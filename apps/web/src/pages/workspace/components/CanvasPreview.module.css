@@ -33,12 +33,21 @@
   width: min(72%, 330px);
 }
 
+.baseImage {
+  height: 100%;
+  inset: 0;
+  object-fit: cover;
+  position: absolute;
+  width: 100%;
+}
+
 .headline {
   font-family: var(--font-display);
   font-size: 34px;
   font-weight: 700;
   left: 28px;
   position: absolute;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
   top: 40px;
 }
 

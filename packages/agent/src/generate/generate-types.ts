@@ -8,6 +8,7 @@ export interface GenerateRequest {
   promptData: PromptChainOutput
   generateType: GenerateType
   sessionId?: string
+  seed?: number
 }
 
 // 生成结果

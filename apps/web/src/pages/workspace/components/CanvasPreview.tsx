@@ -20,11 +20,13 @@ export function CanvasPreview({
   onSaveKnowledge,
 }: CanvasPreviewProps) {
   const headline = layers?.find((layer) => layer.type === 'text')?.content ?? 'SUMMER ICE'
+  const baseImageUrl = layers?.find((layer) => layer.type === 'image' && layer.url)?.url
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.stage}>
         <div className={styles.poster}>
+          {baseImageUrl ? <img className={styles.baseImage} src={baseImageUrl} alt="" /> : null}
           <div className={styles.headline}>{headline}</div>
           <div className={styles.logo}>BF</div>
         </div>

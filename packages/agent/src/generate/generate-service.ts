@@ -1,42 +1,77 @@
-import { GenerateRequest, GenerateResult } from './generate-types'
-import { brandService } from '../brand'
-import { ChatOpenAI } from '@langchain/openai'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
-import { asRunnableLlm } from '../common/langchain-utils'
+import { ChatOpenAI } from '@langchain/openai'
 
-// 生成服务核心类
+import { brandService } from '../brand'
+import { asRunnableLlm } from '../common/langchain-utils'
+import { createChatOpenAIFields } from '../common/openai-config'
+import { GenerateRequest, GenerateResult } from './generate-types'
+
+type ImageProvider = 'pollinations' | 'openai'
+
+interface OpenAIImageResponse {
+  data?: Array<{
+    url?: string
+  }>
+}
+
+function getImageProvider(): ImageProvider {
+  return process.env.IMAGE_PROVIDER === 'openai' ? 'openai' : 'pollinations'
+}
+
+function parseImageSize(size?: string): { width: number; height: number } | undefined {
+  if (!size) return undefined
+
+  const match = /^(\d+)x(\d+)$/i.exec(size.trim())
+  if (!match) return undefined
+
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return undefined
+  }
+
+  return { width, height }
+}
+
+function appendPath(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+}
+
+function isOpenAIImageResponse(value: unknown): value is OpenAIImageResponse {
+  if (typeof value !== 'object' || value === null) return false
+  const data = (value as { data?: unknown }).data
+  if (data === undefined) return true
+  if (!Array.isArray(data)) return false
+
+  return data.every((item) => {
+    if (typeof item !== 'object' || item === null) return false
+    const url = (item as { url?: unknown }).url
+    return url === undefined || typeof url === 'string'
+  })
+}
+
 export class GenerateService {
-  // 原直接初始化改为懒加载，避免模块加载时崩溃
   private _textLlm: ChatOpenAI | null = null
 
   private get textLlm(): ChatOpenAI {
     if (!this._textLlm) {
-      this._textLlm = new ChatOpenAI({
-        modelName: process.env.OPENAI_MODEL_NAME || 'gpt-4o',
-        temperature: 0.7,
-      })
+      this._textLlm = new ChatOpenAI(createChatOpenAIFields(0.7))
     }
     return this._textLlm
   }
 
-  constructor() {
-    // 原代码：this.textLlm = new ChatOpenAI({...}) 已移至 getter 中懒加载
-  }
-
-  // 执行生成
   async executeGenerate(req: GenerateRequest): Promise<GenerateResult> {
-    try {
-      const { promptData, generateType = 'image' } = req
-      const brand = brandService.getBrandGuidelines()
+    const { promptData, generateType = 'image' } = req
 
+    try {
+      const brand = brandService.getBrandGuidelines()
       let resultContent: string
 
       if (generateType === 'image') {
-        resultContent = await this.callImageGenerationApi(promptData.finalPrompt)
+        resultContent = await this.callImageGenerationApi(promptData.finalPrompt, req.seed)
       } else if (generateType === 'text') {
         resultContent = await this.callTextGenerationApi(promptData, brand.brandName)
       } else {
-        // brand_material：调用 GPT 生成物料描述
         resultContent = await this.callBrandMaterialApi(promptData, brand)
       }
 
@@ -46,25 +81,51 @@ export class GenerateService {
         generateType,
         promptUsed: promptData.finalPrompt,
       }
-    } catch {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '未知错误'
+
       return {
         success: false,
         content: '',
-        generateType: req.generateType || 'image',
-        promptUsed: '',
-        message: '生成失败，请重试',
+        generateType,
+        promptUsed: promptData.finalPrompt,
+        message,
       }
     }
   }
 
-  // 调用 OpenAI DALL·E 3 文生图 API
-  private async callImageGenerationApi(prompt: string): Promise<string> {
+  private async callImageGenerationApi(prompt: string, seed?: number): Promise<string> {
+    return getImageProvider() === 'openai'
+      ? this.callOpenAIImageGenerationApi(prompt)
+      : this.callPollinationsImageGenerationApi(prompt, seed)
+  }
+
+  private async callPollinationsImageGenerationApi(prompt: string, seed?: number): Promise<string> {
+    const query = new URLSearchParams()
+    const size = parseImageSize(process.env.IMAGE_SIZE)
+
+    if (size) {
+      query.set('width', String(size.width))
+      query.set('height', String(size.height))
+    }
+
+    if (seed !== undefined) {
+      query.set('seed', String(seed))
+    }
+
+    const baseUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
+    const queryString = query.toString()
+    return queryString ? `${baseUrl}?${queryString}` : baseUrl
+  }
+
+  private async callOpenAIImageGenerationApi(prompt: string): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY 未配置')
     }
 
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
+    const baseUrl = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
+    const response = await fetch(appendPath(baseUrl, '/images/generations'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,11 +145,19 @@ export class GenerateService {
       throw new Error(`图片生成 API 错误: ${response.status} ${errorBody}`)
     }
 
-    const data = await response.json()
-    return data.data?.[0]?.url || ''
+    const data: unknown = await response.json()
+    if (!isOpenAIImageResponse(data)) {
+      throw new Error('图片生成 API 返回格式异常')
+    }
+
+    const imageUrl = data.data?.[0]?.url
+    if (!imageUrl) {
+      throw new Error('图片生成 API 未返回图片 URL')
+    }
+
+    return imageUrl
   }
 
-  // 调用 GPT 生成品牌文案
   private async callTextGenerationApi(
     promptData: { finalPrompt: string; systemPrompt?: string },
     brandName: string,
@@ -108,7 +177,6 @@ export class GenerateService {
     return result.content.toString()
   }
 
-  // 调用 GPT 生成品牌物料
   private async callBrandMaterialApi(
     promptData: { finalPrompt: string; systemPrompt?: string },
     brand: { brandName: string; brandStyle: string[]; mainColors: string[] },
@@ -127,5 +195,5 @@ export class GenerateService {
     return result.content.toString()
   }
 }
-// 单例导出
+
 export const generateService = new GenerateService()

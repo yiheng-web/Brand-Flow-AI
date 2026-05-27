@@ -9,6 +9,7 @@ import { generateService } from '../generate'
 import { brandService } from '../brand'
 import { conversationMemory } from './memory/conversation-memory'
 import { logger } from '../common/logger'
+import { isAiMockMode } from '../common/openai-config'
 
 // ============================================================
 // 1. Workflow node contracts
@@ -152,6 +153,40 @@ function buildBrandAssets(): BrandAsset[] {
   ]
 }
 
+function createMockIntentOutput(userQuery: string): IntentOutput {
+  return {
+    intent: '图片生成',
+    confidence: 1,
+    reason: `AI_MOCK_MODE enabled for MVP demo: ${userQuery}`,
+    suggestedAction: 'Generate an image from the user prompt.',
+  }
+}
+
+function createMockPromptOutput(userQuery: string, brandGuidelines?: string): PromptChainOutput {
+  const brandContext = brandGuidelines ? ` Brand context: ${brandGuidelines.slice(0, 240)}` : ''
+
+  return {
+    systemPrompt: 'AI_MOCK_MODE image prompt expansion',
+    userPrompt: userQuery,
+    finalPrompt: `A polished commercial brand poster, high quality product advertising visual, ${userQuery}.${brandContext} Clean composition, realistic lighting, sharp focus, no watermark, no malformed text.`,
+    purpose: 'MVP image generation demo',
+  }
+}
+
+function createMockEvaluationResult(): EvaluationResult {
+  return {
+    overallScore: 8,
+    intentEvaluation: {
+      score: 8,
+      comment: 'Mock intent result is suitable for MVP image generation.',
+    },
+    promptEvaluation: { score: 8, comment: 'Mock prompt is ready for image generation.' },
+    complianceEvaluation: { score: 8, comment: 'Mock evaluation passed.' },
+    suggestions: ['AI_MOCK_MODE enabled; real evaluator was skipped.'],
+    status: 'success',
+  }
+}
+
 export const AgentState = Annotation.Root({
   userQuery: Annotation<string>({
     reducer: (prev: string, next: string) => next ?? prev,
@@ -246,6 +281,17 @@ export async function intentNode(state: Partial<AgentStateType>): Promise<Partia
   if (!shouldRunNode(state, 'intent')) return state
 
   try {
+    if (isAiMockMode()) {
+      const result = createMockIntentOutput(state.userQuery ?? '')
+      return {
+        activeNodeId: 'intent',
+        intentResult: result,
+        tags: extractTags(state.userQuery ?? '', result),
+        nodeStates: markNode(state, 'intent', 'SUCCESS'),
+        status: 'running',
+      }
+    }
+
     const intentChain = createIntentChain()
     const result = await intentChain.invoke({
       userQuery: state.userQuery ?? '',
@@ -318,6 +364,18 @@ export async function promptNode(state: Partial<AgentStateType>): Promise<Partia
   if (!shouldRunNode(state, 'prompt')) return state
 
   try {
+    if (isAiMockMode()) {
+      const result = createMockPromptOutput(state.userQuery ?? '', state.knowledgeContext)
+      return {
+        activeNodeId: 'prompt',
+        promptResult: result,
+        positivePrompt: result.finalPrompt,
+        negativePrompt: 'low quality, blurry, malformed text, watermark, off-brand colors',
+        nodeStates: markNode(state, 'prompt', 'SUCCESS'),
+        status: 'running',
+      }
+    }
+
     const promptChain = createPromptChain()
     const result = await promptChain.invoke({
       userQuery: state.userQuery ?? '',
@@ -356,9 +414,7 @@ export async function generateNode(
   if (!shouldRunNode(state, 'image-gen')) return state
 
   try {
-    const intent = state.intentResult?.intent
-    const generateType =
-      intent === '图片生成' ? 'image' : intent === '品牌描述' ? 'text' : 'brand_material'
+    const mvpGenerateType = 'image' as const
 
     if (!state.promptResult) {
       return {
@@ -372,14 +428,18 @@ export async function generateNode(
         (state.context?.imageModel as string | undefined) ?? process.env.IMAGE_MODEL ?? 'dall-e-3',
       size:
         (state.context?.imageSize as string | undefined) ?? process.env.IMAGE_SIZE ?? '1024x1024',
-      seed: Date.now() % 100000,
+      seed:
+        typeof state.context?.imageSeed === 'number'
+          ? state.context.imageSeed
+          : Date.now() % 100000,
       steps: 30,
     }
 
     const result = await generateService.executeGenerate({
       promptData: state.promptResult,
-      generateType,
+      generateType: mvpGenerateType,
       sessionId: state.context?.sessionId as string | undefined,
+      seed: imageParams.seed,
     })
 
     if (state.context?.sessionId) {
@@ -481,6 +541,24 @@ export async function evaluateNode(
   if (!shouldRunNode(state, 'eval')) return state
 
   try {
+    if (isAiMockMode()) {
+      const result = createMockEvaluationResult()
+      const evaluationReport: EvaluationReport = {
+        score: result.overallScore,
+        passed: true,
+        feedback: ['AI_MOCK_MODE enabled; evaluation passed for MVP demo.'],
+        thinking: ['Mock evaluator skipped the text model and marked this MVP result as passed.'],
+      }
+
+      return {
+        activeNodeId: 'eval',
+        evaluationResult: result,
+        evaluationReport,
+        nodeStates: markNode(state, 'eval', 'SUCCESS'),
+        status: 'success',
+      }
+    }
+
     const evalChain = createPromptEvaluationChain()
     const result = await evalChain.invoke({
       userQuery: state.userQuery ?? '',

@@ -6,6 +6,7 @@ import { PROMPT_GENERATE_TEMPLATE } from '../prompts/prompt-expert'
 import type { IntentType } from './intent-chain'
 import { safeJsonParse } from '../../common'
 import { asRunnableLlm } from '../../common/langchain-utils'
+import { createChatOpenAIFields } from '../../common/openai-config'
 
 export interface PromptChainInput {
   userQuery: string
@@ -22,10 +23,7 @@ export interface PromptChainOutput {
 }
 
 export function createPromptChain() {
-  const llm = new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL_NAME || 'deepseek-ai/DeepSeek-V3',
-    temperature: 0.2,
-  })
+  const llm = new ChatOpenAI(createChatOpenAIFields(0.2))
 
   const promptTemplate = PromptTemplate.fromTemplate(PROMPT_GENERATE_TEMPLATE)
 
