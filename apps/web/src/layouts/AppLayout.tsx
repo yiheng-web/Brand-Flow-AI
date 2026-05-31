@@ -1,22 +1,42 @@
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import {
+  HomeOutlined,
+  ToolOutlined,
+  FolderOutlined,
+  UserOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+} from '@ant-design/icons'
 import styles from './AppLayout.module.css'
 
-type NavKey = 'home' | 'workspace' | 'profile'
+type NavKey = 'home' | 'workspace' | 'brand' | 'profile'
 
-const navItems: Array<{ key: Extract<NavKey, 'home' | 'workspace'>; label: string; text: string; path: string }> = [
-  { key: 'home', label: '首页', text: '首', path: '/home' },
-  { key: 'workspace', label: '工作台', text: '工', path: '/workspace' },
+const iconMap: Record<NavKey, React.ReactNode> = {
+  home: <HomeOutlined />,
+  workspace: <ToolOutlined />,
+  brand: <FolderOutlined />,
+  profile: <UserOutlined />,
+}
+
+const navItems: Array<{ key: NavKey; label: string; path: string }> = [
+  { key: 'home', label: '首页', path: '/home' },
+  { key: 'workspace', label: '工作台', path: '/workspace' },
+  { key: 'brand', label: '品牌档案', path: '/brand' },
 ]
 
 const AppLayout = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+
   const initialKey: NavKey = location.pathname.includes('workspace')
     ? 'workspace'
-    : location.pathname.includes('profile')
-      ? 'profile'
-      : 'home'
+    : location.pathname.includes('brand')
+      ? 'brand'
+      : location.pathname.includes('profile')
+        ? 'profile'
+        : 'home'
   const [activeKey, setActiveKey] = useState<NavKey>(initialKey)
 
   const handleNavClick = (item: (typeof navItems)[number]) => {
@@ -29,35 +49,55 @@ const AppLayout = () => {
     navigate('/profile')
   }
 
+  const toggleCollapse = () => {
+    setSidebarCollapsed((prev) => !prev)
+  }
+
+  const renderNavItem = (
+    item: (typeof navItems)[number] | { key: 'profile'; label: string; onClick: () => void },
+    isActive: boolean
+  ) => (
+    <button
+      key={item.key}
+      type="button"
+      onClick={'onClick' in item ? item.onClick : () => handleNavClick(item as (typeof navItems)[number])}
+      title={item.label}
+      className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
+    >
+      <span className={styles.navIcon}>{iconMap[item.key as NavKey]}</span>
+      {!sidebarCollapsed && <span className={styles.navLabel}>{item.label}</span>}
+    </button>
+  )
+
   return (
     <div className={styles.window}>
-      <aside className={styles.sidebar}>
+      <aside
+        className={`${styles.sidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : styles.sidebarExpanded}`}
+      >
         <div className={styles.navTop}>
-          {navItems.map((item) => {
-            const isActive = item.key === activeKey
+          <button
+            type="button"
+            className={styles.collapseBtn}
+            onClick={toggleCollapse}
+            title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          >
+            <span className={styles.navIcon}>
+              {sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            </span>
+            {!sidebarCollapsed && <span className={styles.navLabel}>收起</span>}
+          </button>
 
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => handleNavClick(item)}
-                title={item.label}
-                className={`${styles.iconButton} ${isActive ? styles.iconButtonActive : ''}`}
-              >
-                {item.text}
-              </button>
-            )
-          })}
+          {navItems.map((item) =>
+            renderNavItem(item, item.key === activeKey)
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleProfileClick}
-          className={`${styles.iconButton} ${styles.avatarButton} ${activeKey === 'profile' ? styles.avatarButtonActive : ''}`}
-          title="个人中心"
-        >
-          个
-        </button>
+        <div className={styles.navBottom}>
+          {renderNavItem(
+            { key: 'profile', label: '个人中心', onClick: handleProfileClick },
+            activeKey === 'profile'
+          )}
+        </div>
       </aside>
 
       <main className={styles.mainContent}>

@@ -1,5 +1,11 @@
 import axios from 'axios'
+import { message } from 'antd'
 import { useAuthStore } from '@/store/useAuthStore'
+
+interface ApiResponse {
+  message?: string
+  [key: string]: unknown
+}
 
 const apiClient = axios.create({
   baseURL: 'http://localhost:3000/api',
