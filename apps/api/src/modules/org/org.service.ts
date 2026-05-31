@@ -1,11 +1,11 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Enterprise, EnterpriseDocument } from './schemas/enterprise.schema';
 import { User, UserDocument } from './schemas/user.schema';
 import { Team, TeamDocument } from './schemas/team.schema';
 import { Role } from '@/common/enums';
-import { CreateEnterpriseDto, CreateTeamDto } from './dto/org.dto';
+import { CreateEnterpriseDto, CreateTeamDto, InviteSpaceMemberDto } from './dto/org.dto';
 
 @Injectable()
 export class OrgService {
@@ -128,5 +128,205 @@ export class OrgService {
     }
 
     return this.teamModel.find({ enterpriseId });
+  }
+
+  async getMySpaces(userId: string) {
+    const user = await this.userModel
+      .findById(userId)
+      .populate({ path: 'memberships.enterpriseId', model: Enterprise.name })
+      .populate({ path: 'memberships.teamId', model: Team.name });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const spaces = [
+      {
+        id: 'personal',
+        spaceId: 'personal',
+        type: 'personal',
+        name: '个人空间',
+        role: Role.OWNER,
+      },
+    ];
+
+    const seen = new Set<string>(['personal']);
+
+    for (const membership of user.memberships as any[]) {
+      const enterprise = membership.enterpriseId;
+      const team = membership.teamId;
+
+      if (enterprise?._id) {
+        const enterpriseSpaceId = enterprise._id.toString();
+        if (!seen.has(enterpriseSpaceId)) {
+          seen.add(enterpriseSpaceId);
+          spaces.push({
+            id: enterpriseSpaceId,
+            spaceId: enterpriseSpaceId,
+            type: 'enterprise',
+            name: enterprise.name,
+            role: membership.role,
+          });
+        }
+      }
+
+      if (team?._id) {
+        const teamSpaceId = team._id.toString();
+        if (!seen.has(teamSpaceId)) {
+          seen.add(teamSpaceId);
+          spaces.push({
+            id: teamSpaceId,
+            spaceId: teamSpaceId,
+            type: 'team',
+            name: team.name,
+            role: membership.role,
+          });
+        }
+      }
+    }
+
+    return spaces;
+  }
+
+  async getSpaceMembers(userId: string, spaceId: string) {
+    if (spaceId === 'personal') {
+      const user = await this.userModel.findById(userId);
+      if (!user) {
+        throw new NotFoundException('用户不存在');
+      }
+
+      return [
+        {
+          userId: user._id,
+          email: user.email,
+          nickname: user.profile?.nickname,
+          avatar: user.profile?.avatar,
+          role: Role.OWNER,
+        },
+      ];
+    }
+
+    const space = await this.resolveSpace(spaceId);
+    await this.assertSpaceMember(userId, space);
+
+    const users =
+      space.type === 'team'
+        ? await this.userModel.find({ 'memberships.teamId': space.team._id })
+        : await this.userModel.find({ 'memberships.enterpriseId': space.enterprise._id });
+
+    return users.map((user) => {
+      const membership = this.findSpaceMembership(user as UserDocument, space);
+
+      return {
+        userId: user._id,
+        email: user.email,
+        nickname: user.profile?.nickname,
+        avatar: user.profile?.avatar,
+        role: membership?.role ?? Role.MEMBER,
+      };
+    });
+  }
+
+  async inviteSpaceMember(userId: string, spaceId: string, inviteDto: InviteSpaceMemberDto) {
+    if (spaceId === 'personal') {
+      throw new BadRequestException('个人空间不支持邀请成员');
+    }
+
+    const space = await this.resolveSpace(spaceId);
+    await this.assertSpaceManager(userId, space);
+
+    const targetUser = await this.userModel.findOne({ email: inviteDto.email });
+    if (!targetUser) {
+      throw new NotFoundException('被邀请用户不存在，请先注册账号');
+    }
+
+    const exists = this.findSpaceMembership(targetUser, space);
+    if (exists) {
+      throw new BadRequestException('该用户已经在空间中');
+    }
+
+    targetUser.memberships.push({
+      enterpriseId: space.enterprise._id as Types.ObjectId,
+      teamId: space.type === 'team' ? (space.team._id as Types.ObjectId) : undefined,
+      role: inviteDto.role ?? Role.MEMBER,
+    } as any);
+
+    await targetUser.save();
+
+    return {
+      success: true,
+      spaceId,
+      userId: targetUser._id,
+      email: targetUser.email,
+      role: inviteDto.role ?? Role.MEMBER,
+    };
+  }
+
+  private async resolveSpace(spaceId: string) {
+    if (!Types.ObjectId.isValid(spaceId)) {
+      throw new NotFoundException('空间不存在');
+    }
+
+    const team = await this.teamModel.findById(spaceId);
+    if (team) {
+      const enterprise = await this.enterpriseModel.findById(team.enterpriseId);
+      if (!enterprise) {
+        throw new NotFoundException('团队所属企业不存在');
+      }
+
+      return { type: 'team' as const, team, enterprise };
+    }
+
+    const enterprise = await this.enterpriseModel.findById(spaceId);
+    if (!enterprise) {
+      throw new NotFoundException('空间不存在');
+    }
+
+    return { type: 'enterprise' as const, enterprise };
+  }
+
+  private findSpaceMembership(
+    user: UserDocument,
+    space:
+      | { type: 'team'; team: TeamDocument; enterprise: EnterpriseDocument }
+      | { type: 'enterprise'; enterprise: EnterpriseDocument },
+  ) {
+    if (space.type === 'team') {
+      return user.memberships.find(
+        (m) =>
+          m.teamId?.toString() === space.team._id.toString() ||
+          (!m.teamId && m.enterpriseId.toString() === space.enterprise._id.toString()),
+      );
+    }
+
+    return user.memberships.find(
+      (m) => m.enterpriseId.toString() === space.enterprise._id.toString(),
+    );
+  }
+
+  private async assertSpaceMember(
+    userId: string,
+    space:
+      | { type: 'team'; team: TeamDocument; enterprise: EnterpriseDocument }
+      | { type: 'enterprise'; enterprise: EnterpriseDocument },
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user || !this.findSpaceMembership(user, space)) {
+      throw new BadRequestException('您不属于该空间');
+    }
+  }
+
+  private async assertSpaceManager(
+    userId: string,
+    space:
+      | { type: 'team'; team: TeamDocument; enterprise: EnterpriseDocument }
+      | { type: 'enterprise'; enterprise: EnterpriseDocument },
+  ) {
+    const user = await this.userModel.findById(userId);
+    const membership = user ? this.findSpaceMembership(user, space) : undefined;
+
+    if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
+      throw new BadRequestException('您在该空间中不是管理员，无权邀请成员');
+    }
   }
 }
