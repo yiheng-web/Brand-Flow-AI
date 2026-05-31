@@ -138,6 +138,9 @@ importers:
       '@ant-design/icons':
         specifier: ^6.2.2
         version: 6.2.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@microsoft/fetch-event-source':
+        specifier: ^2.0.1
+        version: 2.0.1
       antd:
         specifier: ^6.3.7
         version: 6.3.7(luxon@3.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -695,6 +698,9 @@ packages:
   '@lukeed/csprng@1.1.0':
     resolution: {integrity: sha512-Z7C/xXCiGWsg0KuKsHTKJxbWhpI3Vs5GwLfOean7MGyVFGqdRgBbAjOCh6u4bbjPc/8MJ2pZmK/0DLdCbivLDA==}
     engines: {node: '>=8'}
+
+  '@microsoft/fetch-event-source@2.0.1':
+    resolution: {integrity: sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA==}
 
   '@mongodb-js/saslprep@1.4.11':
     resolution: {integrity: sha512-o9rAHc0IpIjuPSxRutWpE1F62x7n+4mVS4rCNHkzhIUMQcc18bb6xEq5wd2NdN0WjepIyXIppRshYI2kQDOZVA==}
@@ -4352,6 +4358,8 @@ snapshots:
       js-tiktoken: 1.0.21
 
   '@lukeed/csprng@1.1.0': {}
+
+  '@microsoft/fetch-event-source@2.0.1': {}
 
   '@mongodb-js/saslprep@1.4.11':
     dependencies:

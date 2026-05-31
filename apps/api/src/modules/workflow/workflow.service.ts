@@ -61,16 +61,6 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return this.toResponse(workflow);
   }
 
-  async getStatus(id: string): Promise<WorkflowResponse> {
-    const workflow = await this.workflowModel.findById(id);
-
-    if (!workflow) {
-      throw new NotFoundException('工作流不存在');
-    }
-
-    return this.toResponse(workflow);
-  }
-
   streamWorkflow(id: string): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
       subscriber.next({ data: { type: 'connected', workflowId: id } });

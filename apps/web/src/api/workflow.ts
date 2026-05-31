@@ -3,7 +3,6 @@
  *
  * 接口：
  * - submitPrompt: 提交创意描述，创建 AI 创作工作流
- * - getWorkflowStatus: 查询工作流执行状态
  * - createWorkflowStream: 创建 SSE 流式订阅
  */
 
@@ -113,14 +112,10 @@ export interface StreamEvent {
 // ============================================================
 
 /** 提交创意描述，创建 AI 创作工作流 */
-export async function submitPrompt(params: SubmitPromptParams) {
-  return apiClient.post('/workflow/create', params)
+export async function submitPrompt(params: SubmitPromptParams): Promise<WorkflowData> {
+  return apiClient.post<any, WorkflowData>('/workflow/create', params)
 }
 
-/** 查询工作流执行状态 */
-export async function getWorkflowStatus(id: string) {
-  return apiClient.get(`/workflow/${id}/status`)
-}
 
 /**
  * 创建 SSE 流式订阅

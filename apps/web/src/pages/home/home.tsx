@@ -22,7 +22,6 @@ const Home = () => {
   const navigate = useNavigate()
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const setCurrentSpaceId = useUserStore((state) => state.setCurrentSpaceId)
-  const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
 
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -37,15 +36,12 @@ const Home = () => {
     setSubmitting(true)
     try {
       const res = await submitPrompt({ prompt: trimmed, spaceId: currentSpaceId })
-      if (res.success) {
-        const workflowId = res.data?.id
-        if (workflowId) {
-          setWorkflowId(workflowId)
-        }
-        message.success('创意已提交，正在为你生成...')
-        setPrompt('')
-        navigate('/workspace', { state: { prompt: trimmed, workflowId } })
-      }
+      // API client 已经解包了外层的 ApiResponse，因此 res 直接就是 WorkflowData 类型
+      const workflowId = res.id
+
+      message.success('创意已提交，正在为你生成...')
+      setPrompt('')
+      navigate('/workspace', { state: { prompt: trimmed, workflowId } })
     } catch {
       message.error('提交失败，请稍后重试')
     } finally {

@@ -20,13 +20,11 @@ import EvalPanel from './components/EvalPanel'
 import styles from './workspace.module.css'
 import {
   submitPrompt,
-  getWorkflowStatus,
   type IntentOutput,
   type PromptChainOutput,
   type GenerateResult,
   type EvaluationResult,
   type AgentState,
-  type WorkflowStatusResponse,
 } from '../../api/workflow'
 import { createAuthEventSource } from '../../utils/sse'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
@@ -63,12 +61,17 @@ const NODE_LABELS: Record<FlowNodeId, string> = {
 
 const Workspace = () => {
   const location = useLocation()
-  const navState = location.state as { prompt?: string; workflowId?: string }
-  const passedWorkflowId = navState?.workflowId ?? null
+  const navState = location.state as { prompt?: string; workflowId?: string } | null
 
   /* ---- 视图 / 节点选择 ---- */
   const [viewTabIndex, setViewTabIndex] = useState(0)
   const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId | null>(null)
+
+  const handleNodeClick = (nodeId: string) => {
+    setSelectedNodeId(nodeId as FlowNodeId)
+  }
+
+  const selectedNodeLabel = selectedNodeId ? NODE_LABELS[selectedNodeId] : null
 
   /* ---- 标签 / 保存知识库弹窗 ---- */
   const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS])
@@ -82,18 +85,15 @@ const Workspace = () => {
     prompt: storedPrompt,
     imageUrl,
     error: workflowError,
-    agentState,
     nodeExecStatuses,
     nodeStreamData,
     setWorkflowId,
     setStatus: setWorkflowStatus,
     setPrompt: setStoredPrompt,
-    setImageUrl,
     setAgentState,
     setError: setWorkflowError,
     setNodeExecStatuses,
     setNodeStreamData,
-    reset,
   } = useWorkflowStore()
 
   // 合并 navState 的 prompt 和 store 的 prompt
@@ -102,57 +102,9 @@ const Workspace = () => {
   /** 是否正在启动工作流（提交中） */
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  /* ---- 引用：SSE 连接 / 轮询定时器 ---- */
+  /* ---- 引用：SSE 连接 ---- */
   const eventSourceRef = useRef<{ close: () => void } | null>(null)
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const nodeStreamDataRef = useRef<Record<string, Record<string, any>>>({})
-
-  /* ============================
-      工作流启动
-   ============================ */
-  const startWorkflow = useCallback(async () => {
-    if (!userPrompt.trim()) return
-    setIsSubmitting(true)
-    setWorkflowError(null)
-    setWorkflowStatus('pending')
-    setStoredPrompt(userPrompt) // 同步到 store
-    setNodeExecStatuses({
-      intent: 'pending',
-      'brand-kb': 'pending',
-      prompt: 'pending',
-      'image-gen': 'pending',
-      compose: 'pending',
-      eval: 'pending',
-    })
-    setNodeStreamData({})
-    nodeStreamDataRef.current = {}
-
-    try {
-      const res = await submitPrompt({
-        prompt: userPrompt,
-        spaceId: 'personal',
-      })
-      const id: string = res.data?.id || (res as any).id
-      if (!id) throw new Error('创建工作流后未返回 ID')
-
-      setWorkflowId(id) // 同步到 store
-      setWorkflowStatus('running')
-      setIsSubmitting(false)
-
-      // 标记第一个节点为 running
-      setNodeExecStatuses((prev) => ({ ...prev, intent: 'running' }))
-
-      // 同时启动 SSE 和轮询
-      connectStream(id)
-      startPolling(id)
-    } catch (err) {
-      setWorkflowStatus('failed')
-      setWorkflowError(
-        err instanceof Error ? err.message : '提交创意失败，请重试'
-      )
-      setIsSubmitting(false)
-    }
-  }, [userPrompt, setStoredPrompt, setWorkflowId, setWorkflowError, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData])
+  const nodeStreamDataRef = useRef<Record<string, Record<string, unknown>>>({})
 
   /* ============================
       SSE 流式连接
@@ -163,24 +115,22 @@ const Workspace = () => {
       eventSourceRef.current.close()
     }
 
-    const apiBase = 'http://localhost:3000/api'
-    const url = `${apiBase}/workflow/${id}/stream`
+    const url = `/api/workflow/${id}/stream`
 
     const conn = createAuthEventSource(url, {
       onMessage: (event) => {
         if (event.type === 'connected') {
-          // SSE 连接成功建立
           return
         }
 
         if (event.type === 'progress' && event.data) {
-          const data: Record<string, any> = event.data
+          const data = event.data as Record<string, unknown>
 
           // data 的 key 是节点名（如 intentNode），value 是该节点的输出
           const nodeKey = Object.keys(data)[0]
           if (!nodeKey) return
 
-          const nodeValue = data[nodeKey] as Record<string, any>
+          const nodeValue = data[nodeKey] as Record<string, unknown>
 
           // 更新累积数据（同步到 store）
           setNodeStreamData((prev) => {
@@ -215,9 +165,6 @@ const Workspace = () => {
         if (event.type === 'completed' && event.data) {
           const finalState = event.data as AgentState | undefined
 
-          // completed 事件后停止轮询
-          stopPolling()
-
           setWorkflowStatus('completed')
 
           // 写入最终数据（同步到 store）
@@ -225,13 +172,13 @@ const Workspace = () => {
             nodeStreamDataRef.current = {}
             NODE_ORDER.forEach((nodeId) => {
               const graphKey = NODE_ID_TO_GRAPH_KEY[nodeId]
-              const val = (finalState as any)[graphKey] || null
+              const val = (finalState as unknown as Record<string, unknown>)[graphKey] || null
               if (val) {
-                nodeStreamDataRef.current[graphKey] = val
+                nodeStreamDataRef.current[graphKey] = val as Record<string, unknown>
               }
             })
             setNodeStreamData({ ...nodeStreamDataRef.current })
-            setAgentState(finalState) // 同步到 store，自动更新 imageUrl
+            setAgentState(finalState)
           }
 
           setNodeExecStatuses({
@@ -251,13 +198,12 @@ const Workspace = () => {
         if (event.type === 'failed') {
           setWorkflowError(event.error || '工作流执行失败')
           setWorkflowStatus('failed')
-          stopPolling()
           conn.close()
           eventSourceRef.current = null
         }
       },
       onError: () => {
-        // 连接错误，依靠轮询兜底
+        // SSE 连接错误处理
       },
     })
 
@@ -265,73 +211,82 @@ const Workspace = () => {
   }, [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError])
 
   /* ============================
-      轮询 status（SSE 兜底）
+      工作流启动
    ============================ */
-  const startPolling = useCallback((id: string) => {
-    stopPolling()
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const res = await getWorkflowStatus(id)
-        const resp: WorkflowStatusResponse = res.data || res
+  const startWorkflow = useCallback(async () => {
+    if (!userPrompt?.trim()) return
+    setIsSubmitting(true)
+    setWorkflowError(null)
+    setWorkflowStatus('pending')
+    setStoredPrompt(userPrompt) // 同步到 store
+    setNodeExecStatuses({
+      intent: 'pending',
+      'brand-kb': 'pending',
+      prompt: 'pending',
+      'image-gen': 'pending',
+      compose: 'pending',
+      eval: 'pending',
+    })
+    setNodeStreamData({})
+    nodeStreamDataRef.current = {}
 
-        const s = resp.status || resp.data?.status
+    try {
+      const res = await submitPrompt({
+        prompt: userPrompt,
+        spaceId: 'personal',
+      })
+      const id: string = (res as { data?: { id?: string }; id?: string }).data?.id || (res as { data?: { id?: string }; id?: string }).id || ''
+      if (!id) throw new Error('创建工作流后未返回 ID')
 
-        if (s === 'completed') {
-          stopPolling()
-          setWorkflowStatus('completed')
-          setNodeExecStatuses({
-            intent: 'done',
-            'brand-kb': 'done',
-            prompt: 'done',
-            'image-gen': 'done',
-            compose: 'done',
-            eval: 'done',
-          })
+      setWorkflowId(id) // 同步到 store
+      setWorkflowStatus('running')
+      setIsSubmitting(false)
 
-          // 从轮询结果中填充最终数据（SSE 已断开时兜底）
-          const agentState = resp.result || resp.data?.result
-          if (agentState) {
-            const mapped: Record<string, Record<string, any>> = {}
-            if (agentState.intentResult) {
-              mapped.intentNode = agentState.intentResult as any
-            }
-            if (agentState.knowledgeContext) {
-              mapped.knowledgeNode = {
-                knowledgeContext: agentState.knowledgeContext,
-              }
-            }
-            if (agentState.promptResult) {
-              mapped.promptNode = agentState.promptResult as any
-            }
-            if (agentState.generateResult) {
-              mapped.generateNode = agentState.generateResult as any
-            }
-            if (agentState.evaluationResult) {
-              mapped.evaluateNode = agentState.evaluationResult as any
-            }
-            nodeStreamDataRef.current = mapped
-            setNodeStreamData({ ...mapped })
-            setAgentState(agentState) // 同步到 store
-          }
-        } else if (s === 'failed') {
-          stopPolling()
-          setWorkflowStatus('failed')
-          setWorkflowError(
-            resp.errorMessage || resp.data?.errorMessage || '工作流执行失败'
-          )
-        }
-      } catch {
-        // 轮询失败静默处理，下次继续
-      }
-    }, 2000)
-  }, [setWorkflowStatus, setNodeExecStatuses, setNodeStreamData, setAgentState, setWorkflowError])
+      // 标记第一个节点为 running
+      setNodeExecStatuses((prev) => ({ ...prev, intent: 'running' }))
 
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
+      // 仅启动 SSE
+      connectStream(id)
+    } catch (err) {
+      setWorkflowStatus('failed')
+      setWorkflowError(
+        err instanceof Error ? err.message : '提交创意失败，请重试'
+      )
+      setIsSubmitting(false)
     }
-  }, [])
+  }, [userPrompt, setStoredPrompt, setWorkflowId, setWorkflowError, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData, connectStream])
+
+  /* ---- 自动启动工作流 / 断线重连 ---- */
+  useEffect(() => {
+    // 场景 1: 从首页带来了全新的 workflowId
+    if (navState?.workflowId && navState.workflowId !== workflowId) {
+      setWorkflowId(navState.workflowId)
+      // 重置上一次可能处于 completed 的状态
+      setWorkflowStatus('running')
+      setNodeExecStatuses({
+        intent: 'running',
+        'brand-kb': 'pending',
+        prompt: 'pending',
+        'image-gen': 'pending',
+        compose: 'pending',
+        eval: 'pending',
+      })
+      setNodeStreamData({})
+      if (nodeStreamDataRef.current) {
+        nodeStreamDataRef.current = {}
+      }
+      
+      connectStream(navState.workflowId)
+    } 
+    // 场景 2: 仅带来了 prompt，没有 workflowId (直接启动)
+    else if (navState?.prompt && workflowStatus === 'idle' && !workflowId) {
+      startWorkflow()
+    }
+    // 场景 3: 页面刷新，已存在 workflowId，且处于运行中，但 SSE 连接已断开，则重新连接
+    else if (workflowId && (workflowStatus === 'running' || workflowStatus === 'pending') && !eventSourceRef.current) {
+      connectStream(workflowId)
+    }
+  }, [navState, workflowId, workflowStatus, setWorkflowId, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData, connectStream, startWorkflow])
 
   /* ---- 清理 ---- */
   useEffect(() => {
@@ -340,36 +295,8 @@ const Workspace = () => {
         eventSourceRef.current.close()
         eventSourceRef.current = null
       }
-      stopPolling()
     }
-  }, [stopPolling])
-
-  /* ============================
-      工作流启动（自动）
-   ============================ */
-  useEffect(() => {
-    const id = passedWorkflowId || workflowId
-    if (!id && !userPrompt) return
-
-    if (id) {
-      // 有 workflowId，直接连接 SSE
-      if (workflowStatus === 'idle' || workflowStatus === 'pending') {
-        setWorkflowStatus('running')
-      }
-      connectStream(id)
-      startPolling(id)
-    } else if (userPrompt && workflowStatus === 'idle') {
-      // 只有 userPrompt 没有 workflowId，从头创建
-      startWorkflow()
-    }
-  }, [userPrompt, passedWorkflowId, workflowId, workflowStatus, setWorkflowStatus, connectStream, startPolling, startWorkflow])
-
-  /* ---- 节点点击 ---- */
-  const handleNodeClick = (nodeId: string) => {
-    setSelectedNodeId(nodeId as FlowNodeId)
-  }
-
-  const selectedNodeLabel = selectedNodeId ? NODE_LABELS[selectedNodeId] : null
+  }, [])
 
   /* ============================
       从 SSE 累积数据中提取各面板所需数据
@@ -377,10 +304,10 @@ const Workspace = () => {
 
   /** 获取意图解析数据 */
   const getIntentData = (): { keywords?: string[]; sceneType?: string; intentResult?: IntentOutput } | null => {
-    const intentData = nodeStreamData['intentNode']
+    const intentData = nodeStreamData['intentNode'] as { intent?: string, intentResult?: IntentOutput } | undefined
     if (!intentData) return null
     return {
-      intentResult: intentData as IntentOutput,
+      intentResult: intentData.intentResult as IntentOutput,
       keywords: intentData.intent ? [intentData.intent] : undefined,
       sceneType: intentData.intent || undefined,
     }
@@ -388,7 +315,7 @@ const Workspace = () => {
 
   /** 获取知识库匹配数据 */
   const getKnowledgeData = (): string | null => {
-    const kbData = nodeStreamData['knowledgeNode']
+    const kbData = nodeStreamData['knowledgeNode'] as { knowledgeContext?: string } | undefined
     if (!kbData) return null
     return kbData.knowledgeContext || null
   }
@@ -417,7 +344,7 @@ const Workspace = () => {
   /* ---- derived state ---- */
   const isExecuting = workflowStatus === 'running' || isSubmitting
   const generateResult = getGenerateData()
-  const baseImageUrl = imageUrl // 直接用 store 的 imageUrl
+  const baseImageUrl = imageUrl
   const evaluationResult = getEvalData()
 
   // 图像生成节点专用：只有节点状态不是 done 且 workflow 还在运行时才显示 loading
