@@ -111,6 +111,8 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
     }
   }, [onNodeClick])
 
+  const key = layoutDir
+
   return (
     <div className="flow-view-wrapper" style={{ position: 'relative' }}>
       <button
@@ -133,7 +135,7 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         {layoutDir === 'vertical' ? '⇄ 横向' : '⇅ 纵向'}
       </button>
       <ReactFlow
-        key={layoutDir}
+        key={key}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}

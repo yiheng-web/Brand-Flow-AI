@@ -14,11 +14,6 @@ export class WorkflowController {
     return this.workflowService.create(dto);
   }
 
-  @Get(':id/status')
-  getStatus(@Param('id') id: string): Promise<WorkflowResponse> {
-    return this.workflowService.getStatus(id);
-  }
-
   @Sse(':id/stream')
   stream(@Param('id') id: string): Observable<MessageEvent> {
     return this.workflowService.streamWorkflow(id);
