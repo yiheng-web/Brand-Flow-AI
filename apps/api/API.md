@@ -183,57 +183,6 @@ interface UserInfo {
             { type: 'failed', error: string } // error 为流程崩溃的具体原因
             ```
 
-*   **`GET /workflow/:id/status`**
-    *   **说明**: 轮询此接口以获取异步执行状态和最终大模型生成的提示词。
-    *   **路径参数**: `id` (目标工作流的实例 ID)
-    *   **返回 Data**:
-        ```typescript
-        {
-          id: string,               // 工作流实例 ID
-          status: WorkflowStatus,   // 当前执行状态
-          prompt: string,           // 原始请求提示词
-          spaceId: string,          // 关联空间 ID
-          createdAt: string,        // 创建时间
-          updatedAt: string,        // 最后更新时间
-          errorMessage?: string,    // 若执行失败，返回的错误原因（当 status === 'failed' 时存在）
-          result?: {                // 若执行成功，返回的完整 Agent 运行结果（AgentStateType）
-            userQuery: string,      // 用户输入的原始意图
-            context: Record<string, any>, // 透传的上下文信息（包含 spaceId, enterpriseId, knowledgeId 等）
-            intentResult?: {        // 意图解析结果
-              intent: string,
-              confidence: number,
-              reason: string,
-              suggestedAction: string
-            },
-            knowledgeContext?: string, // 知识库检索并组装后的品牌背景知识文本
-            promptResult?: {        // 提示词生成结果
-              systemPrompt: string,
-              userPrompt: string,
-              finalPrompt: string,
-              purpose: string
-            },
-            generateResult?: {      // 图像或文案生成引擎的执行结果
-              success: boolean,
-              content: string,      // 生成产物（如图片的 URL）
-              generateType: string,
-              promptUsed: string,
-              message?: string
-            },
-            evaluationResult?: {    // 最后一个节点产出的自我评估与质检结果
-              overallScore: number,
-              intentEvaluation: { score: number, comment: string },
-              promptEvaluation: { score: number, comment: string },
-              complianceEvaluation: { score: number, comment: string },
-              suggestions: string[],
-              status: "success" | "failed"
-            },
-            retryCount: number,     // 生成流程触发评估打回重试的次数
-            status: "running" | "success" | "failed", // Agent 最终运行状态
-            error?: string          // Agent 内部抛出的具体错误信息
-          }
-        }
-        ```
-
 ---
 
 ### 知识库与向量检索模块 (/knowledge)

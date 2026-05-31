@@ -17,6 +17,7 @@ import AuthGuard from '@/router/AuthGuard'
 import AppLayout from '@/layouts/AppLayout'
 import AuthLayout from '@/layouts/AuthLayout'
 import Workspace from '@/pages/workspace/workspace'
+import BrandPage from '@/pages/brand'
 import Home from '@/pages/home/home'
 import LoginPage from '@/pages/login/login'
 import RegisterPage from '@/pages/login/register'
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/home" replace /> },
           { path: 'home', element: <Home /> },
           { path: 'workspace', element: <Workspace /> },
+          { path: 'brand', element: <BrandPage /> },
           { path: 'profile', element: <ProfilePage /> },
         ],
       },

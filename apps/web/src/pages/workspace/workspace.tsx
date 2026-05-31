@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { ReactFlowProvider } from 'reactflow'
-import { DownOutlined, LockFilled } from '@ant-design/icons'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { message, Drawer } from 'antd'
-import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { useAuthStore } from '@/store/useAuthStore'
+import { ReactFlowProvider } from 'reactflow'
+import { message } from 'antd'
+import { DownOutlined, LockFilled } from '@ant-design/icons'
 import { SelectionTabs } from '../../components/SelectionTabs'
 import { SwitchTabs } from '../../components/SwitchTabs'
 import {
@@ -15,38 +13,68 @@ import {
   WORKSPACE_HISTORY_RECORDS,
   WORKSPACE_SIDE_TABS,
   WORKSPACE_VIEW_TABS,
+  type FlowNodeId,
+  type NodeExecStatus,
 } from './workspace.const'
 import FlowView from './components/FlowView'
-import CanvasPreview from './components/CanvasPreview'
 import SaveKnowledgeModal from './components/SaveKnowledgeModal'
+import IntentPanel from './components/IntentPanel'
+import BrandKbPanel from './components/BrandKbPanel'
+import PromptExpertPanel from './components/PromptExpertPanel'
+import ImageGenPanel from './components/ImageGenPanel'
+import ComposePanel from './components/ComposePanel'
+import EvalPanel from './components/EvalPanel'
 import styles from './workspace.module.css'
+import {
+  submitPrompt,
+  type IntentOutput,
+  type PromptChainOutput,
+  type GenerateResult,
+  type EvaluationResult,
+  type AgentState,
+} from '../../api/workflow'
+import { createAuthEventSource } from '../../utils/sse'
+import { useWorkflowStore } from '@/store/useWorkflowStore'
+
+/**
+ * 节点 ID → Graph 节点名的映射，用于 SSE progress 事件匹配
+ */
+const NODE_ID_TO_GRAPH_KEY: Record<FlowNodeId, string> = {
+  intent: 'intentNode',
+  'brand-kb': 'knowledgeNode',
+  prompt: 'promptNode',
+  'image-gen': 'generateNode',
+  compose: 'composeNode',
+  eval: 'evaluateNode',
+}
+
+const NODE_ORDER: FlowNodeId[] = [
+  'intent',
+  'brand-kb',
+  'prompt',
+  'image-gen',
+  'compose',
+  'eval',
+]
+
+const NODE_LABELS: Record<FlowNodeId, string> = {
+  intent: '意图解析',
+  'brand-kb': '知识库匹配',
+  prompt: 'Prompt专家',
+  'image-gen': '图像生成',
+  compose: '排版合成',
+  eval: '自我评估',
+}
 
 const Workspace = () => {
   const location = useLocation()
-  const { token } = useAuthStore()
-  const workflowId = location.state?.workflowId
+  const navState = location.state as { prompt?: string; workflowId?: string }
+  const passedWorkflowId = navState?.workflowId ?? null
 
-  const [workflowStatus, setWorkflowStatus] = useState('pending')
-  const [progressData, setProgressData] = useState<Record<string, unknown> | null>(null)
-  
-  // 用于弹窗查看节点详情
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  /* ---- 视图 / 节点选择 / 抽屉 ---- */
+  const [viewTabIndex, setViewTabIndex] = useState(0)
+  const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId | null>(null)
 
-  const handleNodeClick = (nodeId: string) => {
-    setSelectedNodeId(nodeId)
-    setIsDrawerOpen(true)
-  }
-
-  // 映射前端 UI 节点 ID 到后端 agent 推理抛出的真实节点名
-  const backendNodeKeyMap: Record<string, string> = {
-    'intent': 'intentNode',
-    'brand-kb': 'knowledgeNode',
-    'prompt': 'promptNode',
-    'image-gen': 'generateNode',
-    'compose': 'composeNode', // 预留
-    'eval': 'evaluateNode'
-  }
 
   // 兜底映射表：用于将任务结束时后端发来的扁平全量 finalState 结构，自动还原装配到对应的 Node 包裹下
   const finalStateToNodeMap = [
@@ -57,16 +85,10 @@ const Workspace = () => {
     { stateKey: 'evaluationResult', nodeKey: 'evaluateNode' },
   ]
 
-  const [viewTabIndex, setViewTabIndex] = useState(0)
+  /* ---- 侧边栏状态 ---- */
   const [selectedGroupKey, setSelectedGroupKey] = useState(WORKSPACE_GROUP_OPTIONS[0].key)
-  const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(true)
+  const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false)
   const [leftTabIndex, setLeftTabIndex] = useState(0)
-  const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS])
-  const [isTagInputVisible, setIsTagInputVisible] = useState(false)
-  const [editingTagValue, setEditingTagValue] = useState('')
-  const tagInputRef = useRef<HTMLInputElement>(null)
-  const [sliderValue, setSliderValue] = useState(SLIDER_CONFIG.defaultValue)
-  const [isSaveModalVisible, setIsSaveModalVisible] = useState(false)
   const closeMenuTimerRef = useRef<number | null>(null)
   const groupSelectWrapRef = useRef<HTMLDivElement | null>(null)
 
@@ -76,11 +98,7 @@ const Workspace = () => {
 
   const handleSelectGroup = (key: string) => {
     setSelectedGroupKey(key)
-
-    if (closeMenuTimerRef.current) {
-      window.clearTimeout(closeMenuTimerRef.current)
-    }
-
+    if (closeMenuTimerRef.current) window.clearTimeout(closeMenuTimerRef.current)
     closeMenuTimerRef.current = window.setTimeout(() => {
       setIsGroupMenuOpen(false)
       closeMenuTimerRef.current = null
@@ -93,86 +111,430 @@ const Workspace = () => {
         setIsGroupMenuOpen(false)
       }
     }
-
     document.addEventListener('mousedown', handlePointerDown)
-
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
+      if (closeMenuTimerRef.current) window.clearTimeout(closeMenuTimerRef.current)
+    }
+  }, [])
 
-      if (closeMenuTimerRef.current) {
-        window.clearTimeout(closeMenuTimerRef.current)
+  /* ---- 标签 / 保存知识库弹窗 ---- */
+  const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS])
+  const [isSaveModalVisible, setIsSaveModalVisible] = useState(false)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+
+  /* ===== 工作流生命周期：从 store 读取 ===== */
+  const {
+    workflowId,
+    status: workflowStatus,
+    prompt: storedPrompt,
+    imageUrl,
+    error: workflowError,
+    agentState,
+    nodeExecStatuses,
+    nodeStreamData,
+    setWorkflowId,
+    setStatus: setWorkflowStatus,
+    setPrompt: setStoredPrompt,
+    setImageUrl,
+    setAgentState,
+    setError: setWorkflowError,
+    setNodeExecStatuses,
+    setNodeStreamData,
+    reset,
+  } = useWorkflowStore()
+
+  // 合并 navState 的 prompt 和 store 的 prompt
+  const userPrompt = navState?.prompt || storedPrompt
+
+  /** 是否正在启动工作流（提交中） */
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  /* ---- 引用：SSE 连接 / 轮询定时器 ---- */
+  const eventSourceRef = useRef<{ close: () => void } | null>(null)
+  const nodeStreamDataRef = useRef<Record<string, Record<string, unknown>>>({})
+
+  /* ============================
+      工作流启动
+   ============================ */
+  const startWorkflow = useCallback(async () => {
+    if (!userPrompt.trim()) return
+    setIsSubmitting(true)
+    setWorkflowError(null)
+    setWorkflowStatus('pending')
+    setStoredPrompt(userPrompt) // 同步到 store
+    setNodeExecStatuses({
+      intent: 'pending',
+      'brand-kb': 'pending',
+      prompt: 'pending',
+      'image-gen': 'pending',
+      compose: 'pending',
+      eval: 'pending',
+    })
+    setNodeStreamData({})
+    nodeStreamDataRef.current = {}
+
+    try {
+      const res = await submitPrompt({
+        prompt: userPrompt,
+        spaceId: 'personal',
+      })
+      const id: string = res.id || (res as unknown as { data?: { id: string } }).data?.id
+      if (!id) throw new Error('创建工作流后未返回 ID')
+
+      setWorkflowId(id) // 同步到 store
+      setWorkflowStatus('running')
+      setIsSubmitting(false)
+
+      // 标记第一个节点为 running
+      setNodeExecStatuses({ ...nodeExecStatuses, intent: 'running' })
+
+      // 仅启动 SSE
+      connectStream(id)
+    } catch (err) {
+      setWorkflowStatus('failed')
+      setWorkflowError(
+        err instanceof Error ? err.message : '提交创意失败，请重试'
+      )
+      setIsSubmitting(false)
+    }
+  }, [userPrompt, setStoredPrompt, setWorkflowId, setWorkflowError, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData])
+
+  /* ============================
+      SSE 流式连接
+   ============================ */
+  const connectStream = useCallback((id: string) => {
+    // 关闭旧的 SSE 连接
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+    }
+
+    const apiBase = 'http://localhost:3000/api'
+    const url = `${apiBase}/workflow/${id}/stream`
+
+    const conn = createAuthEventSource(url, {
+      onMessage: (event) => {
+        if (event.type === 'connected') {
+          // SSE 连接成功建立
+          return
+        }
+
+        if (event.type === 'progress' && event.data) {
+          const data: Record<string, unknown> = event.data
+
+          // data 的 key 是节点名（如 intentNode），value 是该节点的输出
+          const nodeKey = Object.keys(data)[0]
+          if (!nodeKey) return
+
+          const nodeValue = data[nodeKey] as Record<string, unknown>
+
+          // 更新累积数据（同步到 store）
+          const updatedStreamData = { ...useWorkflowStore.getState().nodeStreamData, [nodeKey]: nodeValue }
+          nodeStreamDataRef.current = updatedStreamData
+          setNodeStreamData(updatedStreamData)
+
+          // 根据节点 key 更新对应 node 的执行状态 & 标记下一个节点
+          const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
+            ([, v]) => v === nodeKey
+          )?.[0] as FlowNodeId | undefined
+
+          if (currentNodeId) {
+            const currentIdx = NODE_ORDER.indexOf(currentNodeId)
+            const nextStatuses: Record<FlowNodeId, NodeExecStatus> = {
+              ...useWorkflowStore.getState().nodeExecStatuses,
+              [currentNodeId]: 'done',
+            }
+            // 将下一个节点标记为 running
+            const nextIdx = currentIdx + 1
+            if (nextIdx < NODE_ORDER.length) {
+              nextStatuses[NODE_ORDER[nextIdx]] = 'running'
+            }
+            setNodeExecStatuses(nextStatuses)
+          }
+          return
+        }
+
+        if (event.type === 'completed' && event.data) {
+          const finalState = event.data as AgentState | undefined
+
+          setWorkflowStatus('completed')
+
+            // 写入最终数据（同步到 store）
+            if (finalState) {
+              nodeStreamDataRef.current = {}
+              const newState: Record<string, unknown> = {}
+              // 根据映射表动态组装还原
+              finalStateToNodeMap.forEach(({ stateKey, nodeKey }) => {
+                if ((finalState as unknown as Record<string, unknown>)[stateKey] !== undefined) {
+                  newState[nodeKey] = { [stateKey]: (finalState as unknown as Record<string, unknown>)[stateKey] }
+                  nodeStreamDataRef.current[nodeKey] = newState[nodeKey] as Record<string, unknown>
+                }
+              })
+              setNodeStreamData({ ...nodeStreamDataRef.current })
+              setAgentState(finalState) // 同步到 store，自动更新 imageUrl
+            }
+
+          setNodeExecStatuses({
+            intent: 'done',
+            'brand-kb': 'done',
+            prompt: 'done',
+            'image-gen': 'done',
+            compose: 'done',
+            eval: 'done',
+          })
+
+          conn.close()
+          eventSourceRef.current = null
+          return
+        }
+
+        if (event.type === 'failed') {
+          setWorkflowError(event.error || '工作流执行失败')
+          setWorkflowStatus('failed')
+          conn.close()
+          eventSourceRef.current = null
+        }
+      },
+      onError: () => {
+        // 连接错误，依靠轮询兜底
+      },
+    })
+
+    eventSourceRef.current = conn
+  }, [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError])
+
+
+  /* ---- 清理 ---- */
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
       }
     }
   }, [])
 
+  /* ============================
+      工作流启动（自动）
+   ============================ */
   useEffect(() => {
-    setIsGroupMenuOpen(false)
-  }, [location.pathname])
+    const id = passedWorkflowId || workflowId
+    if (!id && !userPrompt) return
 
-  useEffect(() => {
-    if (!workflowId) return
-
-    const ctrl = new AbortController()
-
-    fetchEventSource(`/api/workflow/${workflowId}/stream`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      signal: ctrl.signal,
-      onmessage(event) {
-        if (!event.data) return // 忽略空消息，防止 JSON.parse 报错
-        try {
-          const payload = JSON.parse(event.data)
-
-          if (payload.type === 'connected') {
-            setWorkflowStatus('running')
-          } else if (payload.type === 'progress') {
-            setWorkflowStatus('running')
-            setProgressData(prev => ({ ...(prev || {}), ...payload.data }))
-          } else if (payload.type === 'completed') {
-            setWorkflowStatus('completed')
-            if (payload.data) {
-              const finalState = payload.data
-              setProgressData(prev => {
-                const newState: Record<string, any> = { ...(prev || {}) }
-                // 根据映射表动态组装还原
-                finalStateToNodeMap.forEach(({ stateKey, nodeKey }) => {
-                  if (finalState[stateKey] !== undefined) {
-                    newState[nodeKey] = { [stateKey]: finalState[stateKey] }
-                  }
-                })
-                return newState
-              })
-            }
-            ctrl.abort()
-          } else if (payload.type === 'error') {
-            message.error(payload.error || '执行出错')
-            setWorkflowStatus('failed')
-            ctrl.abort()
-          }
-        } catch (err) {
-          console.error('SSE parsing error', err)
-        }
-      },
-      onerror(err) {
-        console.error('SSE Error:', err)
-        ctrl.abort()
-        throw err
+    if (id) {
+      // 有 workflowId，直接连接 SSE
+      if (workflowStatus === 'idle' || workflowStatus === 'pending') {
+        setWorkflowStatus('running')
       }
-    })
+      connectStream(id)
+    } else if (userPrompt && workflowStatus === 'idle') {
+      // 只有 userPrompt 没有 workflowId，从头创建
+      startWorkflow()
+    }
+  }, [userPrompt, passedWorkflowId, workflowId, workflowStatus, setWorkflowStatus, connectStream, startWorkflow])
 
-    return () => ctrl.abort()
-  }, [workflowId, token])
+  /* ---- 节点点击 ---- */
+  const handleNodeClick = (nodeId: string) => {
+    setSelectedNodeId(nodeId as FlowNodeId)
+  }
+
+  const selectedNodeLabel = selectedNodeId ? NODE_LABELS[selectedNodeId] : null
+
+  /* ============================
+      从 SSE 累积数据中提取各面板所需数据
+   ============================ */
+
+  /** 获取意图解析数据 */
+  const getIntentData = (): { keywords?: string[]; sceneType?: string; intentResult?: IntentOutput } | null => {
+    const intentData = nodeStreamData['intentNode']
+    if (!intentData) return null
+    return {
+      intentResult: intentData as IntentOutput,
+      keywords: intentData.intent ? [intentData.intent] : undefined,
+      sceneType: intentData.intent || undefined,
+    }
+  }
+
+  /** 获取知识库匹配数据 */
+  const getKnowledgeData = (): string | null => {
+    const kbData = nodeStreamData['knowledgeNode']
+    if (!kbData) return null
+    return kbData.knowledgeContext || null
+  }
+
+  /** 获取 Prompt 专家数据 */
+  const getPromptData = (): PromptChainOutput | null => {
+    const promptData = nodeStreamData['promptNode']
+    if (!promptData) return null
+    return promptData as PromptChainOutput
+  }
+
+  /** 获取生成结果（图片 URL） */
+  const getGenerateData = (): GenerateResult | null => {
+    const genData = nodeStreamData['generateNode']
+    if (!genData) return null
+    return genData as GenerateResult
+  }
+
+  /** 获取评估结果 */
+  const getEvalData = (): EvaluationResult | null => {
+    const evalData = nodeStreamData['evaluateNode']
+    if (!evalData) return null
+    return evalData as EvaluationResult
+  }
+
+  /* ---- derived state ---- */
+  const isExecuting = workflowStatus === 'running' || isSubmitting
+  const generateResult = getGenerateData()
+  const baseImageUrl = imageUrl // 直接用 store 的 imageUrl
+  const evaluationResult = getEvalData()
+
+  // 图像生成节点专用：只有节点状态不是 done 且 workflow 还在运行时才显示 loading
+  const isImageGenExecuting =
+    (nodeExecStatuses['image-gen'] !== 'done' && isExecuting) || !baseImageUrl
+
+  const statusLabel = (() => {
+    if (isSubmitting) return '提交中…'
+    if (workflowStatus === 'pending') return '排队中'
+    if (workflowStatus === 'running') return '运行中'
+    if (workflowStatus === 'completed') return '已完成'
+    if (workflowStatus === 'failed') return '失败'
+    return '等待开始'
+  })()
+
+  const handleSaveImage = async () => {
+    const url = imageUrl || baseImageUrl
+    if (!url) return
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `brand-flow-${Date.now()}.png`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+      message.success('图片已保存')
+    } catch {
+      message.error('保存失败，请重试')
+    }
+  }
+
+  /* ============================
+      渲染右侧属性面板
+   ============================ */
+  const renderRightContent = () => {
+    if (!selectedNodeId) {
+      return (
+        <div className={styles.rightPlaceholder}>
+          <span className={styles.rightPlaceholderText}>请选择一个节点</span>
+        </div>
+      )
+    }
+
+    // 意图解析节点
+    if (selectedNodeId === 'intent') {
+      const intentData = getIntentData()
+      return (
+        <IntentPanel
+          userPrompt={userPrompt}
+          intentResult={intentData?.intentResult || null}
+        />
+      )
+    }
+
+    // 知识库匹配节点
+    if (selectedNodeId === 'brand-kb') {
+      return (
+        <BrandKbPanel
+          knowledgeContext={getKnowledgeData()}
+          onReRun={() => {
+            console.log('重新运行知识匹配')
+          }}
+        />
+      )
+    }
+
+    // Prompt 专家节点
+    if (selectedNodeId === 'prompt') {
+      const promptData = getPromptData()
+      return (
+        <PromptExpertPanel
+          userPrompt={userPrompt}
+          promptResult={promptData}
+        />
+      )
+    }
+
+    // 图像生成节点
+    if (selectedNodeId === 'image-gen') {
+      return (
+        <ImageGenPanel
+          selectedModel="flux"
+          isExecuting={isImageGenExecuting}
+          baseImageUrl={baseImageUrl}
+          genParams={generateResult ? undefined : undefined}
+          onReRun={() => {
+            console.log('重新运行图像生成节点')
+          }}
+        />
+      )
+    }
+
+    // 排版合成节点
+    if (selectedNodeId === 'compose') {
+      return (
+        <ComposePanel
+          isComposing={isExecuting && !generateResult}
+          finalImageUrl={baseImageUrl}
+          onSwitchToPreview={() => setViewTabIndex(1)}
+          onReRun={() => {
+            console.log('重新运行排版合成节点')
+          }}
+        />
+      )
+    }
+
+    // 自我评估节点
+    if (selectedNodeId === 'eval') {
+      return (
+        <EvalPanel
+          evaluationResult={evaluationResult}
+          isEvaluating={isExecuting}
+          onReRun={() => {
+            console.log('重新运行评估节点')
+          }}
+        />
+      )
+    }
+
+    // 其他节点
+    return (
+      <div className={styles.rightPlaceholder}>
+        <span className={styles.rightPlaceholderText}>
+          「{selectedNodeLabel}」节点的属性面板待配置
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.topBar}>
-        <span className={styles.topBarTitle}>瑞幸夏日海报_v1</span>
-        <SwitchTabs items={WORKSPACE_VIEW_TABS} defaultIndex={viewTabIndex} onChange={(i) => setViewTabIndex(i)} />
+        <span className={styles.topBarTitle}>{userPrompt || '新工作流'}</span>
+        <SwitchTabs
+          items={WORKSPACE_VIEW_TABS}
+          defaultIndex={viewTabIndex}
+          onChange={(i) => setViewTabIndex(i)}
+        />
         <div className={styles.statusIndicator}>
-          {workflowStatus === 'running' && <div className={styles.spinner} />}
-          <span>{workflowStatus === 'completed' ? '已完成' : workflowStatus === 'failed' ? '已失败' : '运行中'}</span>
+          {isExecuting && <div className={styles.spinner} />}
+          <span>{statusLabel}</span>
+          {workflowError && (
+            <span className={styles.statusError}> - {workflowError}</span>
+          )}
         </div>
       </div>
 
@@ -279,109 +641,74 @@ const Workspace = () => {
           {viewTabIndex === 0 ? (
             <div className={styles.canvasArea}>
               <ReactFlowProvider>
-                <FlowView progressData={progressData} workflowStatus={workflowStatus} onNodeClick={handleNodeClick} />
+                <FlowView
+                  onNodeClick={handleNodeClick}
+                  nodeExecStatuses={nodeExecStatuses}
+                />
               </ReactFlowProvider>
             </div>
           ) : (
-            <CanvasPreview onSaveKnowledge={() => setIsSaveModalVisible(true)} />
+            <div className={styles.previewArea}>
+              <div className={styles.previewToolbar}>
+                <div className={styles.previewToolGroup}>
+                  {baseImageUrl && (
+                    <button
+                      type="button"
+                      className={styles.saveImageBtn}
+                      onClick={handleSaveImage}
+                    >
+                      保存图片
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className={styles.previewCanvas}>
+                {baseImageUrl ? (
+                  <img
+                    className={styles.previewImage}
+                    src={baseImageUrl}
+                    alt="生成海报"
+                    onClick={() => setIsLightboxOpen(true)}
+                  />
+                ) : (
+                  <span style={{ color: '#b0b7c7', fontSize: 14, fontWeight: 500 }}>
+                    {isExecuting ? '正在生成...' : '海报预览区域'}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 图片放大灯箱 */}
+          {isLightboxOpen && baseImageUrl && (
+            <div
+              className={styles.imageLightbox}
+              onClick={() => setIsLightboxOpen(false)}
+            >
+              <button
+                className={styles.lightboxClose}
+                onClick={() => setIsLightboxOpen(false)}
+              >
+                ×
+              </button>
+              <img
+                src={baseImageUrl}
+                alt="生成海报"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
           )}
         </section>
 
         <aside className={styles.right}>
           <div className={styles.rightHeader}>
-            <span className={styles.panelTitle}>节点属性：知识库匹配</span>
+            <span className={styles.panelTitle}>
+              {selectedNodeLabel
+                ? `节点属性：${selectedNodeLabel}`
+                : '节点属性'}
+            </span>
           </div>
-          <div className={styles.rightContent}>
-            {/* ===== 标签区域 ===== */}
-            <div className={styles.rightTagSection}>
-              <h3 className={styles.rightSectionTitle}>基于意图自动命中的标签</h3>
-              <div className={styles.tagList}>
-                {tags.map((tag) => (
-                  <span key={tag} className={styles.tagChip}>
-                    <span className={styles.tagChipText}>{tag}</span>
-                    <button
-                      type="button"
-                      className={styles.tagChipRemove}
-                      onClick={() => {
-                        setTags((prev) => prev.filter((t) => t !== tag))
-                      }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                {isTagInputVisible ? (
-                  <input
-                    ref={tagInputRef}
-                    className={styles.tagInputInline}
-                    type="text"
-                    placeholder="输入标签"
-                    value={editingTagValue}
-                    onChange={(e) => setEditingTagValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const trimmed = editingTagValue.trim()
-                        if (trimmed && !tags.includes(trimmed)) {
-                          setTags((prev) => [...prev, trimmed])
-                        }
-                        setEditingTagValue('')
-                        setIsTagInputVisible(false)
-                      }
-                      if (e.key === 'Escape') {
-                        setEditingTagValue('')
-                        setIsTagInputVisible(false)
-                      }
-                    }}
-                    onBlur={() => {
-                      setEditingTagValue('')
-                      setIsTagInputVisible(false)
-                    }}
-                    autoFocus
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.tagAddDashed}
-                    onClick={() => {
-                      setIsTagInputVisible(true)
-                      setEditingTagValue('')
-                    }}
-                  >
-                    + 添加标签
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* ===== 滑杆调节区 ===== */}
-            <div className={styles.rightSliderSection}>
-              <div className={styles.propSectionRow}>
-                <span className={styles.sliderSectionLabel}>{SLIDER_CONFIG.label}</span>
-                <span className={styles.sliderValue}>
-                  {sliderValue}{SLIDER_CONFIG.unit}
-                </span>
-              </div>
-              <input
-                type="range"
-                className={styles.slider}
-                min={SLIDER_CONFIG.min}
-                max={SLIDER_CONFIG.max}
-                value={sliderValue}
-                onChange={(e) => setSliderValue(Number(e.target.value))}
-              />
-              <div className={styles.sliderRangeLabels}>
-                <span>{SLIDER_CONFIG.rangeLabels[0]}</span>
-                <span>{SLIDER_CONFIG.rangeLabels[1]}</span>
-              </div>
-            </div>
-
-            {/* ===== 底部操作按钮 ===== */}
-            <div className={styles.rightFooter}>
-              <button type="button" className={styles.interceptBtn}>
-                拦截并人工修改后续指令
-              </button>
-            </div>
-          </div>
+          {renderRightContent()}
         </aside>
       </div>
 
@@ -397,25 +724,7 @@ const Workspace = () => {
         }}
       />
       
-      <Drawer
-        title={`节点执行详情 - ${selectedNodeId}`}
-        placement="right"
-        onClose={() => setIsDrawerOpen(false)}
-        open={isDrawerOpen}
-        size="large"
-      >
-        {selectedNodeId && progressData ? (
-          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-            {selectedNodeId === 'compose' 
-              ? '该节点属于图像生成后的自动排版流程，与生图引擎一并执行，无独立节点数据输出。'
-              : (progressData[backendNodeKeyMap[selectedNodeId]]
-                  ? JSON.stringify(progressData[backendNodeKeyMap[selectedNodeId]], null, 2)
-                  : '该节点暂无详细数据 (可能还在排队、正在执行中，或者发生异常被跳过)')}
-          </pre>
-        ) : (
-          <p>暂无数据</p>
-        )}
-      </Drawer>
+
     </div>
   )
 }

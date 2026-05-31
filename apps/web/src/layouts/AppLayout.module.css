@@ -7,53 +7,96 @@
 }
 
 .sidebar {
-  width: 84px;
   background: var(--bg-panel);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: space-between;
-  padding: 18px 0;
+  padding: 12px 0;
+  transition: width 0.2s ease;
+  overflow: hidden;
+}
+
+.sidebarCollapsed {
+  width: 52px;
+}
+
+.sidebarExpanded {
+  width: 160px;
 }
 
 .navTop {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  align-items: center;
+  gap: 2px;
 }
 
-.iconButton {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+.navBottom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
   border: none;
-  background: #6278f6;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
+  background: transparent;
+  color: #555b66;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.navItem:hover {
+  background: #f1f3f5;
+  color: #2d2f33;
+}
+
+.navItemActive {
+  background: #eef3ff;
+  color: #4f6ff7;
+  font-weight: 600;
+}
+
+.navIcon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 16px;
+}
+
+.navLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapseBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: #999fb0;
+  font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.15s;
+  white-space: nowrap;
+  text-align: left;
 }
 
-.iconButtonActive {
-  background: #6278f6;
-  color: #fff;
-  box-shadow: 0 0 0 4px rgba(98, 120, 246, 0.16);
-}
-
-.avatarButton {
-  line-height: 1.1;
-  padding: 0;
-  text-align: center;
-}
-
-.avatarButtonActive {
-  box-shadow: 0 0 0 4px rgba(98, 120, 246, 0.16);
+.collapseBtn:hover {
+  color: #555b66;
 }
 
 .mainContent {

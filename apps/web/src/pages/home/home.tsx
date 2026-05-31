@@ -15,12 +15,14 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import { submitPrompt } from '@/api/workflow'
 import { useUserStore } from '@/store/useUserStore'
+import { useWorkflowStore } from '@/store/useWorkflowStore'
 import styles from './home.module.css'
 
 const Home = () => {
   const navigate = useNavigate()
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const setCurrentSpaceId = useUserStore((state) => state.setCurrentSpaceId)
+  const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
 
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -35,10 +37,13 @@ const Home = () => {
     setSubmitting(true)
     try {
       const res = await submitPrompt({ prompt: trimmed, spaceId: currentSpaceId })
-      
+      const workflowId = res.id || (res as unknown as { data?: { id: string } }).data?.id
+      if (workflowId) {
+        setWorkflowId(workflowId)
+      }
       message.success('创意已提交，正在为你生成...')
       setPrompt('')
-      navigate('/workspace', { state: { workflowId: res.id } })
+      navigate('/workspace', { state: { prompt: trimmed, workflowId } })
     } catch {
       message.error('提交失败，请稍后重试')
     } finally {
@@ -64,7 +69,7 @@ const Home = () => {
             onChange={(val) => setCurrentSpaceId(val)}
             className={styles.spaceSelect}
             options={[
-              { value: 'ruixing', label: '瑞幸项目组（成员视角）' },
+              { value: 'team', label: '项目组（成员视角）' },
               { value: 'personal', label: '个人独立空间' },
             ]}
           />
@@ -75,7 +80,7 @@ const Home = () => {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="描述你的创意，例如：给瑞幸咖啡做一张夏日户外海报，极简风格..."
+              placeholder="描述你的创意，例如：为某品牌做一张夏日户外海报，极简风格..."
             className={styles.promptInput}
             autoSize={{ minRows: 2, maxRows: 6 }}
             disabled={submitting}

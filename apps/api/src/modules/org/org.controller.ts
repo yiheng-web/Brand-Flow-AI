@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Req, UseGuards, Put, Param } from '@nestjs/common';
 import { OrgService } from './org.service';
-import { CreateEnterpriseDto, CreateTeamDto } from './dto/org.dto';
+import { CreateEnterpriseDto, CreateTeamDto, InviteSpaceMemberDto } from './dto/org.dto';
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/modules/auth/guards/roles.guard';
 import { Roles } from '@/modules/auth/guards/roles.decorator';
@@ -41,5 +41,27 @@ export class OrgController {
   async getTeams(@Req() req: any) {
     const enterpriseId = req.user.entId;
     return this.orgService.getTeams(enterpriseId);
+  }
+
+  @Get('spaces')
+  async getMySpaces(@Req() req: any) {
+    const userId = req.user.sub;
+    return this.orgService.getMySpaces(userId);
+  }
+
+  @Get('spaces/:spaceId/members')
+  async getSpaceMembers(@Req() req: any, @Param('spaceId') spaceId: string) {
+    const userId = req.user.sub;
+    return this.orgService.getSpaceMembers(userId, spaceId);
+  }
+
+  @Post('spaces/:spaceId/invitations')
+  async inviteSpaceMember(
+    @Req() req: any,
+    @Param('spaceId') spaceId: string,
+    @Body() inviteDto: InviteSpaceMemberDto,
+  ) {
+    const userId = req.user.sub;
+    return this.orgService.inviteSpaceMember(userId, spaceId, inviteDto);
   }
 }
