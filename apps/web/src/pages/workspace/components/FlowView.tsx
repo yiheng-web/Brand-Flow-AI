@@ -13,7 +13,7 @@ import {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import FlowNode from './FlowNode'
-import { FLOW_NODES, type LayoutDir } from '../workspace.const'
+import { FLOW_NODES, type FlowNodeId, type LayoutDir, type NodeExecStatus } from '../workspace.const'
 
 const nodeTypes = { flowNode: FlowNode }
 
@@ -21,7 +21,7 @@ const NODE_W = 200
 const NODE_H = 130
 const GAP = 48
 
-function buildNodes(dir: LayoutDir): Node[] {
+function buildNodes(dir: LayoutDir, execStatuses?: Record<FlowNodeId, NodeExecStatus>): Node[] {
   return FLOW_NODES.map((node, index) => ({
     id: node.id,
     type: 'flowNode',
@@ -29,7 +29,11 @@ function buildNodes(dir: LayoutDir): Node[] {
       dir === 'vertical'
         ? { x: 40, y: index * (NODE_H + GAP) + 20 }
         : { x: index * (NODE_W + GAP) + 20, y: 40 },
-    data: { ...node, layoutDir: dir },
+    data: {
+      ...node,
+      layoutDir: dir,
+      execStatus: execStatuses?.[node.id as FlowNodeId] ?? node.execStatus,
+    },
   }))
 }
 
@@ -50,67 +54,40 @@ function buildEdges(): Edge[] {
 }
 
 interface FlowViewProps {
-  progressData: Record<string, unknown> | null
-  workflowStatus: string
   onNodeClick?: (nodeId: string) => void
+  /** 从工作流生命周期传入的每个节点执行状态 */
+  nodeExecStatuses?: Record<FlowNodeId, NodeExecStatus>
 }
 
-const FlowView = ({ progressData, workflowStatus, onNodeClick }: FlowViewProps) => {
+const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
   const [layoutDir, setLayoutDir] = useState<LayoutDir>('vertical')
-  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('vertical'))
+  const [nodes, setNodes, onNodesChange] = useNodesState(
+    buildNodes('vertical', nodeExecStatuses)
+  )
   const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges())
   const [showMiniMap, setShowMiniMap] = useState(true)
 
   const toggleLayout = useCallback(() => {
     setLayoutDir((prev) => {
       const next = prev === 'vertical' ? 'horizontal' : 'vertical'
-      // 保持当前节点状态
-      setNodes(nds => buildNodes(next).map((n, i) => ({
-        ...n,
-        data: { ...n.data, execStatus: nds[i]?.data.execStatus || 'pending' }
-      })))
+      setNodes(buildNodes(next, nodeExecStatuses))
       return next
     })
-  }, [setNodes])
+  }, [setNodes, nodeExecStatuses])
 
-  // 监听后端进度动态更新节点状态
+  // 监听外部 nodeExecStatuses 的变化，同步更新画布上的节点状态
   useEffect(() => {
+    if (!nodeExecStatuses) return
     setNodes((nds) =>
-      nds.map((n) => {
-        let execStatus = n.data.execStatus
-        const flowId = n.id
-        const order = ['intent', 'brand-kb', 'prompt', 'image-gen', 'compose', 'eval']
-        const myIndex = order.indexOf(flowId)
-
-        if (workflowStatus === 'completed') {
-          execStatus = 'done'
-        } else if (workflowStatus === 'running' || workflowStatus === 'failed') {
-          const agentNodes = progressData ? Object.keys(progressData) : []
-          const doneAgentNodes = new Set(agentNodes)
-          
-          let currentFlowIndex = 0 // 默认第一个节点正在运行
-          if (doneAgentNodes.has('intentNode')) currentFlowIndex = 1
-          if (doneAgentNodes.has('knowledgeNode')) currentFlowIndex = 2
-          if (doneAgentNodes.has('promptNode')) currentFlowIndex = 3
-          if (doneAgentNodes.has('generateNode')) currentFlowIndex = 5 // 后端没有 compose 节点，生成完直接跳到 eval
-          if (doneAgentNodes.has('evaluateNode')) currentFlowIndex = 6
-
-          if (myIndex < currentFlowIndex) {
-            execStatus = 'done'
-          } else if (myIndex === currentFlowIndex) {
-            execStatus = workflowStatus === 'failed' ? 'pending' : 'running'
-          } else {
-            execStatus = 'pending'
-          }
-        }
-        
-        return {
-          ...n,
-          data: { ...n.data, execStatus },
-        }
-      })
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          execStatus: nodeExecStatuses[n.id as FlowNodeId] ?? n.data.execStatus,
+        },
+      }))
     )
-  }, [progressData, workflowStatus, setNodes])
+  }, [nodeExecStatuses, setNodes])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -169,9 +146,10 @@ const FlowView = ({ progressData, workflowStatus, onNodeClick }: FlowViewProps) 
         minZoom={0.3}
         maxZoom={1.5}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+
         nodesDraggable={true}
         nodesConnectable={false}
-        elementsSelectable={false}
+        elementsSelectable={true}
         panOnDrag
         zoomOnScroll
       >

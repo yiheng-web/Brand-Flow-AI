@@ -10,15 +10,24 @@ const STATUS_CONFIG: Record<string, { bg: string; border?: string }> = {
   pending: { bg: '#d1d5db' },
 }
 
-const FlowNode = memo(({ data }: NodeProps<FlowNodeData>) => {
+const FlowNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
   const statusCfg = STATUS_CONFIG[data.execStatus]
   const isRunning = data.execStatus === 'running'
   const isHorizontal = data.layoutDir === 'horizontal'
 
+  const style: React.CSSProperties = {
+    ...(isRunning
+      ? { borderColor: statusCfg.border, boxShadow: '0 0 0 1px #3b82f6, 0 4px 16px rgba(59,130,246,0.2)' }
+      : {}),
+    ...(selected
+      ? { borderColor: '#4f6ff7', boxShadow: '0 0 0 2px #4f6ff7, 0 4px 16px rgba(79,111,247,0.25)' }
+      : {}),
+  }
+
   return (
     <div
       className="flow-node"
-      style={isRunning ? { borderColor: statusCfg.border, boxShadow: '0 0 0 1px #3b82f6, 0 4px 16px rgba(59,130,246,0.2)' } : undefined}
+      style={style}
     >
       <div className="flow-node-body">
         <div className="flow-node-title">

@@ -2,6 +2,11 @@ import axios from 'axios'
 import { message } from 'antd'
 import { useAuthStore } from '@/store/useAuthStore'
 
+interface ApiResponse {
+  message?: string
+  [key: string]: unknown
+}
+
 const apiClient = axios.create({
   baseURL: '/api',
   timeout: 15000,
@@ -46,7 +51,10 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       // token 过期，清除持久化登录状态后跳转到登录页
       useAuthStore.getState().logout()
-      window.location.href = '/login'
+      // 如果已经在登录页则不跳转（登录失败也是 401，跳转会刷新页面导致错误提示消失）
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
     }
 
     return Promise.reject(error)

@@ -3,9 +3,9 @@ export const WORKSPACE_VIEW_TABS = ['节点流视图', '画板']
 export const WORKSPACE_SIDE_TABS = ['知识资产', '历史记录']
 
 export const WORKSPACE_GROUP_OPTIONS = [
-  { key: 'member', icon: '👥', label: '瑞幸项目组（成员视角）' },
+  { key: 'member', icon: '👥', label: '项目组（成员视角）' },
   { key: 'personal', icon: '🏠', label: '个人知识库' },
-  { key: 'admin', icon: '👑', label: '瑞幸项目组（管理员视角）' },
+  { key: 'admin', icon: '👑', label: '项目组（管理员视角）' },
 ]
 
 export const WORKSPACE_HISTORY_RECORDS = [
@@ -13,7 +13,7 @@ export const WORKSPACE_HISTORY_RECORDS = [
     id: 'history-preview',
     tag: '画板预览',
     time: '刚刚',
-    title: '瑞幸夏日海报_v1 生成记录',
+    title: '海报_v1 生成记录',
     description: '已调用品牌资产与标准 Logo 输出预览结果',
   },
   {
@@ -28,7 +28,7 @@ export const WORKSPACE_HISTORY_RECORDS = [
     tag: '成员操作',
     time: '今天 09:12',
     title: '个人知识库切换记录',
-    description: '从"瑞幸项目组"切换到"个人知识库"并查看最近内容',
+    description: '从项目组切换到个人知识库并查看最近内容',
   },
 ]
 
@@ -48,7 +48,7 @@ export const WORKSPACE_ASSET_ITEMS = [
 ]
 
 /** 右侧属性面板 —— 默认标签 */
-export const DEFAULT_TAGS = ['品牌蓝', '标准Logo', '瑞幸元素']
+export const DEFAULT_TAGS = ['品牌蓝', '标准Logo', '品牌元素']
 
 /** 右侧属性面板 —— 滑杆默认值 */
 export const SLIDER_CONFIG = {
@@ -93,7 +93,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     title: '知识匹配',
     emoji: '📦',
     subtitle: '品牌资产',
-    execStatus: 'running',
+    execStatus: 'pending',
   },
   {
     id: 'prompt',
