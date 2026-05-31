@@ -6,6 +6,7 @@
  * 输出：生成的底图链接 (Base Image URL) 及生图 Seed、Step 等参数记录
  */
 
+import { useState } from 'react'
 import styles from '../workspace.module.css'
 
 /* ---------- 内置模型列表 ---------- */
@@ -50,6 +51,8 @@ const ImageGenPanel = ({
   genParams: genParamsProp,
   onReRun,
 }: ImageGenPanelProps) => {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+
   return (
     <div className={styles.rightContent}>
       {/* ===== 说明文字 ===== */}
@@ -106,18 +109,38 @@ const ImageGenPanel = ({
       <div className={styles.genPreviewSection}>
         <h3 className={styles.rightSectionTitle}>底图预览</h3>
         <div className={styles.genPreviewBox}>
-          {isExecuting ? (
+          {baseImageUrl ? (
+            <>
+              <img
+                className={styles.genPreviewImage}
+                src={baseImageUrl}
+                alt="生成底图"
+                onClick={() => setIsLightboxOpen(true)}
+              />
+              {isLightboxOpen && (
+                <div
+                  className={styles.imageLightbox}
+                  onClick={() => setIsLightboxOpen(false)}
+                >
+                  <button
+                    className={styles.lightboxClose}
+                    onClick={() => setIsLightboxOpen(false)}
+                  >
+                    ×
+                  </button>
+                  <img
+                    src={baseImageUrl}
+                    alt="生成底图"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              )}
+            </>
+          ) : isExecuting ? (
             <div className={styles.genPreviewLoading}>
               <div className={styles.genSpinner} />
               <span>正在生成...</span>
             </div>
-          ) : baseImageUrl ? (
-            <img
-              className={styles.genPreviewImage}
-              src={baseImageUrl}
-              alt="生成底图"
-              onClick={() => window.open(baseImageUrl, '_blank')}
-            />
           ) : (
             <div className={styles.genPreviewPlaceholder}>
               等待执行图像生成

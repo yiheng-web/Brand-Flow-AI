@@ -40,10 +40,8 @@ const RegisterPage = () => {
       })
       message.success('注册成功，请登录')
       navigate('/login')
-    } catch (err: unknown) {
-      /* 捕获 API 抛出的错误（如邮箱已被注册），展示友好提示 */
-      const msg = err instanceof Error ? err.message : '注册失败，请稍后重试'
-      message.error(msg)
+    } catch {
+      // 错误提示已在 apiClient 响应拦截器中统一处理
     } finally {
       setSubmitting(false)
     }

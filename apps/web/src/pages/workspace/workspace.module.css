@@ -1,4 +1,4 @@
-﻿.wrapper {
+.wrapper {
   width: 100%;
   height: 100%;
   display: flex;
@@ -192,11 +192,93 @@
   background: #f5f6f8;
 }
 
-.previewCanvas::after {
-  content: '海报预览区域';
-  color: #b0b7c7;
-  font-size: 14px;
-  font-weight: 500;
+/* 海报预览区域 */
+.previewImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+  transition: transform 0.2s;
+}
+
+.previewImage:hover {
+  transform: scale(1.02);
+}
+
+/* 保存图片按钮 */
+.saveImageBtn {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 18px;
+  border: 1px solid #4f6ff7;
+  border-radius: 12px;
+  background: #4f6ff7;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.saveImageBtn:hover {
+  background: #3b5de7;
+  box-shadow: 0 2px 8px rgba(79, 111, 247, 0.3);
+}
+
+.saveImageBtn:active {
+  background: #2f4fd9;
+}
+
+/* ===== 图片放大灯箱 ===== */
+.imageLightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+.imageLightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightboxClose {
+  position: absolute;
+  top: 24px;
+  right: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+  z-index: 201;
+}
+
+.lightboxClose:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* 工具行右侧存入个人知识库按钮 — 绝对定位在工具栏右侧 */

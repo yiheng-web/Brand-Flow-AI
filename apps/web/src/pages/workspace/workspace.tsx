@@ -1,6 +1,7 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ReactFlowProvider } from 'reactflow'
+import { message } from 'antd'
 import { SwitchTabs } from '../../components/SwitchTabs'
 import {
   DEFAULT_TAGS,
@@ -28,6 +29,7 @@ import {
   type WorkflowStatusResponse,
 } from '../../api/workflow'
 import { createAuthEventSource } from '../../utils/sse'
+import { useWorkflowStore } from '@/store/useWorkflowStore'
 
 /**
  * 节点 ID → Graph 节点名的映射，用于 SSE progress 事件匹配
@@ -61,7 +63,8 @@ const NODE_LABELS: Record<FlowNodeId, string> = {
 
 const Workspace = () => {
   const location = useLocation()
-  const userPrompt = (location.state as { prompt?: string })?.prompt ?? ''
+  const navState = location.state as { prompt?: string; workflowId?: string }
+  const passedWorkflowId = navState?.workflowId ?? null
 
   /* ---- 视图 / 节点选择 ---- */
   const [viewTabIndex, setViewTabIndex] = useState(0)
@@ -70,29 +73,31 @@ const Workspace = () => {
   /* ---- 标签 / 保存知识库弹窗 ---- */
   const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS])
   const [isSaveModalVisible, setIsSaveModalVisible] = useState(false)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
 
-  /* ===== 工作流生命周期 ===== */
-  const [workflowStatus, setWorkflowStatus] = useState<
-    'idle' | 'pending' | 'running' | 'completed' | 'failed'
-  >('idle')
-  const [workflowError, setWorkflowError] = useState<string | null>(null)
+  /* ===== 工作流生命周期：从 store 读取 ===== */
+  const {
+    workflowId,
+    status: workflowStatus,
+    prompt: storedPrompt,
+    imageUrl,
+    error: workflowError,
+    agentState,
+    nodeExecStatuses,
+    nodeStreamData,
+    setWorkflowId,
+    setStatus: setWorkflowStatus,
+    setPrompt: setStoredPrompt,
+    setImageUrl,
+    setAgentState,
+    setError: setWorkflowError,
+    setNodeExecStatuses,
+    setNodeStreamData,
+    reset,
+  } = useWorkflowStore()
 
-  /** 每个节点的执行状态 */
-  const [nodeExecStatuses, setNodeExecStatuses] = useState<
-    Record<FlowNodeId, NodeExecStatus>
-  >({
-    intent: 'pending',
-    'brand-kb': 'pending',
-    prompt: 'pending',
-    'image-gen': 'pending',
-    compose: 'pending',
-    eval: 'pending',
-  })
-
-  /** 每个节点从 SSE progress 收到的数据（实时累积） */
-  const [nodeStreamData, setNodeStreamData] = useState<
-    Record<string, Record<string, any>>
-  >({})
+  // 合并 navState 的 prompt 和 store 的 prompt
+  const userPrompt = navState?.prompt || storedPrompt
 
   /** 是否正在启动工作流（提交中） */
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -110,6 +115,7 @@ const Workspace = () => {
     setIsSubmitting(true)
     setWorkflowError(null)
     setWorkflowStatus('pending')
+    setStoredPrompt(userPrompt) // 同步到 store
     setNodeExecStatuses({
       intent: 'pending',
       'brand-kb': 'pending',
@@ -129,6 +135,7 @@ const Workspace = () => {
       const id: string = res.data?.id || (res as any).id
       if (!id) throw new Error('创建工作流后未返回 ID')
 
+      setWorkflowId(id) // 同步到 store
       setWorkflowStatus('running')
       setIsSubmitting(false)
 
@@ -145,7 +152,7 @@ const Workspace = () => {
       )
       setIsSubmitting(false)
     }
-  }, [userPrompt])
+  }, [userPrompt, setStoredPrompt, setWorkflowId, setWorkflowError, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData])
 
   /* ============================
       SSE 流式连接
@@ -175,7 +182,7 @@ const Workspace = () => {
 
           const nodeValue = data[nodeKey] as Record<string, any>
 
-          // 更新累积数据
+          // 更新累积数据（同步到 store）
           setNodeStreamData((prev) => {
             const updated = { ...prev, [nodeKey]: nodeValue }
             nodeStreamDataRef.current = updated
@@ -213,7 +220,7 @@ const Workspace = () => {
 
           setWorkflowStatus('completed')
 
-          // 写入最终数据
+          // 写入最终数据（同步到 store）
           if (finalState) {
             nodeStreamDataRef.current = {}
             NODE_ORDER.forEach((nodeId) => {
@@ -224,6 +231,7 @@ const Workspace = () => {
               }
             })
             setNodeStreamData({ ...nodeStreamDataRef.current })
+            setAgentState(finalState) // 同步到 store，自动更新 imageUrl
           }
 
           setNodeExecStatuses({
@@ -254,7 +262,7 @@ const Workspace = () => {
     })
 
     eventSourceRef.current = conn
-  }, [])
+  }, [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError])
 
   /* ============================
       轮询 status（SSE 兜底）
@@ -303,6 +311,7 @@ const Workspace = () => {
             }
             nodeStreamDataRef.current = mapped
             setNodeStreamData({ ...mapped })
+            setAgentState(agentState) // 同步到 store
           }
         } else if (s === 'failed') {
           stopPolling()
@@ -315,7 +324,7 @@ const Workspace = () => {
         // 轮询失败静默处理，下次继续
       }
     }, 2000)
-  }, [])
+  }, [setWorkflowStatus, setNodeExecStatuses, setNodeStreamData, setAgentState, setWorkflowError])
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -339,10 +348,21 @@ const Workspace = () => {
       工作流启动（自动）
    ============================ */
   useEffect(() => {
-    if (userPrompt && workflowStatus === 'idle') {
+    const id = passedWorkflowId || workflowId
+    if (!id && !userPrompt) return
+
+    if (id) {
+      // 有 workflowId，直接连接 SSE
+      if (workflowStatus === 'idle' || workflowStatus === 'pending') {
+        setWorkflowStatus('running')
+      }
+      connectStream(id)
+      startPolling(id)
+    } else if (userPrompt && workflowStatus === 'idle') {
+      // 只有 userPrompt 没有 workflowId，从头创建
       startWorkflow()
     }
-  }, [userPrompt, workflowStatus, startWorkflow])
+  }, [userPrompt, passedWorkflowId, workflowId, workflowStatus, setWorkflowStatus, connectStream, startPolling, startWorkflow])
 
   /* ---- 节点点击 ---- */
   const handleNodeClick = (nodeId: string) => {
@@ -397,8 +417,12 @@ const Workspace = () => {
   /* ---- derived state ---- */
   const isExecuting = workflowStatus === 'running' || isSubmitting
   const generateResult = getGenerateData()
-  const baseImageUrl = generateResult?.content || null
+  const baseImageUrl = imageUrl // 直接用 store 的 imageUrl
   const evaluationResult = getEvalData()
+
+  // 图像生成节点专用：只有节点状态不是 done 且 workflow 还在运行时才显示 loading
+  const isImageGenExecuting =
+    (nodeExecStatuses['image-gen'] !== 'done' && isExecuting) || !baseImageUrl
 
   const statusLabel = (() => {
     if (isSubmitting) return '提交中…'
@@ -408,6 +432,26 @@ const Workspace = () => {
     if (workflowStatus === 'failed') return '失败'
     return '等待开始'
   })()
+
+  const handleSaveImage = async () => {
+    const url = imageUrl || baseImageUrl
+    if (!url) return
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `brand-flow-${Date.now()}.png`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+      message.success('图片已保存')
+    } catch {
+      message.error('保存失败，请重试')
+    }
+  }
 
   /* ============================
       渲染右侧属性面板
@@ -460,7 +504,7 @@ const Workspace = () => {
       return (
         <ImageGenPanel
           selectedModel="flux"
-          isExecuting={isExecuting}
+          isExecuting={isImageGenExecuting}
           baseImageUrl={baseImageUrl}
           genParams={generateResult ? undefined : undefined}
           onReRun={() => {
@@ -538,15 +582,53 @@ const Workspace = () => {
             </div>
           ) : (
             <div className={styles.previewArea}>
+              <div className={styles.previewToolbar}>
+                <div className={styles.previewToolGroup}>
+                  {baseImageUrl && (
+                    <button
+                      type="button"
+                      className={styles.saveImageBtn}
+                      onClick={handleSaveImage}
+                    >
+                      保存图片
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className={styles.previewCanvas}>
-                {baseImageUrl && (
+                {baseImageUrl ? (
                   <img
+                    className={styles.previewImage}
                     src={baseImageUrl}
                     alt="生成海报"
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    onClick={() => setIsLightboxOpen(true)}
                   />
+                ) : (
+                  <span style={{ color: '#b0b7c7', fontSize: 14, fontWeight: 500 }}>
+                    {isExecuting ? '正在生成...' : '海报预览区域'}
+                  </span>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* 图片放大灯箱 */}
+          {isLightboxOpen && baseImageUrl && (
+            <div
+              className={styles.imageLightbox}
+              onClick={() => setIsLightboxOpen(false)}
+            >
+              <button
+                className={styles.lightboxClose}
+                onClick={() => setIsLightboxOpen(false)}
+              >
+                ×
+              </button>
+              <img
+                src={baseImageUrl}
+                alt="生成海报"
+                onClick={(e) => e.stopPropagation()}
+              />
             </div>
           )}
         </section>

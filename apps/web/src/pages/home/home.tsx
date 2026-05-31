@@ -15,12 +15,14 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import { submitPrompt } from '@/api/workflow'
 import { useUserStore } from '@/store/useUserStore'
+import { useWorkflowStore } from '@/store/useWorkflowStore'
 import styles from './home.module.css'
 
 const Home = () => {
   const navigate = useNavigate()
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const setCurrentSpaceId = useUserStore((state) => state.setCurrentSpaceId)
+  const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
 
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -36,9 +38,13 @@ const Home = () => {
     try {
       const res = await submitPrompt({ prompt: trimmed, spaceId: currentSpaceId })
       if (res.success) {
+        const workflowId = res.data?.id
+        if (workflowId) {
+          setWorkflowId(workflowId)
+        }
         message.success('创意已提交，正在为你生成...')
         setPrompt('')
-        navigate('/workspace', { state: { prompt: trimmed } })
+        navigate('/workspace', { state: { prompt: trimmed, workflowId } })
       }
     } catch {
       message.error('提交失败，请稍后重试')
