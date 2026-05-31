@@ -1,7 +1,10 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ReactFlowProvider } from 'reactflow'
 import { DownOutlined, LockFilled } from '@ant-design/icons'
 import { useLocation } from 'react-router-dom'
+import { message, Drawer } from 'antd'
+import { fetchEventSource } from '@microsoft/fetch-event-source'
+import { useAuthStore } from '@/store/useAuthStore'
 import { SelectionTabs } from '../../components/SelectionTabs'
 import { SwitchTabs } from '../../components/SwitchTabs'
 import {
@@ -20,6 +23,39 @@ import styles from './workspace.module.css'
 
 const Workspace = () => {
   const location = useLocation()
+  const { token } = useAuthStore()
+  const workflowId = location.state?.workflowId
+
+  const [workflowStatus, setWorkflowStatus] = useState('pending')
+  const [progressData, setProgressData] = useState<Record<string, unknown> | null>(null)
+  
+  // 用于弹窗查看节点详情
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+
+  const handleNodeClick = (nodeId: string) => {
+    setSelectedNodeId(nodeId)
+    setIsDrawerOpen(true)
+  }
+
+  // 映射前端 UI 节点 ID 到后端 agent 推理抛出的真实节点名
+  const backendNodeKeyMap: Record<string, string> = {
+    'intent': 'intentNode',
+    'brand-kb': 'knowledgeNode',
+    'prompt': 'promptNode',
+    'image-gen': 'generateNode',
+    'compose': 'composeNode', // 预留
+    'eval': 'evaluateNode'
+  }
+
+  // 兜底映射表：用于将任务结束时后端发来的扁平全量 finalState 结构，自动还原装配到对应的 Node 包裹下
+  const finalStateToNodeMap = [
+    { stateKey: 'intentResult', nodeKey: 'intentNode' },
+    { stateKey: 'knowledgeContext', nodeKey: 'knowledgeNode' },
+    { stateKey: 'promptResult', nodeKey: 'promptNode' },
+    { stateKey: 'generateResult', nodeKey: 'generateNode' },
+    { stateKey: 'evaluationResult', nodeKey: 'evaluateNode' },
+  ]
 
   const [viewTabIndex, setViewTabIndex] = useState(0)
   const [selectedGroupKey, setSelectedGroupKey] = useState(WORKSPACE_GROUP_OPTIONS[0].key)
@@ -73,14 +109,70 @@ const Workspace = () => {
     setIsGroupMenuOpen(false)
   }, [location.pathname])
 
+  useEffect(() => {
+    if (!workflowId) return
+
+    const ctrl = new AbortController()
+
+    fetchEventSource(`/api/workflow/${workflowId}/stream`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      signal: ctrl.signal,
+      onmessage(event) {
+        if (!event.data) return // 忽略空消息，防止 JSON.parse 报错
+        try {
+          const payload = JSON.parse(event.data)
+
+          if (payload.type === 'connected') {
+            setWorkflowStatus('running')
+          } else if (payload.type === 'progress') {
+            setWorkflowStatus('running')
+            setProgressData(prev => ({ ...(prev || {}), ...payload.data }))
+          } else if (payload.type === 'completed') {
+            setWorkflowStatus('completed')
+            if (payload.data) {
+              const finalState = payload.data
+              setProgressData(prev => {
+                const newState: Record<string, any> = { ...(prev || {}) }
+                // 根据映射表动态组装还原
+                finalStateToNodeMap.forEach(({ stateKey, nodeKey }) => {
+                  if (finalState[stateKey] !== undefined) {
+                    newState[nodeKey] = { [stateKey]: finalState[stateKey] }
+                  }
+                })
+                return newState
+              })
+            }
+            ctrl.abort()
+          } else if (payload.type === 'error') {
+            message.error(payload.error || '执行出错')
+            setWorkflowStatus('failed')
+            ctrl.abort()
+          }
+        } catch (err) {
+          console.error('SSE parsing error', err)
+        }
+      },
+      onerror(err) {
+        console.error('SSE Error:', err)
+        ctrl.abort()
+        throw err
+      }
+    })
+
+    return () => ctrl.abort()
+  }, [workflowId, token])
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.topBar}>
         <span className={styles.topBarTitle}>瑞幸夏日海报_v1</span>
         <SwitchTabs items={WORKSPACE_VIEW_TABS} defaultIndex={viewTabIndex} onChange={(i) => setViewTabIndex(i)} />
         <div className={styles.statusIndicator}>
-          <div className={styles.spinner} />
-          <span>运行中</span>
+          {workflowStatus === 'running' && <div className={styles.spinner} />}
+          <span>{workflowStatus === 'completed' ? '已完成' : workflowStatus === 'failed' ? '已失败' : '运行中'}</span>
         </div>
       </div>
 
@@ -187,7 +279,7 @@ const Workspace = () => {
           {viewTabIndex === 0 ? (
             <div className={styles.canvasArea}>
               <ReactFlowProvider>
-                <FlowView />
+                <FlowView progressData={progressData} workflowStatus={workflowStatus} onNodeClick={handleNodeClick} />
               </ReactFlowProvider>
             </div>
           ) : (
@@ -300,10 +392,30 @@ const Workspace = () => {
         groupOptions={WORKSPACE_GROUP_OPTIONS}
         selectedGroupKey={selectedGroupKey}
         onClose={() => setIsSaveModalVisible(false)}
-        onSave={(data) => {
-          console.log('保存到知识库：', data)
+        onSave={() => {
+          message.info('功能开发中，敬请期待')
         }}
       />
+      
+      <Drawer
+        title={`节点执行详情 - ${selectedNodeId}`}
+        placement="right"
+        onClose={() => setIsDrawerOpen(false)}
+        open={isDrawerOpen}
+        size="large"
+      >
+        {selectedNodeId && progressData ? (
+          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+            {selectedNodeId === 'compose' 
+              ? '该节点属于图像生成后的自动排版流程，与生图引擎一并执行，无独立节点数据输出。'
+              : (progressData[backendNodeKeyMap[selectedNodeId]]
+                  ? JSON.stringify(progressData[backendNodeKeyMap[selectedNodeId]], null, 2)
+                  : '该节点暂无详细数据 (可能还在排队、正在执行中，或者发生异常被跳过)')}
+          </pre>
+        ) : (
+          <p>暂无数据</p>
+        )}
+      </Drawer>
     </div>
   )
 }

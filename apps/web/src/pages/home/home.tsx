@@ -35,11 +35,10 @@ const Home = () => {
     setSubmitting(true)
     try {
       const res = await submitPrompt({ prompt: trimmed, spaceId: currentSpaceId })
-      if (res.success) {
-        message.success('创意已提交，正在为你生成...')
-        setPrompt('')
-        navigate('/workspace')
-      }
+      
+      message.success('创意已提交，正在为你生成...')
+      setPrompt('')
+      navigate('/workspace', { state: { workflowId: res.id } })
     } catch {
       message.error('提交失败，请稍后重试')
     } finally {

@@ -147,8 +147,9 @@ interface UserInfo {
     *   **Body**: 
         ```typescript
         { 
-          prompt: string,   // 用户的原始设计意图或提示词
-          spaceId: string   // 当前工作流关联的前端空间或画布 ID
+          prompt: string,       // 用户的原始设计意图或提示词
+          spaceId: string,      // 当前工作流关联的前端空间或画布 ID
+          knowledgeId?: string  // 关联的专属知识库 ID（选填，提供后大模型会基于该知识库生成）
         }
         ```
     *   **返回 Data**: 
@@ -164,9 +165,10 @@ interface UserInfo {
         ```
 
 *   **`GET /workflow/:id/stream`**
-    *   **说明**: （核心推荐）基于 Server-Sent Events (SSE) 的流式接口，用于实时监听大模型各节点的执行状态与结果。取代了传统的 `/status` 轮询方式。
+    *   **说明**: （核心推荐）基于 Server-Sent Events (SSE) 的流式接口，用于实时监听大模型各节点的执行状态与结果。
     *   **路径参数**: `id` (目标工作流的实例 ID)
-    *   **返回格式**: `text/event-stream` (流式输出)
+    *   **鉴权方式**: 通过 `Authorization: Bearer <JWT_TOKEN>` 请求头（若前端无法直接设置，请使用 fetch-event-source）
+    *   **返回格式**: `text/event-stream` (流式输出，注：该接口已在全局拦截器中配置放行，不会被包裹在 `ApiResponse` 结构中)
     *   **事件返回包格式 (JSON)**:
         *   **`progress`** 事件 (单个节点执行完毕):
             ```typescript
@@ -194,21 +196,40 @@ interface UserInfo {
           createdAt: string,        // 创建时间
           updatedAt: string,        // 最后更新时间
           errorMessage?: string,    // 若执行失败，返回的错误原因（当 status === 'failed' 时存在）
-          result?: {                // 若执行成功，返回的完整解析结果（当 status === 'completed' 时存在）
-            userInput: string,      // AI 识别到的用户输入
-            intentResult: {         // 意图解析结果
-              intent: string,           // 意图分类
-              confidence: number,       // 意图置信度
-              reason: string,           // 判定理由
-              suggestedAction: string   // 建议的下一步动作
+          result?: {                // 若执行成功，返回的完整 Agent 运行结果（AgentStateType）
+            userQuery: string,      // 用户输入的原始意图
+            context: Record<string, any>, // 透传的上下文信息（包含 spaceId, enterpriseId, knowledgeId 等）
+            intentResult?: {        // 意图解析结果
+              intent: string,
+              confidence: number,
+              reason: string,
+              suggestedAction: string
             },
-            promptResult: {         // 提示词生成结果
-              systemPrompt: string,     // 定制的系统提示词
-              userPrompt: string,       // 定制的用户提示词
-              finalPrompt: string,      // 最终下发给生图引擎的提示词
-              purpose: string           // 该提示词的生成意图
+            knowledgeContext?: string, // 知识库检索并组装后的品牌背景知识文本
+            promptResult?: {        // 提示词生成结果
+              systemPrompt: string,
+              userPrompt: string,
+              finalPrompt: string,
+              purpose: string
             },
-            status: "success" | "failed" // 单个链的执行状态
+            generateResult?: {      // 图像或文案生成引擎的执行结果
+              success: boolean,
+              content: string,      // 生成产物（如图片的 URL）
+              generateType: string,
+              promptUsed: string,
+              message?: string
+            },
+            evaluationResult?: {    // 最后一个节点产出的自我评估与质检结果
+              overallScore: number,
+              intentEvaluation: { score: number, comment: string },
+              promptEvaluation: { score: number, comment: string },
+              complianceEvaluation: { score: number, comment: string },
+              suggestions: string[],
+              status: "success" | "failed"
+            },
+            retryCount: number,     // 生成流程触发评估打回重试的次数
+            status: "running" | "success" | "failed", // Agent 最终运行状态
+            error?: string          // Agent 内部抛出的具体错误信息
           }
         }
         ```
@@ -232,6 +253,21 @@ interface UserInfo {
     *   **返回 Data**: 
         ```typescript
         Array<{ _id: string, name: string, description: string }>
+        ```
+
+*   **`GET /knowledge/:id`**
+    *   **说明**: 获取特定知识库的详情。
+    *   **路径参数**: `id` (知识库 ID)
+
+*   **`PUT /knowledge/:id`**
+    *   **说明**: 更新特定知识库的基础信息。
+    *   **路径参数**: `id` (知识库 ID)
+    *   **Body**: 
+        ```typescript
+        { 
+          name?: string, 
+          description?: string 
+        }
         ```
 
 *   **`DELETE /knowledge/:id`**

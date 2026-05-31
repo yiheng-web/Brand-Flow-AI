@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -49,7 +49,13 @@ function buildEdges(): Edge[] {
   return edges
 }
 
-const FlowView = () => {
+interface FlowViewProps {
+  progressData: Record<string, unknown> | null
+  workflowStatus: string
+  onNodeClick?: (nodeId: string) => void
+}
+
+const FlowView = ({ progressData, workflowStatus, onNodeClick }: FlowViewProps) => {
   const [layoutDir, setLayoutDir] = useState<LayoutDir>('vertical')
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('vertical'))
   const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges())
@@ -58,10 +64,53 @@ const FlowView = () => {
   const toggleLayout = useCallback(() => {
     setLayoutDir((prev) => {
       const next = prev === 'vertical' ? 'horizontal' : 'vertical'
-      setNodes(buildNodes(next))
+      // 保持当前节点状态
+      setNodes(nds => buildNodes(next).map((n, i) => ({
+        ...n,
+        data: { ...n.data, execStatus: nds[i]?.data.execStatus || 'pending' }
+      })))
       return next
     })
   }, [setNodes])
+
+  // 监听后端进度动态更新节点状态
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        let execStatus = n.data.execStatus
+        const flowId = n.id
+        const order = ['intent', 'brand-kb', 'prompt', 'image-gen', 'compose', 'eval']
+        const myIndex = order.indexOf(flowId)
+
+        if (workflowStatus === 'completed') {
+          execStatus = 'done'
+        } else if (workflowStatus === 'running' || workflowStatus === 'failed') {
+          const agentNodes = progressData ? Object.keys(progressData) : []
+          const doneAgentNodes = new Set(agentNodes)
+          
+          let currentFlowIndex = 0 // 默认第一个节点正在运行
+          if (doneAgentNodes.has('intentNode')) currentFlowIndex = 1
+          if (doneAgentNodes.has('knowledgeNode')) currentFlowIndex = 2
+          if (doneAgentNodes.has('promptNode')) currentFlowIndex = 3
+          if (doneAgentNodes.has('generateNode')) currentFlowIndex = 5 // 后端没有 compose 节点，生成完直接跳到 eval
+          if (doneAgentNodes.has('evaluateNode')) currentFlowIndex = 6
+
+          if (myIndex < currentFlowIndex) {
+            execStatus = 'done'
+          } else if (myIndex === currentFlowIndex) {
+            execStatus = workflowStatus === 'failed' ? 'pending' : 'running'
+          } else {
+            execStatus = 'pending'
+          }
+        }
+        
+        return {
+          ...n,
+          data: { ...n.data, execStatus },
+        }
+      })
+    )
+  }, [progressData, workflowStatus, setNodes])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -79,7 +128,11 @@ const FlowView = () => {
     [setEdges]
   )
 
-  const key = layoutDir
+  const onNodeClickCb = useCallback((_: React.MouseEvent, node: Node) => {
+    if (onNodeClick) {
+      onNodeClick(node.id)
+    }
+  }, [onNodeClick])
 
   return (
     <div className="flow-view-wrapper" style={{ position: 'relative' }}>
@@ -103,12 +156,13 @@ const FlowView = () => {
         {layoutDir === 'vertical' ? '⇄ 横向' : '⇅ 纵向'}
       </button>
       <ReactFlow
-        key={key}
+        key={layoutDir}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={onNodeClickCb}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}
