@@ -1,172 +1,399 @@
-# Brand-Flow 节点流模块 PRD 与技术理解文档
+# Brand-Flow 节点流模块 PRD / 技术理解文档
 
-> 适用对象：前端组、后端组、AI 逻辑组、产品/测试组  
-> 文档目的：统一研发组对 Brand-Flow 节点流模块的理解，明确每个节点的产品目标、输入输出、用户操作、AI 处理方式、重跑规则和复杂节点实现边界。
-
----
-
-## 1. 模块定位
-
-Brand-Flow 的核心差异不是“也能 AI 生图”，而是将一次不可控的 AI 生图过程拆解为透明、可解释、可干预、可回溯的创作工作流。
-
-节点流模块的产品目标：
-
-1. 让用户看懂 AI 是如何理解需求的；
-2. 让用户能在关键节点纠偏，而不是只能重写整段 Prompt；
-3. 让品牌、团队、个人知识库内容能进入生成链路；
-4. 让图像生成、图文合成、AI 质检形成闭环；
-5. 让每次生成都能保存参数、版本和节点中间产物，便于复用与追溯。
-
-一句话定义：
-
-> 节点流是 Brand-Flow 的白盒化创作引擎，它把用户自然语言需求转化为结构化创作 Brief、知识库匹配结果、Prompt 方案、候选底图、图文合成结果和质检报告。
+> 文档版本：v2.0  
+> 模块名称：白盒化创作节点流  
+> 适用对象：前端组、后端组、AI 逻辑组、产品测试组  
+> 文档目的：定义 Brand-Flow 节点流模块的产品规则、节点职责、输入输出、前端展示、后端接口、AI 执行逻辑、节点跳过规则、质检规则与验收标准。
 
 ---
 
-## 2. 推荐节点流总览
+## 1. 产品定位
 
-建议正式版本采用 6 个核心节点：
+Brand-Flow 的节点流是一套白盒化 AI 创作生产线。
+
+用户输入自然语言后，系统必须将创作过程拆解为 7 个节点：
 
 ```text
-1. 需求翻译节点
-2. 知识库匹配节点
-3. Prompt 生成节点
-4. 图像生成节点
-5. 排版与合成节点
-6. AI 质检节点
+1. 需求翻译
+2. 品牌约束
+3. 创意方案
+4. Prompt 生成
+5. 底图生成
+6. 图文合成
+7. 品牌质检
 ```
 
-其中：
+节点流必须满足 4 个产品要求：
 
-- 「需求翻译节点」负责把用户输入转成结构化 Creative Brief；
-- 「知识库匹配节点」负责从个人/团队/企业知识库中匹配可用素材、规则和 Prompt 模板；
-- 「Prompt 生成节点」负责生成结构化 Image Prompt、Negative Prompt 和 Layout Plan；
-- 「图像生成节点」负责生成 4 张候选底图；
-- 「排版与合成节点」负责图文分离合成，避免 AI 直接生成乱码文字；
-- 「AI 质检节点」负责分别评估 4 张候选图与最终合成图，并给出分数、扣分项和回溯建议。
+| 要求 | 产品定义 |
+|---|---|
+| 可解释 | 每个节点必须展示 AI 的中间产物、判断依据或推荐理由 |
+| 可编辑 | 用户必须能修改关键节点的关键字段 |
+| 可回溯 | 系统必须能根据错误原因回退到指定前置节点 |
+| 可复用 | 系统必须保存节点产物、生成参数、图层数据和质检报告 |
 
-后续高级版本可在「知识库匹配节点」和「Prompt 生成节点」之间新增「创意方案节点」，用于生成 2-3 个创作方向。但当前版本可以先把创意方案能力融合进 Prompt 生成节点中，降低开发复杂度。
+节点流的核心判断标准不是“能否生成图片”，而是：
+
+```text
+用户是否知道 AI 为什么这样生成；
+用户是否能在关键节点修改；
+系统是否能根据问题回溯到正确节点；
+最终作品是否能保存并复用。
+```
 
 ---
 
-## 3. 首页输入区与知识库选择方案
+## 2. 最终节点流总览
 
-### 3.1 首页输入区推荐结构
+正式版本采用 7 个节点。
 
-首页不建议只放一个 Prompt 输入框，应在输入框上方增加「创作空间」和「知识库」选择。
+| 序号 | 节点名称 | 节点类型 | 核心职责 | 是否必跑 |
+|---:|---|---|---|---|
+| 1 | 需求翻译节点 | brief | 把用户自然语言转成结构化创作 Brief | 必跑 |
+| 2 | 品牌约束节点 | brand_constraint | 从知识库中匹配品牌素材、规则和禁用项 | 条件运行 |
+| 3 | 创意方案节点 | creative_direction | 生成 3 个可选创作方向，让用户先选方向 | 必跑 |
+| 4 | Prompt 生成节点 | prompt | 生成专业底图 Prompt 和排版计划 | 必跑 |
+| 5 | 底图生成节点 | image_generation | 调用生图模型生成 4 张候选底图 | 必跑 |
+| 6 | 图文合成节点 | composition | 用模板和图层叠加标题、Logo、文案 | 条件运行 |
+| 7 | 品牌质检节点 | brand_evaluation | 按需求、品牌、画面、排版评分并给出回溯建议 | 必跑 |
 
-推荐结构：
+### 2.1 条件节点规则
+
+节点流中存在两个条件节点：
+
+| 节点 | 运行条件 | 跳过条件 |
+|---|---|---|
+| 品牌约束节点 | 用户选择了知识库，或当前 Space 存在企业强制知识库/强制品牌规则 | 用户未选择知识库，且当前 Space 无强制规则 |
+| 图文合成节点 | `CreativeBrief.needsComposition = true` | `CreativeBrief.needsComposition = false` |
+
+条件节点被跳过时，节点状态必须设置为 `skipped`，并写入跳过原因。
+
+---
+
+## 3. 首页创作入口规则
+
+### 3.1 页面结构
+
+首页创作入口必须包含 3 个区域：
+
+```text
+创作空间选择区
+知识库选择区
+用户需求输入区
+```
+
+页面结构：
 
 ```text
 当前创作空间：
-[个人空间 / 某团队空间 / 某企业空间]
+[个人空间 / 团队空间 / 企业空间]
 
 本次使用知识库：
-[选择知识库，多选]
+[知识库多选框]
 
-用户输入：
-[请输入你想生成的内容...]
+用户需求：
+[自然语言输入框]
 
 [开始创作]
 ```
 
-### 3.2 先选空间，还是先选知识库？
+### 3.2 Space 选择规则
 
-建议流程：
+用户必须先选择创作空间 Space，再选择该 Space 下可访问的知识库。
 
-```text
-先选择创作空间 Space
-再选择该空间下可用知识库 Knowledge Bases
-```
-
-原因：
-
-1. Space 决定用户当前身份和权限；
-2. Space 决定可见的知识库范围；
-3. Space 决定作品归属；
-4. Space 决定企业规则是否强制生效。
-
-### 3.3 Space 类型
+Space 类型固定为：
 
 ```ts
 type SpaceType = 'personal' | 'team' | 'enterprise';
 ```
 
-| Space 类型 | 可用知识库 | 默认规则 |
+| Space 类型 | 说明 | 作品归属 |
 |---|---|---|
-| personal | 个人知识库 | 默认使用最近一次选择的个人知识库 |
-| team | 当前团队知识库 + 所属企业知识库 | 默认使用团队主知识库，企业知识库按企业策略强制或推荐启用 |
-| enterprise | 企业知识库 | 默认使用企业主知识库 |
+| personal | 个人创作空间 | 用户个人 |
+| team | 团队创作空间 | 当前团队 |
+| enterprise | 企业创作空间 | 当前企业 |
 
-### 3.4 一次最多选择几个知识库？
+### 3.3 知识库选择规则
 
-建议正式版本限制：
+知识库选择必须遵守以下规则：
 
-```text
-一次最多选择 3 个知识库。
-```
+| Space 类型 | 可选知识库范围 | 默认选择 |
+|---|---|---|
+| personal | 用户个人知识库 | 最近一次使用的个人知识库 |
+| team | 当前团队知识库 + 企业强制知识库 + 企业允许的个人知识库 | 当前团队主知识库 |
+| enterprise | 企业知识库 | 企业主知识库 |
 
-推荐规则：
+一次创作最多选择 3 个知识库。
 
-| 场景 | 选择上限 | 说明 |
-|---|---:|---|
-| 个人空间 | 1-2 个 | 避免个人知识库过多导致上下文混乱 |
-| 团队空间 | 最多 3 个 | 企业主知识库 + 团队知识库 + 可选个人知识库 |
-| 企业空间 | 最多 2 个 | 企业主知识库 + 企业专题知识库 |
+企业强制知识库必须自动选中，用户不能取消。
 
-为什么不建议无限多选：
+### 3.4 无知识库场景
 
-1. RAG 检索噪音会变大；
-2. Prompt 上下文会变长；
-3. 规则冲突会增多；
-4. 用户难以理解最终为什么生成这样的结果；
-5. 成本和响应时间会上升。
+当用户没有知识库，且当前 Space 无强制规则时，系统必须允许用户直接输入需求并开始创作。
 
-### 3.5 推荐默认选择逻辑
-
-#### C 端个人用户
+此时：
 
 ```text
-默认选择：个人空间 + 最近一次使用的个人知识库。
-如果用户没有知识库，则允许直接输入提示词进入节点流。
-```
-
-#### 团队用户
-
-```text
-默认选择：当前团队空间 + 团队主知识库。
-如果所属企业配置了强制企业知识库，则自动附加企业知识库，且不可取消。
-```
-
-#### 企业用户
-
-```text
-默认选择：企业空间 + 企业主知识库。
-企业知识库通常为强制启用。
+品牌约束节点状态 = skipped
+跳过原因 = 当前创作未选择知识库，且无强制品牌规则
 ```
 
 ---
 
-## 4. 节点一：需求翻译节点
+## 4. 节点状态规则
 
-### 4.1 节点目标
+所有节点必须具备统一状态。
 
-将用户随意输入的自然语言，翻译成结构化 Creative Brief，让用户确认 AI 是否理解正确。
-
-该节点是 Brand-Flow 的「翻译官」能力核心。
-
-### 4.2 卡片字段是写死还是 AI 自己分析？
-
-建议采用：
-
-```text
-字段结构固定，字段内容由 AI 分析生成。
+```ts
+type WorkflowNodeStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'stale'
+  | 'skipped';
 ```
 
-也就是说，前端展示卡片的栏目是固定的，例如：
+| 状态 | 含义 |
+|---|---|
+| pending | 节点尚未执行 |
+| running | 节点正在执行 |
+| completed | 节点执行完成 |
+| failed | 节点执行失败 |
+| stale | 节点产物已失效，必须重新执行 |
+| skipped | 节点被系统跳过 |
+
+---
+
+## 5. 节点通用数据结构
+
+所有节点必须使用统一基础结构。
+
+```ts
+type WorkflowNodeType =
+  | 'brief'
+  | 'brand_constraint'
+  | 'creative_direction'
+  | 'prompt'
+  | 'image_generation'
+  | 'composition'
+  | 'brand_evaluation';
+
+interface WorkflowNode {
+  id: string;
+  workflowId: string;
+  type: WorkflowNodeType;
+  title: string;
+
+  status: WorkflowNodeStatus;
+
+  input: Record<string, any>;
+  output: Record<string, any>;
+
+  editableFields: string[];
+  lockedFields: string[];
+
+  userModified: boolean;
+  version: number;
+
+  skipReason?: string;
+
+  startedAt?: Date;
+  completedAt?: Date;
+  errorMessage?: string;
+}
+```
+
+后端必须保存每个节点的 `input`、`output`、`status`、`version`。  
+前端必须基于节点状态展示节点流。  
+用户修改节点后，后端必须更新该节点 `version`，并将受影响后置节点标记为 `stale`。
+
+---
+
+# 6. 节点一：需求翻译节点
+
+## 6.1 节点目标
+
+需求翻译节点负责把用户自然语言转成结构化 Creative Brief。
+
+该节点必须完成 5 件事：
+
+```text
+识别用户想生成什么类型的作品
+识别作品是纯图片还是图文成片
+识别用户是否需要后期叠加文字/Logo/文案
+识别画面中是否允许出现自然场景文字
+生成后续节点可消费的结构化 Brief
+```
+
+---
+
+## 6.2 输入
+
+```ts
+interface BriefNodeInput {
+  originalPrompt: string;
+  spaceId: string;
+  spaceType: SpaceType;
+  selectedKnowledgeBaseIds: string[];
+}
+```
+
+---
+
+## 6.3 输出
+
+```ts
+interface CreativeBrief {
+  projectType: {
+    value:
+      | 'poster'
+      | 'social_post'
+      | 'banner'
+      | 'product_ad'
+      | 'cover'
+      | 'landscape'
+      | 'illustration'
+      | 'concept_art'
+      | 'background'
+      | 'avatar'
+      | 'other';
+    label: string;
+    confidence: number;
+    source: 'user_input' | 'inferred' | 'default';
+  };
+
+  outputMode: 'pure_image' | 'graphic_design';
+
+  needsComposition: boolean;
+
+  textIntent: {
+    hasUserText: boolean;
+    textRole: 'none' | 'scene_text' | 'overlay_text' | 'both';
+    overlayTexts: {
+      title?: string;
+      subtitle?: string;
+      slogan?: string;
+      cta?: string;
+    };
+    sceneTextDescription?: string;
+  };
+
+  targetPlatform: {
+    value: 'xiaohongshu' | 'wechat' | 'douyin' | 'bilibili' | 'ecommerce' | 'custom' | 'unknown';
+    label: string;
+    confidence: number;
+    source: 'user_input' | 'inferred' | 'default';
+  };
+
+  aspectRatio: {
+    value: '1:1' | '3:4' | '4:5' | '9:16' | '16:9' | 'custom';
+    confidence: number;
+    source: 'user_input' | 'inferred' | 'default';
+  };
+
+  targetAudience: string[];
+  coreSubject: string;
+  scene: string;
+
+  mood: string[];
+  visualStyle: string[];
+  colorTone: string[];
+
+  copywriting: {
+    title?: string;
+    subtitle?: string;
+    slogan?: string;
+    cta?: string;
+  };
+
+  mustInclude: string[];
+  mustAvoid: string[];
+}
+```
+
+---
+
+## 6.4 outputMode 判定规则
+
+系统必须在需求翻译节点判定 `outputMode`。
+
+| 用户需求 | outputMode | needsComposition |
+|---|---|---|
+| 生成风景图、插画、头像、背景、概念图 | pure_image | false |
+| 生成海报、封面、广告图、电商图、宣传图 | graphic_design | true |
+| 用户明确要求“标题写”“上面加字”“加 Logo”“加宣传语” | graphic_design | true |
+| 用户只要求画面中自然存在招牌、路牌、店名 | pure_image | false |
+| 用户同时要求场景文字和标题文案 | graphic_design | true |
+
+示例：
+
+```text
+用户输入：生成一张黄山日出的风景图
+结果：outputMode = pure_image，needsComposition = false
+```
+
+```text
+用户输入：做一张黄山旅游宣传海报，标题写“云海日出，梦回黄山”
+结果：outputMode = graphic_design，needsComposition = true
+```
+
+---
+
+## 6.5 textIntent 判定规则
+
+系统必须区分场景文字和叠加文字。
+
+| textRole | 定义 | 示例 | 后续处理 |
+|---|---|---|---|
+| none | 用户没有要求任何文字 | 生成一张西湖夜景图 | 底图不生成文字，图文合成跳过 |
+| scene_text | 文字是画面场景的一部分 | 街边招牌写着“江南茶馆” | 允许底图生成场景文字，图文合成跳过 |
+| overlay_text | 文字是用户要强调的标题/文案 | 标题写“梦回江南” | 底图禁止生成该文字，由图文合成叠加 |
+| both | 同时存在场景文字和叠加文字 | 招牌写“江南茶馆”，标题写“梦回江南” | 场景文字进底图，标题进图文合成 |
+
+### 6.5.1 overlay_text 触发词
+
+出现以下表达时，系统必须判定为 `overlay_text` 或 `both`：
+
+```text
+标题写
+上面写
+加上文字
+海报文案是
+主标题
+副标题
+slogan
+宣传语
+按钮文案
+CTA
+```
+
+### 6.5.2 scene_text 触发词
+
+出现以下表达时，系统必须判定为 `scene_text` 或 `both`：
+
+```text
+招牌上写着
+路牌显示
+墙上有
+店名是
+画面中有文字
+背景里有
+门头写着
+```
+
+---
+
+## 6.6 前端展示规则
+
+前端必须用固定卡片结构展示 Creative Brief。
+
+卡片字段固定为：
 
 ```text
 作品类型
+输出模式
+文字处理方式
 目标平台
 画面比例
 目标受众
@@ -180,282 +407,357 @@ type SpaceType = 'personal' | 'team' | 'enterprise';
 必须避免
 ```
 
-但每个栏目里的内容由 AI 根据用户输入自动生成。
+字段结构由产品固定。  
+字段内容由 AI 生成。  
+用户不能新增字段类型。  
+用户可以修改字段内容。
 
-这样做的原因：
+### 6.6.1 文字处理方式卡片
 
-1. 固定字段能保证前端 UI 稳定；
-2. 固定字段能保证后端数据结构稳定；
-3. AI 负责填充内容，保持灵活性；
-4. 用户容易理解和修改；
-5. 后续节点可以稳定消费这些字段。
+前端必须展示“文字处理方式”卡片。
 
-### 4.3 技术实现方式
-
-后端为需求翻译节点设计一个稳定 JSON Schema，调用大模型时要求模型严格按 Schema 输出。
-
-建议输出结构：
-
-```ts
-interface CreativeBrief {
-  projectType: {
-    value: 'poster' | 'social_post' | 'banner' | 'product_ad' | 'cover' | 'other';
-    label: string;
-    confidence: number;
-    source: 'user_input' | 'inferred' | 'default';
-  };
-  targetPlatform: {
-    value: 'xiaohongshu' | 'wechat' | 'douyin' | 'bilibili' | 'ecommerce' | 'custom' | 'unknown';
-    label: string;
-    confidence: number;
-    source: 'user_input' | 'inferred' | 'default';
-  };
-  aspectRatio: {
-    value: '1:1' | '3:4' | '4:5' | '9:16' | '16:9' | 'custom';
-    confidence: number;
-    source: 'user_input' | 'inferred' | 'default';
-  };
-  targetAudience: string[];
-  coreSubject: string;
-  scene: string;
-  mood: string[];
-  visualStyle: string[];
-  colorTone: string[];
-  copywriting: {
-    title?: string;
-    subtitle?: string;
-    slogan?: string;
-    cta?: string;
-  };
-  mustInclude: string[];
-  mustAvoid: string[];
-  clarificationQuestions?: string[];
-}
-```
-
-### 4.4 字段置信度
-
-AI 应为关键字段返回 confidence。
-
-示例：
-
-```json
-{
-  "targetPlatform": {
-    "value": "xiaohongshu",
-    "label": "小红书",
-    "confidence": 0.48,
-    "source": "inferred"
-  }
-}
-```
-
-前端展示：
+可选项固定为：
 
 ```text
-发布平台：小红书
-系统推测，置信度较低，可修改。
+纯图片，不添加文字
+画面中自然出现文字
+后期叠加标题/Logo/文案
+两者都有
 ```
 
-### 4.5 用户可操作内容
+用户修改该卡片后，系统必须同步更新：
 
-用户可以：
+```text
+outputMode
+needsComposition
+textIntent.textRole
+```
 
-1. 修改字段值；
-2. 添加标签；
-3. 删除标签；
-4. 修改文案；
-5. 补充额外要求；
-6. 确认进入下一节点。
+---
 
-### 4.6 节点输出
+## 6.7 用户操作
+
+用户必须能执行以下操作：
+
+| 操作 | 说明 |
+|---|---|
+| 修改字段值 | 修改作品类型、平台、比例、主体等 |
+| 修改输出模式 | 在纯图片和图文成片之间切换 |
+| 修改文字处理方式 | 切换 none、scene_text、overlay_text、both |
+| 增加标签 | 增加情绪、风格、色彩、必须包含项 |
+| 删除标签 | 删除 AI 理解错误的标签 |
+| 修改文案 | 修改标题、副标题、slogan、CTA |
+| 确认节点 | 确认后进入品牌约束节点 |
+
+---
+
+## 6.8 技术实现要求
+
+AI 调用必须使用固定 JSON Schema 输出。  
+后端必须校验 AI 输出字段完整性。  
+如果 AI 输出缺少必填字段，后端必须补默认值并记录 `source: 'default'`。  
+关键字段必须包含 `confidence`。  
+当 `confidence < 0.6` 时，前端必须展示“系统推测”标记。
+
+---
+
+# 7. 节点二：品牌约束节点
+
+## 7.1 节点目标
+
+品牌约束节点负责从用户选中的知识库中匹配品牌素材、规则、禁用项、Prompt 模板和参考案例，并形成后续节点必须使用的 BrandConstraintPackage。
+
+该节点面向 C 端时表现为素材与知识匹配。  
+该节点面向 B 端时表现为品牌规则与企业约束匹配。  
+后端节点名称统一为 `brand_constraint`。
+
+---
+
+## 7.2 运行与跳过规则
+
+当满足任一条件时，品牌约束节点必须运行：
+
+```text
+用户选择了至少 1 个知识库
+当前 Space 存在企业强制知识库
+当前 Space 存在强制品牌规则
+```
+
+当全部条件都不满足时，品牌约束节点必须跳过：
+
+```text
+status = skipped
+skipReason = 当前创作未选择知识库，且无强制品牌规则
+```
+
+---
+
+## 7.3 输入
 
 ```ts
-interface BriefNodeOutput {
-  originalPrompt: string;
+interface BrandConstraintInput {
+  spaceId: string;
+  spaceType: SpaceType;
+  selectedKnowledgeBaseIds: string[];
   creativeBrief: CreativeBrief;
-  userEdited: boolean;
-  editedAt?: Date;
 }
 ```
 
 ---
 
-## 5. 节点二：知识库匹配节点
+## 7.4 匹配内容类型
 
-### 5.1 节点命名
-
-推荐使用：
-
-```text
-知识库匹配节点
-```
-
-原因：
-
-1. 该名称兼容 C 端和 B 端；
-2. C 端用户可能只是想调用自己的素材，不一定是品牌约束；
-3. B 端企业场景下，该节点内部仍可包含品牌规则和强制项；
-4. 「知识库匹配」比「品牌约束」更宽泛，更适合平台级产品。
-
-前端面向用户可显示为：
-
-```text
-知识库匹配
-```
-
-在 B 端企业空间中可补充说明：
-
-```text
-已自动应用企业品牌规则。
-```
-
-### 5.2 节点目标
-
-根据需求翻译节点输出的 Creative Brief，从用户选择的知识库中检索并推荐相关素材、文本、Prompt 模板和规则，形成可供后续节点调用的 Knowledge Match Package。
-
-### 5.3 输入
-
-```ts
-interface KnowledgeMatchInput {
-  spaceId: string;
-  spaceType: 'personal' | 'team' | 'enterprise';
-  selectedKnowledgeBaseIds: string[];
-  creativeBrief: CreativeBrief;
-  originalPrompt: string;
-}
-```
-
-### 5.4 匹配内容类型
-
-MVP/正式上线第一版建议匹配：
+系统必须匹配以下内容：
 
 ```text
 Logo
+标准色
 图片素材
+产品图
+参考图
 文本资料
 Prompt 模板
 禁用规则
-标准色
-参考案例
+品牌规则
+优秀案例
+Bad Case
 ```
 
-### 5.5 推荐结果分级
+---
 
-匹配结果分为 3 类：
+## 7.5 匹配结果分级
 
-| 分类 | 说明 | 用户是否可取消 |
+匹配结果必须分为三类：
+
+| 分类 | 含义 | 用户能否取消 |
 |---|---|---|
-| 强制使用 | 企业规则、主 Logo、禁用规则等 | 不可取消 |
-| 推荐使用 | 高相关素材、标准色、产品图、Prompt 模板 | 可取消 |
-| 可选参考 | 历史案例、灵感图、相似风格素材 | 可选 |
+| requiredItems | 强制使用项 | 不能取消 |
+| recommendedItems | 推荐使用项 | 可以取消 |
+| optionalItems | 可选参考项 | 可以选择 |
 
-### 5.6 推荐理由
-
-每个匹配项必须有推荐理由。
-
-示例：
+强制使用项来源固定为：
 
 ```text
-素材：冰咖啡产品图 03
-推荐理由：与需求中的“夏日、冰咖啡、清爽”高度匹配。
+企业 Logo 强制规则
+企业标准色强制规则
+企业禁用规则
+团队管理员设置的强制素材
+用户本次创作中明确要求必须使用的素材
 ```
 
-```text
-规则：禁止暗黑复古风格
-推荐理由：当前企业品牌规范要求新品宣传图保持明亮、年轻、清爽。
-```
+---
 
-### 5.7 节点输出
+## 7.6 推荐理由规则
+
+每个匹配项必须包含推荐理由。
 
 ```ts
-interface KnowledgeMatchPackage {
-  requiredItems: MatchedKnowledgeItem[];
-  recommendedItems: MatchedKnowledgeItem[];
-  optionalItems: MatchedKnowledgeItem[];
-  selectedItems: MatchedKnowledgeItem[];
-  colorRules: string[];
-  logoRules: string[];
-  copyRules: string[];
-  styleRules: string[];
-  negativeRules: string[];
-  promptTemplates: MatchedKnowledgeItem[];
-}
-
 interface MatchedKnowledgeItem {
   id: string;
   knowledgeBaseId: string;
   type: string;
   title: string;
+
   content?: string;
   fileUrl?: string;
   thumbnailUrl?: string;
+
   matchScore: number;
   matchReason: string;
+
   required: boolean;
   selected: boolean;
 }
 ```
 
-### 5.8 用户可操作内容
+`matchReason` 不能为空。
 
-用户可以：
+示例：
 
-1. 查看推荐理由；
-2. 勾选/取消推荐项；
-3. 选择可选参考项；
-4. 切换知识库重新匹配；
-5. 查看强制项但不能取消；
-6. 确认进入 Prompt 生成节点。
+```text
+推荐理由：该产品图与需求中的“夏日冰咖啡新品”匹配，且属于当前团队知识库中的 active 素材。
+```
 
 ---
 
-## 6. 节点三：Prompt 生成节点
+## 7.7 输出
 
-### 6.1 节点目标
+```ts
+interface BrandConstraintPackage {
+  requiredItems: MatchedKnowledgeItem[];
+  recommendedItems: MatchedKnowledgeItem[];
+  optionalItems: MatchedKnowledgeItem[];
+  selectedItems: MatchedKnowledgeItem[];
 
-将原始需求、Creative Brief 和 Knowledge Match Package 转化为结构化 Prompt 方案。
+  colorRules: string[];
+  logoRules: string[];
+  copyRules: string[];
+  styleRules: string[];
+  negativeRules: string[];
 
-该节点不应只输出一大段 Prompt，而应拆分为多个模块，方便用户理解、编辑和后续节点消费。
-
-### 6.2 Prompt 拆分原则
-
-Prompt 需要拆成两类：
-
-```text
-Image Prompt：给图像生成模型使用，负责生成底图。
-Layout Plan：给排版与合成节点使用，负责文字、Logo、版式规划。
+  promptTemplates: MatchedKnowledgeItem[];
+}
 ```
 
-关键原则：
+---
+
+## 7.8 用户操作
+
+用户必须能执行以下操作：
+
+| 操作 | 说明 |
+|---|---|
+| 查看匹配项 | 查看素材、规则、模板 |
+| 查看推荐理由 | 每个匹配项都能查看原因 |
+| 选择推荐项 | 勾选或取消推荐素材 |
+| 选择可选项 | 添加可选参考素材 |
+| 查看强制项 | 强制项只读展示 |
+| 确认节点 | 确认后进入创意方案节点 |
+
+用户不能取消 requiredItems。  
+前端必须对 requiredItems 禁用取消操作。  
+后端必须校验 requiredItems 未被用户移除。
+
+---
+
+# 8. 节点三：创意方案节点
+
+## 8.1 节点目标
+
+创意方案节点负责基于 Creative Brief 和 BrandConstraintPackage 生成 3 个创作方向，让用户在正式生成 Prompt 前先选择创作方向。
+
+该节点必须回答：
 
 ```text
-图像生成阶段默认不生成中文文字。
-最终标题、Logo、卖点文案由排版与合成节点后期叠加。
+这张图要往哪个创意方向做？
 ```
 
-### 6.3 结构化 Prompt 模块
+---
 
-前端建议展示以下模块：
+## 8.2 输入
+
+```ts
+interface CreativeDirectionInput {
+  originalPrompt: string;
+  creativeBrief: CreativeBrief;
+  brandConstraintPackage?: BrandConstraintPackage;
+}
+```
+
+当品牌约束节点被跳过时，`brandConstraintPackage` 为空。
+
+---
+
+## 8.3 输出
+
+系统必须输出 3 个创意方案。
+
+```ts
+interface CreativeDirectionOutput {
+  directions: CreativeDirection[];
+  selectedDirectionId?: string;
+}
+
+interface CreativeDirection {
+  id: string;
+  title: string;
+  summary: string;
+
+  visualStyle: string[];
+  composition: string;
+  colorTone: string[];
+  sceneDescription: string;
+
+  suitablePlatform: string[];
+  reason: string;
+
+  riskNotes: string[];
+}
+```
+
+`directions.length` 必须等于 3。
+
+---
+
+## 8.4 创意方案生成规则
+
+系统生成的 3 个方案必须差异明确。
+
+三个方案必须在以下至少两个维度上存在差异：
 
 ```text
-主体描述
-场景背景
-风格方向
+视觉风格
 构图方式
-光影效果
-品牌/知识库约束
-文字安全区域
-负面提示词
+情绪基调
+色彩倾向
+适用平台
+内容侧重点
+```
+
+示例：
+
+```text
+方案 A：清爽商业摄影风
+方案 B：潮流插画社媒风
+方案 C：极简品牌广告风
+```
+
+---
+
+## 8.5 用户操作
+
+用户必须能执行以下操作：
+
+| 操作 | 说明 |
+|---|---|
+| 查看方案 | 查看 3 个创意方向 |
+| 选择方案 | 必须选择 1 个方案进入下一节点 |
+| 重新生成方案 | 重新生成 3 个方案 |
+| 编辑补充要求 | 用户可以补充方向要求 |
+| 确认节点 | 确认后进入 Prompt 生成节点 |
+
+用户只能选择一个主方案。  
+当前版本不支持合并多个方案。
+
+---
+
+# 9. 节点四：Prompt 生成节点
+
+## 9.1 节点目标
+
+Prompt 生成节点负责把 Creative Brief、BrandConstraintPackage 和用户选择的 CreativeDirection 转化为：
+
+```text
+底图生成 Prompt
+Negative Prompt
+排版计划 Layout Plan
 模型参数建议
 ```
 
-### 6.4 输出结构
+该节点必须明确区分底图生成和图文合成。
+
+---
+
+## 9.2 输入
+
+```ts
+interface PromptNodeInput {
+  originalPrompt: string;
+  creativeBrief: CreativeBrief;
+  brandConstraintPackage?: BrandConstraintPackage;
+  selectedCreativeDirection: CreativeDirection;
+}
+```
+
+---
+
+## 9.3 输出
 
 ```ts
 interface PromptPlan {
   imagePrompt: string;
   negativePrompt: string;
+
   promptSections: {
     subject: string;
     scene: string;
@@ -463,63 +765,214 @@ interface PromptPlan {
     composition: string;
     lighting: string;
     brandConstraints: string;
-    textSafeArea: string;
+    textSafeArea?: string;
   };
-  layoutPlan: {
-    templateIntent: 'top_title' | 'left_text_right_image' | 'center_title' | 'bottom_bar' | 'social_cover' | 'ecommerce';
+
+  layoutPlan: null | {
+    templateIntent:
+      | 'top_title'
+      | 'left_text_right_image'
+      | 'center_title'
+      | 'bottom_bar'
+      | 'social_cover'
+      | 'ecommerce'
+      | 'minimal_blank';
+
     titlePosition: string;
     subtitlePosition?: string;
-    logoPosition: string;
+    logoPosition?: string;
     safeArea: string;
     textHierarchy: string;
   };
+
   modelParams: {
     aspectRatio: string;
-    generationMode: GenerationMode;
-    candidateCount: number;
+    generationMode:
+      | 'realistic_photo'
+      | 'commercial_poster'
+      | 'illustration'
+      | 'fast_draft'
+      | 'high_quality';
+
+    candidateCount: 4;
   };
-  ruleWarnings?: string[];
+
+  ruleWarnings: string[];
 }
 ```
 
-### 6.5 用户可操作内容
+---
 
-用户可以：
+## 9.4 图文分支规则
 
-1. 查看结构化 Prompt；
-2. 修改 Image Prompt；
-3. 修改 Negative Prompt；
-4. 修改文字安全区域描述；
-5. 修改推荐构图；
-6. 一键恢复 AI 推荐；
-7. 触发规则校验。
+### 9.4.1 needsComposition = true
 
-### 6.6 Prompt 规则校验
+当 `CreativeBrief.needsComposition = true` 时：
 
-用户修改 Prompt 后，需要检测：
+```text
+layoutPlan 必须存在
+imagePrompt 必须要求底图预留文字安全区
+imagePrompt 不得要求模型直接生成最终中文标题、Logo、卖点文案
+negativePrompt 必须包含“乱码文字、错误文字、不可读文字”等限制
+```
 
-1. 是否违反企业/团队禁用规则；
-2. 是否遗漏强制使用素材；
-3. 是否要求模型直接生成中文文字；
-4. 是否改变目标比例；
-5. 是否删除必要主体；
-6. 是否与 Creative Brief 冲突。
+### 9.4.2 needsComposition = false
+
+当 `CreativeBrief.needsComposition = false` 时：
+
+```text
+layoutPlan 必须为 null
+imagePrompt 不要求预留文字安全区
+图文合成节点后续必须 skipped
+```
+
+### 9.4.3 textRole = scene_text
+
+当 `CreativeBrief.textIntent.textRole = 'scene_text'` 时：
+
+```text
+imagePrompt 可以描述场景中自然存在的招牌、路牌、店名等文字
+layoutPlan 必须为 null
+图文合成节点必须 skipped
+```
+
+### 9.4.4 textRole = both
+
+当 `CreativeBrief.textIntent.textRole = 'both'` 时：
+
+```text
+imagePrompt 只描述场景文字
+layoutPlan 只处理后期叠加文字
+不得把 overlayTexts 写入 imagePrompt 作为模型生成文字要求
+```
 
 ---
 
-## 7. 节点四：图像生成节点
+## 9.5 前端展示规则
 
-### 7.1 节点目标
+前端必须展示结构化 Prompt，而不是只展示一整段文本。
 
-根据 Prompt 生成节点输出的 Image Prompt 和 Negative Prompt，调用底层模型生成 4 张候选底图。
+展示模块固定为：
 
-注意：该节点生成的是「底图」，不是最终图文成片。
+```text
+主体描述
+场景背景
+风格方向
+构图方式
+光影效果
+品牌约束
+文字安全区域
+Negative Prompt
+排版计划
+生成模式
+```
 
-### 7.2 前端“生成模式”与后端模型映射
+当 `layoutPlan = null` 时，前端必须显示：
 
-普通用户不一定理解 Flux、SDXL、LoRA、Sampler 等模型概念。前端不建议直接让普通用户选择模型名称，而应展示更容易理解的生成模式。
+```text
+当前任务为纯图片生成，不执行图文合成。
+```
 
-前端展示：
+---
+
+## 9.6 用户操作
+
+用户必须能执行以下操作：
+
+| 操作 | 说明 |
+|---|---|
+| 修改 Image Prompt | 修改底图生成提示词 |
+| 修改 Negative Prompt | 修改负面提示词 |
+| 修改文字安全区 | 仅 needsComposition=true 时可用 |
+| 修改生成模式 | 选择真实摄影、商业海报、插画风格等 |
+| 恢复 AI 版本 | 恢复系统生成内容 |
+| 确认节点 | 确认后进入底图生成节点 |
+
+---
+
+## 9.7 Prompt 校验规则
+
+用户修改 Prompt 后，系统必须校验以下内容：
+
+| 校验项 | 处理 |
+|---|---|
+| 违反禁用规则 | 阻止进入下一节点 |
+| 删除强制素材要求 | 阻止进入下一节点 |
+| needsComposition=true 时要求模型直接生成最终中文标题 | 阻止进入下一节点 |
+| 与 Creative Brief 冲突 | 弹出风险提示，用户确认后继续 |
+| 删除主体描述 | 阻止进入下一节点 |
+
+---
+
+# 10. 节点五：底图生成节点
+
+## 10.1 节点目标
+
+底图生成节点负责调用生图模型生成 4 张候选底图。
+
+该节点输出的是底图，不是最终图文成片。
+
+当 `needsComposition = true` 时，底图中不得包含最终中文标题、Logo 和卖点文案。  
+当 `textRole = scene_text` 或 `textRole = both` 时，底图允许包含自然场景文字。
+
+---
+
+## 10.2 输入
+
+```ts
+interface ImageGenerationInput {
+  imagePrompt: string;
+  negativePrompt: string;
+  aspectRatio: string;
+  generationMode:
+    | 'realistic_photo'
+    | 'commercial_poster'
+    | 'illustration'
+    | 'fast_draft'
+    | 'high_quality';
+
+  candidateCount: 4;
+}
+```
+
+---
+
+## 10.3 生成模式与模型映射
+
+前端展示生成模式。  
+后端根据生成模式映射具体模型和参数。
+
+```ts
+const generationModeMap = {
+  realistic_photo: {
+    model: 'flux-pro',
+    steps: 30,
+    guidanceScale: 3.5
+  },
+  commercial_poster: {
+    model: 'flux-pro',
+    steps: 35,
+    guidanceScale: 4
+  },
+  illustration: {
+    model: 'sdxl-illustration',
+    steps: 30,
+    guidanceScale: 7
+  },
+  fast_draft: {
+    model: 'flux-schnell',
+    steps: 8,
+    guidanceScale: 2
+  },
+  high_quality: {
+    model: 'flux-pro',
+    steps: 45,
+    guidanceScale: 4.5
+  }
+};
+```
+
+用户看到的是：
 
 ```text
 真实摄影
@@ -529,82 +982,33 @@ interface PromptPlan {
 高质量精修
 ```
 
-后端根据生成模式映射到具体模型与参数。
-
-示例：
-
-```ts
-type GenerationMode =
-  | 'realistic_photo'
-  | 'commercial_poster'
-  | 'illustration'
-  | 'fast_draft'
-  | 'high_quality';
-```
-
-映射示例：
-
-```ts
-const generationModeMap = {
-  realistic_photo: {
-    model: 'flux-pro',
-    defaultSteps: 30,
-    guidanceScale: 3.5
-  },
-  commercial_poster: {
-    model: 'flux-pro',
-    defaultSteps: 35,
-    guidanceScale: 4
-  },
-  illustration: {
-    model: 'sdxl-illustration',
-    defaultSteps: 30,
-    guidanceScale: 7
-  },
-  fast_draft: {
-    model: 'flux-schnell',
-    defaultSteps: 8,
-    guidanceScale: 2
-  },
-  high_quality: {
-    model: 'flux-pro',
-    defaultSteps: 45,
-    guidanceScale: 4.5
-  }
-};
-```
-
-产品解释：
+系统内部使用的是：
 
 ```text
-用户选择的是生成目标，系统负责选择合适模型。
-高级用户可以在高级设置中查看或切换具体模型。
+具体模型
+steps
+guidanceScale
+尺寸
+seed
 ```
 
-### 7.3 为什么生成 4 张？
+当前版本不开放用户自定义模型。
 
-AI 生图天然存在随机性，单张生成仍然容易像抽奖。生成 4 张候选图可以让系统和用户共同选择最优结果。
+---
 
-默认规则：
-
-```text
-每次生成 4 张候选底图。
-AI 质检节点分别评分。
-系统推荐分数最高的一张进入放大展示和排版合成。
-用户可以手动改选。
-```
-
-### 7.4 节点输出
+## 10.4 输出
 
 ```ts
 interface ImageGenerationOutput {
-  generationMode: GenerationMode;
+  generationMode: string;
   model: string;
+
   prompt: string;
   negativePrompt: string;
   aspectRatio: string;
+
   candidates: GeneratedImage[];
-  selectedImageId?: string;
+
   durationMs: number;
   cost?: number;
 }
@@ -615,82 +1019,197 @@ interface GeneratedImage {
   seed?: string;
   width: number;
   height: number;
-  rawModelResponse?: Record<string, any>;
 }
 ```
 
-### 7.5 用户可操作内容
-
-用户可以：
-
-1. 查看 4 张候选图；
-2. 手动选择其中一张；
-3. 重新生成 4 张；
-4. 切换生成模式；
-5. 查看生成参数；
-6. 进入排版与合成节点。
-
-### 7.6 关于用户自定义模型
-
-正式上线第一版暂不支持用户自定义模型。
-
-原因：
-
-1. API Key 管理复杂；
-2. 模型参数差异大；
-3. 调用失败率不可控；
-4. 企业数据可能泄露；
-5. 成本统计困难；
-6. 会拉高产品复杂度。
-
-建议等核心节点流稳定后再做 P2 版本。
+`candidates.length` 必须等于 4。
 
 ---
 
-## 8. 节点五：排版与合成节点
+## 10.5 用户操作
 
-### 8.1 节点定位
+用户必须能执行以下操作：
 
-排版与合成节点是 Brand-Flow 的核心差异化节点之一。
+| 操作 | 说明 |
+|---|---|
+| 查看 4 张候选图 | 展示底图结果 |
+| 查看生成参数 | 展示模型、seed、尺寸 |
+| 重新生成 | 重新生成 4 张候选图 |
+| 切换生成模式 | 回到 Prompt 节点或本节点重新生成 |
+| 选择底图 | 用户可以手动选择一张进入后续流程 |
 
-它的职责不是展示大模型绘图过程，而是：
+系统默认选择品牌质检节点评分最高的候选图。  
+用户手动选择优先级高于系统推荐。
 
-> 在底图生成完成后，将标题、卖点文案、Logo、品牌色、装饰元素等以图层方式叠加到底图上，生成最终图文成片。
+---
 
-该节点的核心价值：
+# 11. 节点六：图文合成节点
 
-1. 图文分离，避免 AI 直接生成中文乱码；
-2. 可控排版，用户可以调整文字和 Logo；
-3. 品牌一致，遵守 Logo、色彩、字体规则；
-4. 可复用，保存图层数据便于二次编辑。
+## 11.1 节点目标
 
-### 8.2 输入
+图文合成节点负责把底图、标题、副标题、Logo、卖点文案和品牌色组合成最终图文成片。
+
+该节点必须实现图文分离：
+
+```text
+底图由生图模型生成。
+文字、Logo、卖点文案由图文合成节点叠加。
+```
+
+---
+
+## 11.2 条件执行规则
+
+图文合成节点不是必跑节点。
+
+当 `CreativeBrief.needsComposition = true` 时：
+
+```text
+status = pending
+底图生成完成后执行图文合成节点
+```
+
+当 `CreativeBrief.needsComposition = false` 时：
+
+```text
+status = skipped
+skipReason = 当前任务为纯图片生成，无需叠加标题、Logo 或营销文案
+```
+
+用户可以在底图生成后手动开启图文合成节点。
+
+用户手动开启后：
+
+```text
+composition.status 从 skipped 改为 pending
+系统生成默认 layoutPlan
+用户进入图文合成编辑器
+```
+
+---
+
+## 11.3 前端展示逻辑
+
+图文合成节点必须支持 3 种前端状态。
+
+### 11.3.1 启用状态
+
+展示：
+
+```text
+图文合成节点
+状态：已启用
+原因：当前任务需要叠加标题、Logo 或营销文案。
+```
+
+展示内容：
+
+```text
+底图
+标题图层
+副标题图层
+Logo 图层
+CTA 图层
+模板选择
+图层编辑器
+```
+
+### 11.3.2 跳过状态
+
+展示：
+
+```text
+图文合成节点
+状态：已跳过
+原因：当前任务为纯图片生成，无需图文合成。
+```
+
+此状态不进入编辑器。  
+右侧直接展示底图生成结果。
+
+### 11.3.3 用户手动开启状态
+
+当用户点击“添加标题/Logo”时，展示：
+
+```text
+你已开启图文合成节点，系统将为当前图片添加文字和图层编辑能力。
+```
+
+系统必须创建默认图层数据。
+
+---
+
+## 11.4 输入
 
 ```ts
 interface CompositionInput {
   selectedBaseImage: GeneratedImage;
+
   creativeBrief: CreativeBrief;
-  knowledgeMatchPackage: KnowledgeMatchPackage;
+  brandConstraintPackage?: BrandConstraintPackage;
   promptPlan: PromptPlan;
+
+  selectedLogo?: MatchedKnowledgeItem;
+
   copywriting: {
     title?: string;
     subtitle?: string;
     slogan?: string;
     cta?: string;
   };
-  selectedLogo?: MatchedKnowledgeItem;
+
   selectedTemplateId?: string;
 }
 ```
 
-### 8.3 输出
+---
+
+## 11.5 内置模板
+
+当前版本必须内置 6 个排版模板：
+
+| 模板 ID | 模板名称 | 使用场景 |
+|---|---|---|
+| top_title | 顶部大标题模板 | 小红书封面、活动海报 |
+| bottom_bar | 底部信息栏模板 | 产品宣传图、公众号配图 |
+| left_text_right_image | 左文右图模板 | Banner、横版宣传图 |
+| center_title | 居中标题模板 | 节日海报、品牌主视觉 |
+| ecommerce | 电商主图模板 | 商品卖点图 |
+| minimal_blank | 极简留白模板 | 高级品牌宣传图 |
+
+---
+
+## 11.6 模板选择规则
+
+系统必须根据以下字段自动选择默认模板：
+
+```text
+targetPlatform
+aspectRatio
+copywriting.title 长度
+copywriting.subtitle 长度
+selectedLogo 是否存在
+底图主体位置
+品牌风格
+```
+
+用户必须能手动切换模板。  
+用户切换模板后，系统必须重新计算文字和 Logo 的默认位置。
+
+---
+
+## 11.7 图层结构
+
+图文合成结果必须保存图层数据。
 
 ```ts
 interface CompositionOutput {
   finalImageUrl: string;
   previewImageUrl: string;
+
   templateId: string;
   layers: CompositionLayer[];
+
   exportSettings: {
     width: number;
     height: number;
@@ -702,16 +1221,21 @@ interface CompositionLayer {
   id: string;
   type: 'background' | 'text' | 'logo' | 'shape' | 'image';
   name: string;
+
   x: number;
   y: number;
   width: number;
   height: number;
+
   rotation: number;
   opacity: number;
+
   locked: boolean;
   visible: boolean;
+
   content?: string;
   assetUrl?: string;
+
   style?: {
     fontFamily?: string;
     fontSize?: number;
@@ -723,229 +1247,208 @@ interface CompositionLayer {
 }
 ```
 
-### 8.4 MVP/正式上线第一版策略
+---
 
-不建议第一版直接做完全智能自动排版。推荐采用：
+## 11.8 用户操作
 
-```text
-模板化排版 + AI 推荐模板 + 用户基础手动调整
-```
+用户必须能执行以下操作：
 
-### 8.5 模板类型
-
-第一版建议内置 6 类模板：
-
-| 模板 | 适用场景 |
+| 操作 | 说明 |
 |---|---|
-| 顶部大标题模板 | 小红书封面、活动海报 |
-| 底部信息栏模板 | 产品宣传图、公众号配图 |
-| 左文右图模板 | Banner、横版宣传图 |
-| 居中标题模板 | 节日海报、品牌主视觉 |
-| 电商主图模板 | 商品卖点图 |
-| 极简留白模板 | 高级品牌宣传图 |
-
-### 8.6 AI 如何选择模板？
-
-AI 根据以下信息推荐模板：
-
-1. 目标平台；
-2. 画面比例；
-3. 文案长度；
-4. 主体位置；
-5. Logo 是否必需；
-6. 底图视觉中心；
-7. 品牌风格。
-
-示例：
-
-```text
-目标平台为小红书，比例为 3:4，标题较短，主体位于画面下方，因此推荐顶部大标题模板。
-```
-
-### 8.7 用户可操作能力
-
-第一版建议支持：
-
-1. 切换排版模板；
-2. 修改标题、副标题、CTA；
-3. 拖动文字位置；
-4. 修改字号；
-5. 修改文字颜色；
-6. 移动 Logo；
-7. 缩放 Logo；
-8. 隐藏或显示副标题；
-9. 导出最终图片；
-10. 保存为作品。
-
-暂不建议第一版支持：
-
-1. 复杂钢笔工具；
-2. 多图层蒙版；
-3. 高级滤镜；
-4. PS 级别图层混合模式；
-5. 复杂自动抠图；
-6. 任意区域局部重绘。
-
-### 8.8 自动排版规则
-
-第一版可实现基础规则：
-
-1. 文本不能遮挡主体中心；
-2. Logo 不得贴边，保留安全边距；
-3. 标题字号根据画布尺寸自适应；
-4. 文本颜色需与背景有足够对比；
-5. 标题最多两行，超长自动缩小或提示用户修改；
-6. 企业强制 Logo 必须出现在成片中；
-7. 企业标准色优先用于文字或装饰色。
-
-### 8.9 排版节点失败场景
-
-| 失败原因 | 处理方式 |
-|---|---|
-| 未选择底图 | 提示返回图像生成节点 |
-| 必须使用 Logo 但 Logo 缺失 | 提示返回知识库匹配节点 |
-| 文案过长无法排版 | 提示用户缩短文案或切换模板 |
-| 背景过于复杂导致文字不可读 | 建议添加文字底板或重新生成底图 |
-| 导出失败 | 保留图层数据，允许重试 |
-
-### 8.10 为什么该节点必须保存图层数据？
-
-因为后续功能都依赖图层数据：
-
-1. 用户二次编辑；
-2. 版本对比；
-3. AI 质检定位问题；
-4. 只重跑排版节点；
-5. 多尺寸适配；
-6. 作品复用。
+| 手动开启图文合成 | 在 skipped 状态下开启该节点 |
+| 切换模板 | 选择 6 个内置模板之一 |
+| 修改标题 | 编辑 title |
+| 修改副标题 | 编辑 subtitle |
+| 修改 CTA | 编辑 cta |
+| 拖动文字 | 修改 text layer 坐标 |
+| 修改字号 | 修改 fontSize |
+| 修改颜色 | 修改 color |
+| 移动 Logo | 修改 logo layer 坐标 |
+| 缩放 Logo | 修改 logo layer 宽高 |
+| 隐藏图层 | 设置 visible=false |
+| 导出图片 | 导出 PNG/JPG/WebP |
+| 保存作品 | 保存成品和图层数据 |
 
 ---
 
-## 9. 节点六：AI 质检节点
+## 11.9 自动排版校验规则
 
-### 9.1 节点定位
+图文合成节点必须执行以下校验：
 
-AI 质检节点是 Brand-Flow 的另一个核心差异化节点。
+| 规则 | 处理 |
+|---|---|
+| 文本遮挡主体中心 | 自动移动到安全区 |
+| Logo 贴边 | 保留最小 5% 画布边距 |
+| 标题超过两行 | 自动缩小字号 |
+| 文字与背景对比度不足 | 自动添加半透明底板 |
+| 企业强制 Logo 缺失 | 阻止导出 |
+| 禁用色被使用 | 阻止导出 |
+| 标题为空且 Brief 要求标题 | 阻止导出 |
 
-它的职责不是简单给一张图打分，而是：
+---
 
-> 根据用户原始需求、Creative Brief、知识库匹配结果、Prompt 方案、候选底图和最终合成图，进行多维度评分、问题定位和回溯建议。
+## 11.10 输出
 
-### 9.2 质检分两阶段
+```ts
+interface CompositionNodeOutput {
+  composition: CompositionOutput | null;
+  userEdited: boolean;
+  editedAt?: Date;
+}
+```
 
-建议 AI 质检分成两个阶段：
+当节点被跳过时：
+
+```ts
+composition = null
+```
+
+---
+
+# 12. 节点七：品牌质检节点
+
+## 12.1 节点目标
+
+品牌质检节点负责对候选底图和最终结果进行评分、问题定位和回溯建议。
+
+该节点必须根据 `needsComposition` 使用不同质检规则。
+
+---
+
+## 12.2 质检阶段
+
+品牌质检包含两个阶段：
 
 ```text
 阶段一：候选底图质检
-阶段二：最终成片质检
+阶段二：最终结果质检
 ```
 
-### 9.3 阶段一：候选底图质检
+阶段一在底图生成后执行。  
+阶段二在图文合成后执行；如果图文合成节点被跳过，则阶段二直接评估选中的底图。
 
-在图像生成节点生成 4 张候选底图后，AI 对每张图分别评分。
+---
 
-评分重点：
+## 12.3 阶段一：候选底图质检
 
-1. 是否符合主体；
-2. 是否符合风格；
-3. 是否符合色调；
-4. 是否有明显畸形；
-5. 是否有文字乱码；
-6. 是否预留了文字安全区；
-7. 是否适合后续叠加 Logo 和标题。
+底图生成节点输出 4 张候选图后，品牌质检节点必须对 4 张候选底图分别评分。
 
-输出：
+### 12.3.1 needsComposition = true 的候选图评分维度
+
+| 维度 | 分值 |
+|---|---:|
+| 需求匹配度 | 25 |
+| 风格匹配度 | 20 |
+| 画面质量 | 20 |
+| 构图可用性 | 20 |
+| 文字安全区 | 15 |
+| 总分 | 100 |
+
+系统必须将 100 分制转换为 10 分制展示。
+
+### 12.3.2 needsComposition = false 的候选图评分维度
+
+| 维度 | 分值 |
+|---|---:|
+| 需求匹配度 | 30 |
+| 画面质量 | 30 |
+| 风格匹配度 | 20 |
+| 构图质量 | 10 |
+| 多余文字/乱码 | 10 |
+| 总分 | 100 |
+
+纯图片场景不得检查 Logo、标题排版、CTA、营销文案。
+
+---
+
+## 12.4 候选图评分输出
 
 ```ts
 interface CandidateImageEvaluation {
   imageId: string;
+
   totalScore: number;
-  dimensionScores: {
-    requirementMatch: number;
-    visualQuality: number;
-    styleMatch: number;
-    compositionUsability: number;
-    textSafeArea: number;
-  };
+
+  dimensionScores: Record<string, number>;
+
   issues: EvaluationIssue[];
   strengths: string[];
+
   recommendation: 'recommended' | 'usable' | 'not_recommended';
 }
 ```
 
-### 9.4 4 张图如何选择？
+---
 
-默认规则：
+## 12.5 候选图选择规则
 
-```text
-AI 推荐总分最高的一张进入排版与合成节点。
-用户可以手动选择任意一张。
-```
+系统必须按以下规则选择候选图：
 
-如果存在至少一张 >= 6 分：
-
-```text
-选择分数最高的一张作为推荐图。
-```
-
-如果 4 张全部低于 6 分：
-
-不建议直接全部打回重构，也不建议强行选择低分图直接进入成片。推荐策略：
-
-```text
-选择最高分图片作为参考，分析共同失败原因，回溯到最可能出问题的节点重新生成。
-```
-
-具体规则：
-
-| 情况 | 处理方式 |
+| 情况 | 系统动作 |
 |---|---|
-| 4 张主体都错 | 回溯 Prompt 生成节点，重写主体描述后重新生成 |
-| 4 张风格都错 | 回溯 Prompt 生成节点或需求翻译节点，修正风格字段 |
-| 4 张构图都不适合放文字 | 回溯 Prompt 生成节点，强化文字安全区要求 |
-| 4 张只是质量略差但方向正确 | 回到图像生成节点重新生成 4 张 |
-| 只有 1-2 张略低于 6 但可修 | 允许用户选择最高分并进入排版，但标记风险 |
+| 至少 1 张候选图评分 ≥ 6 | 默认选择评分最高的候选图 |
+| 4 张候选图全部 < 6，且共同问题是画质差 | 回到底图生成节点重新生成 4 张 |
+| 4 张候选图全部 < 6，且共同问题是主体错误 | 回到 Prompt 生成节点重写主体描述 |
+| 4 张候选图全部 < 6，且共同问题是风格错误 | 回到创意方案节点重新选择方向 |
+| 4 张候选图全部 < 6，且共同问题是文字安全区不足 | 回到 Prompt 生成节点强化安全区 |
+| 用户手动选择低分图 | 允许继续，但标记低质量风险 |
 
-产品按钮建议：
+当 4 张全部低于 6 分时，系统不得自动进入图文合成。  
+只有用户手动确认使用低分图时，系统才能继续后续流程。
+
+---
+
+## 12.6 阶段二：最终结果质检
+
+### 12.6.1 图文成片质检规则
+
+当 `needsComposition = true` 时，最终成片评分维度为：
+
+| 维度 | 权重 |
+|---|---:|
+| 需求匹配度 | 20% |
+| 品牌一致性 | 20% |
+| 素材使用准确性 | 15% |
+| 画面质量 | 15% |
+| 文案与排版 | 20% |
+| 平台适配度 | 10% |
+
+### 12.6.2 纯图片质检规则
+
+当 `needsComposition = false` 时，最终结果评分维度为：
+
+| 维度 | 权重 |
+|---|---:|
+| 需求匹配度 | 30% |
+| 画面质量 | 30% |
+| 风格匹配度 | 20% |
+| 构图质量 | 10% |
+| 多余文字/乱码 | 10% |
+
+纯图片场景不得检查：
 
 ```text
-[按建议重新生成]
-[调整 Prompt 后重试]
-[仍使用最高分图片]
-[返回修改需求]
+Logo 是否出现
+标题是否清晰
+文案层级是否合理
+CTA 是否存在
+排版模板是否合适
 ```
 
-### 9.5 阶段二：最终成片质检
+---
 
-排版与合成完成后，AI 对最终成片评分。
-
-评分维度建议：
-
-| 维度 | 权重 | 说明 |
-|---|---:|---|
-| 需求匹配度 | 20% | 是否符合用户原始需求和 Creative Brief |
-| 知识库/品牌一致性 | 20% | 是否正确使用企业/团队/个人知识库中的规则和素材 |
-| 素材使用准确性 | 15% | Logo、产品图、标准色是否正确出现 |
-| 画面质量 | 15% | 清晰度、畸形、主体完整性、构图美感 |
-| 文案与排版 | 20% | 文字是否清晰、层级是否合理、Logo 是否合适 |
-| 平台适配度 | 10% | 是否适合目标平台比例、风格和内容结构 |
-
-### 9.6 质检输出结构
+## 12.7 最终质检输出
 
 ```ts
 interface FinalEvaluationResult {
   totalScore: number;
   pass: boolean;
-  dimensionScores: {
-    requirementMatch: number;
-    knowledgeConsistency: number;
-    assetUsage: number;
-    visualQuality: number;
-    copyAndLayout: number;
-    platformFit: number;
-  };
+
+  dimensionScores: Record<string, number>;
+
   issues: EvaluationIssue[];
   suggestions: string[];
+
   recommendedActions: EvaluationAction[];
   retryTargetNode?: WorkflowNodeType;
   retryReason?: string;
@@ -953,258 +1456,382 @@ interface FinalEvaluationResult {
 
 interface EvaluationIssue {
   severity: 'low' | 'medium' | 'high';
+
   category:
     | 'brief'
-    | 'knowledge_match'
+    | 'brand_constraint'
+    | 'creative_direction'
     | 'prompt'
     | 'image_generation'
     | 'composition'
     | 'brand_rule'
     | 'platform_fit';
+
   message: string;
   relatedNode?: WorkflowNodeType;
 }
 
 type EvaluationAction =
   | 'accept'
-  | 'optimize_layout'
+  | 'optimize_composition'
   | 'regenerate_image'
   | 'revise_prompt'
-  | 'revise_knowledge_selection'
+  | 'revise_brand_constraint'
+  | 'revise_creative_direction'
   | 'revise_brief';
 ```
 
-### 9.7 回溯规则
+---
+
+## 12.8 最终质检通过规则
+
+```text
+totalScore >= 6：通过
+totalScore < 6：不通过
+```
+
+当企业配置了最低导出分时：
+
+```text
+totalScore < enterpriseMinExportScore：禁止导出
+```
+
+个人空间和普通团队空间默认不禁止导出，但必须展示低分风险。
+
+---
+
+## 12.9 回溯规则
 
 | 问题类型 | 回溯节点 |
 |---|---|
-| 用户需求理解错 | 需求翻译节点 |
-| 知识库素材选错或漏选 | 知识库匹配节点 |
-| Prompt 描述不充分 | Prompt 生成节点 |
-| 主体错误、风格错误、画质差 | 图像生成节点 |
-| Logo 太小、文字遮挡、排版不佳 | 排版与合成节点 |
-| 企业规则冲突 | 知识库匹配节点或 Prompt 生成节点 |
-
-### 9.8 自动回溯策略
-
-不建议无限自动回溯。
-
-建议规则：
-
-```text
-最多自动优化 2 次。
-超过 2 次后停止自动重跑，展示质检报告，让用户选择下一步。
-```
-
-### 9.9 用户可操作按钮
-
-AI 质检完成后，前端展示：
-
-```text
-[接受并保存]
-[按建议自动优化]
-[只优化排版]
-[重新生成底图]
-[返回修改 Prompt]
-[忽略问题继续导出]
-```
-
-### 9.10 低于 6 分时如何处理？
-
-规则建议：
-
-```text
-候选底图阶段：如果全部低于 6 分，默认不进入排版，优先建议回溯 Prompt 或重新生成。
-最终成片阶段：如果低于 6 分，给出推荐回溯节点，不强制阻止用户保存，但明确标记为低质量结果。
-```
-
-原因：
-
-1. 产品应保持用户控制权；
-2. 有些低分问题用户可能可以接受；
-3. 强制阻断会让体验变差；
-4. B 端企业可配置是否禁止低分导出。
-
-企业策略可选：
-
-```text
-企业可设置：低于指定分数禁止导出。
-```
+| 用户需求理解错误 | 需求翻译节点 |
+| 品牌素材选错 | 品牌约束节点 |
+| 创意方向不合适 | 创意方案节点 |
+| Prompt 表达错误 | Prompt 生成节点 |
+| 底图主体错误 | 底图生成节点或 Prompt 生成节点 |
+| 标题遮挡主体 | 图文合成节点 |
+| Logo 缺失或过小 | 图文合成节点 |
+| 企业禁用规则冲突 | 品牌约束节点 |
+| 平台尺寸不适配 | 需求翻译节点或图文合成节点 |
+| 纯图片出现多余文字 | Prompt 生成节点或底图生成节点 |
+| 场景文字严重乱码 | Prompt 生成节点或底图生成节点 |
 
 ---
 
-## 10. 节点重跑与失效规则
+## 12.10 用户操作
 
-每个节点被修改后，后续节点的产物应标记为 stale，需要重新运行。
+品牌质检完成后，用户必须能执行以下操作：
 
-| 被修改节点 | 后续失效节点 |
+| 操作 | 说明 |
 |---|---|
-| 需求翻译节点 | 知识库匹配、Prompt 生成、图像生成、排版与合成、AI 质检 |
-| 知识库匹配节点 | Prompt 生成、图像生成、排版与合成、AI 质检 |
-| Prompt 生成节点 | 图像生成、排版与合成、AI 质检 |
-| 图像生成节点 | 排版与合成、AI 质检 |
-| 排版与合成节点 | AI 质检 |
-| AI 质检节点 | 不影响前置节点，只提供回溯建议 |
+| 接受并保存 | 保存当前结果 |
+| 按建议优化 | 系统根据 retryTargetNode 回溯 |
+| 只优化排版 | 回到图文合成节点，仅 needsComposition=true 时可用 |
+| 重新生成底图 | 回到底图生成节点 |
+| 修改 Prompt | 回到 Prompt 生成节点 |
+| 修改创意方向 | 回到创意方案节点 |
+| 忽略风险导出 | 仅在企业策略允许时可用 |
 
-前端提示示例：
+---
+
+## 12.11 自动回溯限制
+
+系统最多自动回溯 2 次。
+
+超过 2 次后，系统必须停止自动执行，并展示：
 
 ```text
-你修改了「知识库匹配节点」，后续 Prompt、图像生成、排版和质检结果将失效，需要重新运行。
+质检报告
+失败原因
+推荐修改节点
+用户操作按钮
 ```
 
 ---
 
-## 11. 通用节点数据结构
+# 13. 节点失效规则
 
-建议所有节点统一基础结构：
+当前置节点被用户修改后，所有受影响的后置节点必须变为 `stale`。
+
+| 被修改节点 | 必须失效的后置节点 |
+|---|---|
+| 需求翻译节点 | 品牌约束、创意方案、Prompt 生成、底图生成、图文合成、品牌质检 |
+| 品牌约束节点 | 创意方案、Prompt 生成、底图生成、图文合成、品牌质检 |
+| 创意方案节点 | Prompt 生成、底图生成、图文合成、品牌质检 |
+| Prompt 生成节点 | 底图生成、图文合成、品牌质检 |
+| 底图生成节点 | 图文合成、品牌质检 |
+| 图文合成节点 | 品牌质检 |
+| 品牌质检节点 | 不影响前置节点 |
+
+前端必须展示失效提示：
+
+```text
+你修改了「品牌约束节点」，后续创意方案、Prompt、底图、图文合成和品牌质检结果已失效，需要重新执行。
+```
+
+---
+
+# 14. 前端页面布局要求
+
+节点流页面必须分为三栏：
+
+```text
+左侧：节点流导航
+中间：当前节点详情
+右侧：实时预览 / 结果展示
+```
+
+## 14.1 左侧节点流导航
+
+必须展示：
+
+```text
+节点名称
+节点状态
+是否用户修改
+是否失效
+执行失败原因
+跳过原因
+```
+
+## 14.2 中间节点详情
+
+| 节点 | 中间详情 |
+|---|---|
+| 需求翻译 | Creative Brief 卡片 |
+| 品牌约束 | 素材、规则、推荐理由 |
+| 创意方案 | 3 个创意方向卡片 |
+| Prompt 生成 | 结构化 Prompt |
+| 底图生成 | 生成参数 |
+| 图文合成 | 图层编辑属性或跳过原因 |
+| 品牌质检 | 评分、扣分项、回溯建议 |
+
+## 14.3 右侧预览
+
+| 节点 | 右侧展示 |
+|---|---|
+| 需求翻译 | Brief 摘要 |
+| 品牌约束 | 选中素材预览 |
+| 创意方案 | 方向概览 |
+| Prompt 生成 | Prompt 摘要 |
+| 底图生成 | 4 张候选图 |
+| 图文合成 | Canvas 编辑器或底图预览 |
+| 品牌质检 | 最终图和评分报告 |
+
+---
+
+# 15. 后端接口要求
+
+## 15.1 创建工作流
+
+```http
+POST /workflow/create
+```
+
+请求：
 
 ```ts
-type WorkflowNodeType =
-  | 'brief'
-  | 'knowledge_match'
-  | 'prompt'
-  | 'image_generation'
-  | 'composition'
-  | 'evaluation';
-
-interface WorkflowNode {
-  id: string;
-  workflowId: string;
-  type: WorkflowNodeType;
-  title: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'stale' | 'skipped';
-  input: Record<string, any>;
-  output: Record<string, any>;
-  editableFields: string[];
-  lockedFields: string[];
-  userModified: boolean;
-  version: number;
-  startedAt?: Date;
-  completedAt?: Date;
-  errorMessage?: string;
+interface CreateWorkflowRequest {
+  spaceId: string;
+  spaceType: SpaceType;
+  selectedKnowledgeBaseIds: string[];
+  originalPrompt: string;
 }
 ```
 
----
+响应：
 
-## 12. 前端展示建议
-
-### 12.1 左侧节点流
-
-展示节点状态：
-
-```text
-待执行 pending
-执行中 running
-已完成 completed
-失败 failed
-已失效 stale
-已跳过 skipped
+```ts
+interface CreateWorkflowResponse {
+  workflowId: string;
+  status: 'pending' | 'running';
+}
 ```
 
-### 12.2 中间节点详情面板
+## 15.2 获取工作流详情
 
-展示当前节点的输入、输出、推荐理由、可编辑字段和确认按钮。
-
-### 12.3 右侧预览区
-
-根据节点不同展示：
-
-| 节点 | 右侧预览 |
-|---|---|
-| 需求翻译 | Brief 卡片预览 |
-| 知识库匹配 | 素材卡片、规则卡片 |
-| Prompt 生成 | 结构化 Prompt 预览 |
-| 图像生成 | 4 张候选底图 |
-| 排版与合成 | Canvas/Fabric 编辑器 |
-| AI 质检 | 分数、扣分项、优化建议 |
-
----
-
-## 13. 正式上线第一版范围建议
-
-当前项目已过 MVP 阶段，但仍建议控制正式上线第一版范围。
-
-### 必做
-
-1. 首页 Space + 知识库选择；
-2. 需求翻译节点结构化 Brief；
-3. 知识库匹配节点推荐理由与强制项；
-4. Prompt 生成节点结构化 Prompt；
-5. 图像生成节点默认生成 4 张候选图；
-6. 候选图 AI 初筛评分；
-7. 排版与合成节点模板化排版；
-8. 基础图层编辑能力；
-9. 最终成片 AI 质检；
-10. 节点修改后的下游失效和重跑规则。
-
-### 暂缓
-
-1. 用户自定义模型；
-2. 复杂局部重绘；
-3. PS 级图层系统；
-4. 完整版本树；
-5. 多人实时协作；
-6. 企业复杂审批流；
-7. 自动解析 PDF 品牌规范；
-8. 无限自动回溯。
-
----
-
-## 14. 产品验收标准
-
-正式上线第一版至少满足：
-
-1. 用户可以选择 Space 和知识库；
-2. 用户输入自然语言后，系统能生成结构化 Brief；
-3. 用户可以修改 Brief 字段；
-4. 系统能从知识库中匹配素材和规则，并展示推荐理由；
-5. 强制项不可取消；
-6. Prompt 节点能输出 Image Prompt、Negative Prompt、Layout Plan；
-7. 图像生成节点能生成 4 张候选图；
-8. AI 能对 4 张候选图分别打分并推荐最高分；
-9. 排版与合成节点能将文字和 Logo 叠加到底图上；
-10. 用户能基础调整文字和 Logo；
-11. AI 质检节点能输出总分、分项分、扣分项和建议；
-12. 用户能保存最终作品；
-13. 修改前置节点后，后续节点会标记为 stale；
-14. 后端必须校验知识库权限和企业强制规则。
-
----
-
-## 15. 总结
-
-节点流模块应围绕 4 个关键词设计：
-
-```text
-可解释：每个节点展示 AI 的中间产物和推荐理由
-可编辑：用户能修改关键字段和选择素材
-可回溯：系统能知道问题来自哪个节点并重跑
-可复用：节点产物、Prompt、素材、图层和作品都能沉淀
+```http
+GET /workflow/:id
 ```
 
-最终流程：
+必须返回：
+
+```ts
+interface WorkflowDetail {
+  id: string;
+  spaceId: string;
+  spaceType: SpaceType;
+  originalPrompt: string;
+  status: string;
+  nodes: WorkflowNode[];
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+## 15.3 执行指定节点
+
+```http
+POST /workflow/:id/nodes/:nodeType/run
+```
+
+用于节点重跑。
+
+## 15.4 更新节点用户编辑内容
+
+```http
+PUT /workflow/:id/nodes/:nodeType
+```
+
+请求：
+
+```ts
+interface UpdateWorkflowNodeRequest {
+  output: Record<string, any>;
+  userModified: true;
+}
+```
+
+更新节点后，后端必须自动将受影响后置节点标记为 `stale`。
+
+## 15.5 工作流 SSE
+
+```http
+GET /workflow/:id/stream
+```
+
+SSE 事件类型：
 
 ```text
-选择 Space 与知识库
+node_started
+node_progress
+node_completed
+node_failed
+node_skipped
+workflow_completed
+workflow_failed
+```
+
+---
+
+# 16. 验收标准
+
+该模块完成后，必须满足以下验收标准：
+
+1. 用户能在首页选择 Space；
+2. 用户能在首页选择最多 3 个知识库；
+3. 企业强制知识库不能被取消；
+4. 用户输入自然语言后，系统生成结构化 Creative Brief；
+5. Creative Brief 使用固定卡片字段展示；
+6. Creative Brief 必须包含 `outputMode`、`needsComposition`、`textIntent`；
+7. 用户能修改 Brief 字段；
+8. 用户能修改文字处理方式；
+9. 品牌约束节点能输出 required、recommended、optional 三类匹配结果；
+10. 每个匹配项必须展示推荐理由；
+11. requiredItems 不能被用户取消；
+12. 创意方案节点必须输出 3 个差异明确的方案；
+13. 用户必须选择 1 个创意方案；
+14. Prompt 节点必须输出 Image Prompt、Negative Prompt、Layout Plan；
+15. 当 `needsComposition=false` 时，Prompt 节点的 `layoutPlan` 必须为 null；
+16. 当 `needsComposition=true` 时，Prompt 节点必须阻止直接生成最终中文标题；
+17. 底图生成节点必须生成 4 张候选图；
+18. 候选图必须分别评分；
+19. 至少 1 张候选图 ≥ 6 分时，系统默认选择最高分图；
+20. 4 张候选图全部 < 6 分时，系统不得自动进入图文合成；
+21. `needsComposition=false` 时，图文合成节点必须 skipped；
+22. 用户能手动开启图文合成节点；
+23. 图文合成节点必须使用图层结构；
+24. 图文合成节点必须支持文字、Logo 基础编辑；
+25. 品牌质检节点必须根据 `needsComposition` 使用不同评分规则；
+26. 品牌质检节点必须输出总分、分项分、扣分项、回溯建议；
+27. 修改前置节点后，后置节点必须变为 stale；
+28. 后端必须校验知识库权限；
+29. 后端必须校验企业强制规则；
+30. 最终作品必须保存成片、图层数据、节点产物和质检报告。
+
+---
+
+# 17. 当前版本不包含的功能
+
+以下功能不进入当前版本：
+
+```text
+用户自定义模型
+复杂局部重绘
+PS 级图层系统
+多人实时协同编辑
+复杂审批流
+公开素材市场
+自动解析 PDF 品牌规范
+无限自动回溯
+多级部门嵌套
+```
+
+---
+
+# 18. 最终流程
+
+```text
+选择 Space
+↓
+选择知识库
 ↓
 输入自然语言需求
 ↓
-需求翻译节点：生成结构化 Creative Brief
+需求翻译节点：生成 Creative Brief，并判断 outputMode / needsComposition / textIntent
 ↓
-知识库匹配节点：匹配素材、规则、Prompt 模板
+品牌约束节点：匹配素材、规则、禁用项；无知识库且无强制规则时跳过
+↓
+创意方案节点：生成 3 个创意方向
 ↓
 Prompt 生成节点：生成 Image Prompt、Negative Prompt、Layout Plan
 ↓
-图像生成节点：生成 4 张候选底图
+底图生成节点：生成 4 张候选底图
 ↓
-候选图质检：分别评分并推荐最高分
+品牌质检节点：对 4 张候选底图分别评分
 ↓
-排版与合成节点：图文分离合成最终图片
+系统推荐最高分底图
 ↓
-AI 质检节点：最终评分、扣分项、优化建议、回溯节点
+如果 needsComposition = true：进入图文合成节点
+如果 needsComposition = false：跳过图文合成节点
 ↓
-保存作品 / 重新优化 / 导出
+品牌质检节点：最终结果评分
+↓
+保存作品 / 回溯优化 / 导出图片
 ```
 
-Brand-Flow 的产品价值不在于“替用户按一次生成按钮”，而在于让用户拥有一套可以理解、可以调整、可以复用的 AI 创作生产线。
+---
+
+# 19. 总结
+
+Brand-Flow 节点流模块必须实现的产品闭环是：
+
+```text
+用户输入
+↓
+AI 理解
+↓
+用户确认
+↓
+知识库约束
+↓
+创意方向选择
+↓
+专业 Prompt
+↓
+多图生成
+↓
+条件图文合成
+↓
+AI 质检
+↓
+回溯优化
+↓
+作品沉淀
+```
+
+图文合成节点必须是条件节点。  
+用户要的是纯图片时，系统生成纯图片。  
+用户要的是海报、封面、广告图、电商图时，系统进入图文合成。  
+场景里自然存在的文字属于底图内容。  
+用户强调的标题、Logo、卖点文案属于图文合成图层。
