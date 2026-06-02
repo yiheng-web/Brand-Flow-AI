@@ -9,8 +9,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "lint": "eslint .",
-    "test": "jest",
-    "test:storage": "jest src/modules/storage/storage.service.spec.ts"
+    "test": "jest"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1058.0",
