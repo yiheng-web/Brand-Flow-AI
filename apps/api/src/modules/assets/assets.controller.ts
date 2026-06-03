@@ -15,14 +15,19 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
-  ApiCreatedResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger'
+import {
+  ApiCreatedSuccessResponse,
+  ApiSuccessArrayResponse,
+  ApiSuccessResponse,
+} from '@/common/swagger/api-success-response'
+import { SuccessResultDto } from '@/common/swagger/common-response.dto'
 import { AssetsService } from './assets.service'
 import { CreateAssetDto, SaveAssetToKnowledgeDto, UploadAssetDto } from './dto/assets.dto'
+import { AssetResponseDto, SaveAssetToKnowledgeResponseDto } from './dto/assets-response.dto'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
 
 @ApiTags('素材资产 Assets')
@@ -38,7 +43,7 @@ export class AssetsController {
     description:
       '用于登记已经存在 URL 的素材资产。适合外部 CDN 图片、生成图 URL 或已上传对象的补录。',
   })
-  @ApiCreatedResponse({ description: '创建成功，返回资产记录。' })
+  @ApiCreatedSuccessResponse(AssetResponseDto, '创建成功，返回封装后的资产记录。')
   async createAsset(@Req() req: any, @Body() createDto: CreateAssetDto) {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
@@ -70,7 +75,7 @@ export class AssetsController {
       },
     },
   })
-  @ApiCreatedResponse({ description: '上传成功，返回资产记录和 signedUrl。' })
+  @ApiCreatedSuccessResponse(AssetResponseDto, '上传成功，返回封装后的资产记录和 signedUrl。')
   async uploadAsset(@Req() req: any, @Body() uploadDto: UploadAssetDto, @UploadedFile() file: any) {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
@@ -82,7 +87,7 @@ export class AssetsController {
     summary: '获取可访问资产列表',
     description: '返回当前用户在当前企业下可见的素材，包括本人私有、团队、企业和公开素材。',
   })
-  @ApiOkResponse({ description: '返回资产列表。' })
+  @ApiSuccessArrayResponse(AssetResponseDto, '返回封装后的资产列表。')
   async getAssets(@Req() req: any) {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
@@ -96,7 +101,10 @@ export class AssetsController {
       '把素材名称、类型、标签、描述和 URL 组装成知识项，保存到 MongoDB，并同步写入向量库供 Agent 检索。',
   })
   @ApiParam({ name: 'id', description: '素材资产 ID' })
-  @ApiCreatedResponse({ description: '保存成功，返回 KnowledgeItem 和向量入库结果。' })
+  @ApiCreatedSuccessResponse(
+    SaveAssetToKnowledgeResponseDto,
+    '保存成功，返回封装后的 KnowledgeItem 和向量入库结果。',
+  )
   async saveToKnowledge(
     @Req() req: any,
     @Param('id') assetId: string,
@@ -113,7 +121,7 @@ export class AssetsController {
     description: '删除资产记录；若资产由上传产生且存在 objectKey，会同步删除对象存储中的文件。',
   })
   @ApiParam({ name: 'id', description: '素材资产 ID' })
-  @ApiOkResponse({ description: '删除成功，返回 success=true。' })
+  @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
   async deleteAsset(@Req() req: any, @Param('id') assetId: string) {
     const userId = req.user.sub
     return this.assetsService.deleteAsset(userId, assetId)
