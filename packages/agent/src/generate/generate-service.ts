@@ -32,7 +32,7 @@ export class GenerateService {
       let resultContent: string;
 
       if (generateType === "image") {
-        resultContent = await this.callImageGenerationApi(promptData.finalPrompt);
+        resultContent = await this.callImageGenerationApi(promptData.finalPrompt, promptData.negativePrompt);
       } else if (generateType === "text") {
         resultContent = await this.callTextGenerationApi(promptData, brand.brandName);
       } else {
@@ -60,7 +60,7 @@ export class GenerateService {
   }
 
   // 调用 硅基流动(SiliconFlow) 文生图 API
-  private async callImageGenerationApi(prompt: string): Promise<string> {
+  private async callImageGenerationApi(prompt: string, negativePrompt?: string): Promise<string> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY 未配置");
@@ -79,6 +79,9 @@ export class GenerateService {
       num_inference_steps: parseInt(process.env.IMAGE_NUM_INFERENCE_STEPS || "20", 10),
       guidance_scale: parseFloat(process.env.IMAGE_GUIDANCE_SCALE || "7.5"),
     };
+    if (negativePrompt) {
+      body.negative_prompt = negativePrompt;
+    }
 
     const response = await fetch(url, {
       method: "POST",

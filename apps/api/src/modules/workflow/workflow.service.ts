@@ -11,6 +11,7 @@ import {
   WorkflowDocument,
   WorkflowStatus,
 } from './schemas/workflow.schema';
+import { WorkflowNode, WorkflowNodeDocument, WorkflowNodeType } from './schemas/workflow-node.schema';
 
 export interface WorkflowResponse {
   id: string;
@@ -30,6 +31,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectModel(Workflow.name)
     private readonly workflowModel: Model<WorkflowDocument>,
+    @InjectModel(WorkflowNode.name)
+    private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
     @InjectQueue(WORKFLOW_QUEUE)
     private readonly workflowQueue: Queue,
   ) {}
@@ -51,14 +54,103 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       status: 'pending',
     });
 
+    // 初始化 6 个节点数据以供联调测试，对齐 Agent 的真实节点链路
+    const nodeOrder = [
+      'intentNode',
+      'knowledgeNode',
+      'promptNode',
+      'generateNode',
+      'evaluateNode',
+      'finishNode',
+    ];
+    
+    await this.workflowNodeModel.insertMany(
+      nodeOrder.map(type => ({
+        workflowId: workflow._id.toString(),
+        type,
+        status: 'pending',
+        version: 1,
+        userModified: false,
+        input: {},
+        output: {}
+      }))
+    );
+
     await this.workflowQueue.add(RUN_WORKFLOW_JOB, {
       workflowId: workflow._id.toString(),
       knowledgeId: dto.knowledgeId,
     }, {
-      jobId: workflow._id.toString(),
+      jobId: `${workflow._id.toString()}-${Date.now()}`,
     });
 
     return this.toResponse(workflow);
+  }
+
+  async getWorkflowDetail(id: string) {
+    const workflow = await this.workflowModel.findById(id);
+    if (!workflow) {
+      throw new NotFoundException(`Workflow ${id} not found`);
+    }
+    const nodes = await this.workflowNodeModel.find({ workflowId: id }).sort({ createdAt: 1 });
+    return {
+      workflow: this.toResponse(workflow),
+      nodes,
+    };
+  }
+
+  async updateNodeOutput(id: string, nodeType: WorkflowNodeType, payload: Record<string, unknown>) {
+    const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType });
+    if (!node) {
+      throw new NotFoundException(`Node ${nodeType} not found for workflow ${id}`);
+    }
+
+    // 1. 更新当前节点
+    node.output = payload;
+    node.markModified('output');
+    node.userModified = true;
+    node.version = (node.version || 1) + 1;
+    await node.save();
+
+    // 2. 级联置空（下游 stale 机制）
+    const nodeOrder = [
+      'intentNode',
+      'knowledgeNode',
+      'promptNode',
+      'generateNode',
+      'evaluateNode',
+      'finishNode',
+    ];
+    const currentIndex = nodeOrder.indexOf(nodeType);
+    if (currentIndex !== -1 && currentIndex < nodeOrder.length - 1) {
+      const downstreamTypes = nodeOrder.slice(currentIndex + 1);
+      await this.workflowNodeModel.updateMany(
+        { workflowId: id, type: { $in: downstreamTypes } },
+        { $set: { status: 'stale', output: {} } }
+      );
+    }
+
+    return node;
+  }
+
+  async runNode(id: string, nodeType: WorkflowNodeType) {
+    // 触发对应节点的重新执行（实际会发布给 Agent 服务或 Processor，这里仅负责状态更改与触发）
+    const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType });
+    if (!node) {
+      throw new NotFoundException(`Node ${nodeType} not found for workflow ${id}`);
+    }
+    
+    node.status = 'pending';
+    await node.save();
+
+    // 发送任务到消息队列触发 Agent
+    await this.workflowQueue.add(`RUN_NODE_${nodeType.toUpperCase()}`, {
+      workflowId: id,
+      nodeType,
+    }, {
+      jobId: `${id}-${Date.now()}`,
+    });
+
+    return { success: true, message: `Node ${nodeType} queued for rerun.` };
   }
 
   streamWorkflow(id: string): Observable<MessageEvent> {
@@ -66,19 +158,26 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       subscriber.next({ data: { type: 'connected', workflowId: id } });
 
       const onProgress = ({ jobId, data }: { jobId: string; data: any }) => {
-        if (jobId === id) subscriber.next({ data: { type: 'progress', data } });
+        if (!jobId) return;
+        if (String(jobId).startsWith(id)) {
+          if (data && data.type) {
+            subscriber.next({ data });
+          }
+        }
       };
 
       const onCompleted = ({ jobId, returnvalue }: { jobId: string; returnvalue: any }) => {
-        if (jobId === id) {
-          subscriber.next({ data: { type: 'completed', data: returnvalue } });
+        if (!jobId) return;
+        if (String(jobId).startsWith(id)) {
+          subscriber.next({ data: { type: 'workflow_completed', data: returnvalue } });
           subscriber.complete();
         }
       };
 
       const onFailed = ({ jobId, failedReason }: { jobId: string; failedReason: string }) => {
-        if (jobId === id) {
-          subscriber.next({ data: { type: 'failed', error: failedReason } });
+        if (!jobId) return;
+        if (String(jobId).startsWith(id)) {
+          subscriber.next({ data: { type: 'workflow_failed', error: failedReason } });
           subscriber.complete();
         }
       };
