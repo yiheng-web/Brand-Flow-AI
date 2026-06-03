@@ -3,6 +3,7 @@
 ## 1. 全局配置
 
 - **Base URL**: `http://localhost:3000/api`
+- **实时接口文档**: `http://localhost:3000/api-docs`（由 Swagger/OpenAPI 根据 Controller 和 DTO 自动生成）
 - **默认 Header**: `Content-Type: application/json`
 - **鉴权**: `Authorization: Bearer <JWT_TOKEN>` (除非标记了 `[无需鉴权]`，否则所有接口均需携带)
 - **统一返回格式**: 所有成功响应都会被包装在如下结构中：
