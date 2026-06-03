@@ -53,3 +53,12 @@ export class UploadAssetDto {
   @IsString()
   metadata?: string
 }
+
+export class SaveAssetToKnowledgeDto {
+  @IsNotEmpty({ message: '知识库 ID 不能为空' })
+  knowledgeId!: string
+
+  @IsOptional()
+  @IsString()
+  description?: string
+}

@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { AssetsService } from './assets.service'
-import { CreateAssetDto, UploadAssetDto } from './dto/assets.dto'
+import { CreateAssetDto, SaveAssetToKnowledgeDto, UploadAssetDto } from './dto/assets.dto'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
 
 @Controller('assets')
@@ -40,6 +40,17 @@ export class AssetsController {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
     return this.assetsService.getAssets(userId, enterpriseId)
+  }
+
+  @Post(':id/save-to-knowledge')
+  async saveToKnowledge(
+    @Req() req: any,
+    @Param('id') assetId: string,
+    @Body() dto: SaveAssetToKnowledgeDto,
+  ) {
+    const userId = req.user.sub
+    const enterpriseId = req.user.entId
+    return this.assetsService.saveToKnowledge(userId, enterpriseId, assetId, dto)
   }
 
   @Delete(':id')
