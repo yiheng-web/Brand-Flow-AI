@@ -164,23 +164,69 @@ interface UserInfo {
         }
         ```
 
+*   **`GET /workflow/:id`**
+    *   **说明**: 获取工作流的详细信息以及挂载的 6 个节点数据。
+    *   **路径参数**: `id` (目标工作流的实例 ID)
+    *   **返回 Data**: 
+        ```typescript
+        {
+          workflow: WorkflowResponse,
+          nodes: Array<WorkflowNode> // 按时间顺序列出的 6 个真实图文生成节点（intentNode 等）的状态与产物
+        }
+        ```
+
+*   **`PUT /workflow/:id/nodes/:nodeType`**
+    *   **说明**: 用户手动修改某节点（如 Prompt 生成节点）的中间产物。该操作仅更新当前节点的数据记录，并将下游相关节点全部置为失效 (`stale`) 以清空旧产物，且**不会自动触发后续流程**。
+    *   **路径参数**: 
+        *   `id`: 工作流 ID
+        *   `nodeType`: `intentNode` | `knowledgeNode` | `promptNode` | `generateNode` | `evaluateNode` | `finishNode`
+    *   **Body**: `Record<string, any>` (更新的具体节点 output)
+    *   **返回 Data**: 更新后的节点数据。
+
+*   **`POST /workflow/:id/nodes/:nodeType/run`**
+    *   **说明**: 指定某一节点重新执行。系统会自动计算并**跳过**该节点之前的所有已完成节点，将它们作为上下文状态喂给大模型，从指定的 `nodeType` 处实现断点接力重跑，并顺延执行后续所有节点。
+    *   **路径参数**: 
+        *   `id`: 工作流 ID
+        *   `nodeType`: 节点类型标识
+    *   **返回 Data**: `{ success: boolean, message: string }`
+
 *   **`GET /workflow/:id/stream`**
     *   **说明**: （核心推荐）基于 Server-Sent Events (SSE) 的流式接口，用于实时监听大模型各节点的执行状态与结果。
     *   **路径参数**: `id` (目标工作流的实例 ID)
     *   **鉴权方式**: 通过 `Authorization: Bearer <JWT_TOKEN>` 请求头（若前端无法直接设置，请使用 fetch-event-source）
     *   **返回格式**: `text/event-stream` (流式输出，注：该接口已在全局拦截器中配置放行，不会被包裹在 `ApiResponse` 结构中)
     *   **事件返回包格式 (JSON)**:
-        *   **`progress`** 事件 (单个节点执行完毕):
+        *   **`connected`** 事件 (SSE 成功连接):
             ```typescript
-            { type: 'progress', data: Record<string, any> } // data 为当前刚执行完毕的节点(如 intentNode, promptNode)生成的具体状态内容
+            { type: 'connected', workflowId: string }
             ```
-        *   **`completed`** 事件 (全流程通过):
+        *   **`node_started`** 事件 (预留：单个节点开始执行，暂由前端逻辑自推导):
             ```typescript
-            { type: 'completed', data: Record<string, any> } // data 为整个工作流全部完成后的最终完整结果
+            { type: 'node_started', nodeType: string }
             ```
-        *   **`failed`** 事件 (流程中断或未达标):
+        *   **`node_progress`** 事件 (预留：大模型流式生成中的增量输出):
             ```typescript
-            { type: 'failed', error: string } // error 为流程崩溃的具体原因
+            { type: 'node_progress', nodeType: string, delta: string }
+            ```
+        *   **`node_completed`** 事件 (单个节点正常执行完毕):
+            ```typescript
+            { type: 'node_completed', nodeType: string, data: Record<string, any> } // 返回节点的最终产物
+            ```
+        *   **`node_failed`** 事件 (预留：单个节点执行异常中断):
+            ```typescript
+            { type: 'node_failed', nodeType: string, error: string }
+            ```
+        *   **`node_skipped`** 事件 (触发重跑时，上游已被跳过的节点):
+            ```typescript
+            { type: 'node_skipped', nodeType: string } // 明确通知前端该节点已跳过，无需更新本地数据
+            ```
+        *   **`workflow_failed`** 事件 (工作流级执行异常中断):
+            ```typescript
+            { type: 'workflow_failed', error: string }
+            ```
+        *   **`workflow_completed`** 事件 (全流程执行完毕):
+            ```typescript
+            { type: 'workflow_completed', data: Record<string, any> } // 工作流的最终聚合状态
             ```
 
 ---

@@ -15,9 +15,13 @@ interface IntentPanelProps {
   userPrompt: string
   /** 后端意图解析结果（SSE 流式数据） */
   intentResult?: IntentOutput | null
+  /** 重新运行该节点 */
+  onReRun?: () => void
+  /** 保存修改的数据 */
+  onSave?: (payload: Record<string, unknown>) => void
 }
 
-const IntentPanel = ({ userPrompt, intentResult }: IntentPanelProps) => {
+const IntentPanel = ({ userPrompt, intentResult, onReRun, onSave }: IntentPanelProps) => {
   const [keywords, setKeywords] = useState<string[]>([])
   const [sceneType, setSceneType] = useState('')
   const [isTagInputVisible, setIsTagInputVisible] = useState(false)
@@ -174,9 +178,16 @@ const IntentPanel = ({ userPrompt, intentResult }: IntentPanelProps) => {
         <button
           type="button"
           className={styles.interceptBtn}
-          onClick={() => {
-            // TODO: 接入后端 /workflow/intent/rerun 接口
-            console.log('重新运行意图节点')
+          onClick={async () => {
+            if (onSave) {
+              await onSave({
+                intent: keywords.join(','), // 简单用逗号拼一下作为修改后的 intent 文本
+                confidence: intentResult?.confidence || 1,
+                reason: intentResult?.reason || '',
+                suggestedAction: intentResult?.suggestedAction || ''
+              })
+            }
+            if (onReRun) onReRun()
           }}
         >
           重新运行该节点

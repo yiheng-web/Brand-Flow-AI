@@ -17,9 +17,11 @@ interface PromptExpertPanelProps {
   promptResult?: PromptChainOutput | null
   /** 重新运行该节点 */
   onReRun?: () => void
+  /** 保存修改的数据 */
+  onSave?: (payload: Record<string, unknown>) => void
 }
 
-const PromptExpertPanel = ({ userPrompt = '', promptResult, onReRun }: PromptExpertPanelProps) => {
+const PromptExpertPanel = ({ promptResult, onReRun, onSave }: PromptExpertPanelProps) => {
   const [positivePrompt, setPositivePrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
 
@@ -27,7 +29,7 @@ const PromptExpertPanel = ({ userPrompt = '', promptResult, onReRun }: PromptExp
   useEffect(() => {
     if (promptResult) {
       setPositivePrompt(promptResult.finalPrompt || promptResult.systemPrompt || '')
-      setNegativePrompt(promptResult.userPrompt || '')
+      setNegativePrompt(promptResult.negativePrompt || '')
     }
   }, [promptResult])
 
@@ -94,7 +96,18 @@ const PromptExpertPanel = ({ userPrompt = '', promptResult, onReRun }: PromptExp
         <button
           type="button"
           className={styles.interceptBtn}
-          onClick={onReRun}
+          onClick={async () => {
+            if (onSave) {
+              await onSave({
+                systemPrompt: promptResult?.systemPrompt || '',
+                userPrompt: promptResult?.userPrompt || '',
+                finalPrompt: positivePrompt,
+                negativePrompt: negativePrompt,
+                purpose: promptResult?.purpose || ''
+              })
+            }
+            if (onReRun) onReRun()
+          }}
         >
           重新运行该节点
         </button>

@@ -32,6 +32,7 @@ export interface PromptChainOutput {
   systemPrompt: string
   userPrompt: string
   finalPrompt: string
+  negativePrompt?: string
   purpose: string
 }
 
@@ -101,7 +102,7 @@ export interface WorkflowStatusResponse {
 
 /** SSE stream 事件类型 */
 export interface StreamEvent {
-  type: 'connected' | 'progress' | 'completed' | 'failed'
+  type: 'connected' | 'workflow_completed' | 'workflow_failed' | 'node_completed' | 'node_skipped' | 'node_started' | 'node_progress' | 'node_failed'
   workflowId?: string
   data?: Record<string, any>
   error?: string
@@ -129,4 +130,26 @@ export function createWorkflowStream(
   const apiBase = baseUrl || import.meta.env.VITE_API_BASE_URL || fallbackBase
   const url = `${apiBase.replace(/\/+$/, '')}/workflow/${workflowId}/stream`
   return new EventSource(url)
+}
+
+/**
+ * 手动更新某个节点的输出产物（如用户手动编辑提示词）
+ * 这会将当前节点更新，并级联使下游节点失效 (stale)
+ */
+export async function updateNodeOutput(
+  workflowId: string,
+  nodeType: string,
+  payload: Record<string, unknown>
+): Promise<any> {
+  return apiClient.put(`/workflow/${workflowId}/nodes/${nodeType}`, payload)
+}
+
+/**
+ * 触发特定节点重新运行（断点续传）
+ */
+export async function rerunNode(
+  workflowId: string,
+  nodeType: string
+): Promise<{ success: boolean; message: string }> {
+  return apiClient.post(`/workflow/${workflowId}/nodes/${nodeType}/run`)
 }

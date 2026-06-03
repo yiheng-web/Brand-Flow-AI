@@ -6,11 +6,13 @@ import { WorkflowController } from './workflow.controller';
 import { WorkflowProcessor } from './workflow.processor';
 import { WorkflowService } from './workflow.service';
 import { Workflow, WorkflowSchema } from './schemas/workflow.schema';
+import { WorkflowNode, WorkflowNodeSchema } from './schemas/workflow-node.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Workflow.name, schema: WorkflowSchema },
+      { name: WorkflowNode.name, schema: WorkflowNodeSchema },
     ]),
     BullModule.registerQueue({
       name: WORKFLOW_QUEUE,
