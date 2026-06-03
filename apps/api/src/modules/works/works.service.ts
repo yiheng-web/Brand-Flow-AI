@@ -4,9 +4,10 @@ import { Model, Types } from 'mongoose'
 import { OwnerType, Role, Visibility } from '@/common/enums'
 import { User, UserDocument } from '@/modules/org/schemas/user.schema'
 import { StorageService } from '@/modules/storage/storage.service'
-import { CreateWorkDto, ExportWorkDto } from './dto/works.dto'
+import { CreateWorkDto, CreateWorkVersionDto, ExportWorkDto } from './dto/works.dto'
 import { Work, WorkDocument } from './schemas/work.schema'
 import { WorkVersion, WorkVersionDocument } from './schemas/work-version.schema'
+import { ExportLog, ExportLogDocument } from './schemas/export-log.schema'
 
 @Injectable()
 export class WorksService {
@@ -14,6 +15,8 @@ export class WorksService {
     @InjectModel(Work.name) private readonly workModel: Model<WorkDocument>,
     @InjectModel(WorkVersion.name)
     private readonly workVersionModel: Model<WorkVersionDocument>,
+    @InjectModel(ExportLog.name)
+    private readonly exportLogModel: Model<ExportLogDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly storageService: StorageService,
   ) {}
@@ -107,6 +110,55 @@ export class WorksService {
     return { success: true }
   }
 
+  async createVersion(userId: string, enterpriseId: string, id: string, dto: CreateWorkVersionDto) {
+    const work = await this.findAccessibleWork(userId, enterpriseId, id)
+
+    if (work.creatorId.toString() !== userId) {
+      await this.assertAdminForScope(userId, enterpriseId, work.ownerId.toString(), work.ownerType)
+    }
+
+    const latest = await this.workVersionModel.findOne({ workId: work._id }).sort({ versionNo: -1 })
+
+    const version = await this.workVersionModel.create({
+      workId: work._id,
+      versionNo: (latest?.versionNo || 0) + 1,
+      imageUrl: dto.imageUrl,
+      objectKey: dto.objectKey,
+      sourceWorkflowId: dto.sourceWorkflowId ? new Types.ObjectId(dto.sourceWorkflowId) : undefined,
+      nodesSnapshot: dto.nodesSnapshot || {},
+      qualityReport: dto.qualityReport || {},
+      createdBy: new Types.ObjectId(userId),
+    })
+
+    work.finalImageUrl = dto.imageUrl
+    work.objectKey = dto.objectKey
+    work.nodesSnapshot = dto.nodesSnapshot || work.nodesSnapshot || {}
+    work.qualityReport = dto.qualityReport || work.qualityReport || {}
+    await work.save()
+
+    return version
+  }
+
+  async findVersions(userId: string, enterpriseId: string, id: string) {
+    const work = await this.findAccessibleWork(userId, enterpriseId, id)
+
+    return this.workVersionModel.find({ workId: work._id }).sort({ versionNo: -1 })
+  }
+
+  async findVersion(userId: string, enterpriseId: string, id: string, versionId: string) {
+    const work = await this.findAccessibleWork(userId, enterpriseId, id)
+    const version = await this.workVersionModel.findOne({
+      _id: versionId,
+      workId: work._id,
+    })
+
+    if (!version) {
+      throw new NotFoundException('作品版本不存在或无权访问')
+    }
+
+    return version
+  }
+
   async export(userId: string, enterpriseId: string, id: string, dto: ExportWorkDto) {
     const format = dto.format || 'png'
     if (format !== 'png') {
@@ -118,10 +170,25 @@ export class WorksService {
       ? await this.storageService.getSignedUrl(work.objectKey, { expiresIn: 60 * 10 })
       : work.finalImageUrl
 
+    const fileName = `${this.sanitizeFileName(work.title)}.png`
+    const log = await this.exportLogModel.create({
+      workId: work._id,
+      enterpriseId: new Types.ObjectId(enterpriseId),
+      exportedBy: new Types.ObjectId(userId),
+      format,
+      fileName,
+      downloadUrl,
+      metadata: {
+        objectKey: work.objectKey,
+        visibility: work.visibility,
+      },
+    })
+
     return {
       workId: work._id,
+      exportLogId: log._id,
       format,
-      fileName: `${this.sanitizeFileName(work.title)}.png`,
+      fileName,
       downloadUrl,
     }
   }

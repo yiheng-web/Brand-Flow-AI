@@ -47,3 +47,24 @@ export class ExportWorkDto {
   @IsString()
   format?: 'png'
 }
+
+export class CreateWorkVersionDto {
+  @IsNotEmpty({ message: '版本图片地址不能为空' })
+  imageUrl!: string
+
+  @IsOptional()
+  @IsString()
+  objectKey?: string
+
+  @IsOptional()
+  @IsString()
+  sourceWorkflowId?: string
+
+  @IsOptional()
+  @IsObject()
+  nodesSnapshot?: Record<string, any>
+
+  @IsOptional()
+  @IsObject()
+  qualityReport?: Record<string, any>
+}

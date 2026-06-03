@@ -209,6 +209,7 @@ export class AssetsService {
     }
 
     const asset = await this.findAccessibleAsset(userId, enterpriseId, assetId)
+    const tags = Array.isArray(asset.metadata?.tags) ? asset.metadata.tags : []
     const content = [
       `素材名称：${asset.name}`,
       `素材类型：${asset.type}`,
@@ -221,17 +222,29 @@ export class AssetsService {
       .filter(Boolean)
       .join('\n')
 
-    const ingestResult = await this.knowledgeService.ingestText(
+    const result = await this.knowledgeService.createItemFromAsset(
       userId,
       enterpriseId,
       dto.knowledgeId,
-      content,
+      {
+        title: asset.name,
+        content,
+        assetId: asset._id.toString(),
+        tags,
+        metadata: {
+          assetType: asset.type,
+          assetUrl: asset.url,
+          objectKey: asset.objectKey,
+          description: dto.description || asset.metadata?.description,
+        },
+      },
     )
 
     asset.metadata = {
       ...(asset.metadata || {}),
       savedToKnowledge: true,
       savedKnowledgeId: dto.knowledgeId,
+      savedKnowledgeItemId: result.item._id.toString(),
       savedToKnowledgeAt: new Date().toISOString(),
     }
     await asset.save()
@@ -240,7 +253,8 @@ export class AssetsService {
       success: true,
       assetId: asset._id,
       knowledgeId: dto.knowledgeId,
-      ingest: ingestResult,
+      item: result.item,
+      ingest: result.ingest,
     }
   }
 

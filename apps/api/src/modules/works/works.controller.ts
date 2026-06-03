@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
-import { CreateWorkDto, ExportWorkDto } from './dto/works.dto'
+import { CreateWorkDto, CreateWorkVersionDto, ExportWorkDto } from './dto/works.dto'
 import { WorksService } from './works.service'
 
 @Controller('works')
@@ -26,6 +26,25 @@ export class WorksController {
   @Delete(':id')
   async remove(@Req() req: any, @Param('id') id: string) {
     return this.worksService.remove(req.user.sub, req.user.entId, id)
+  }
+
+  @Post(':id/versions')
+  async createVersion(@Req() req: any, @Param('id') id: string, @Body() dto: CreateWorkVersionDto) {
+    return this.worksService.createVersion(req.user.sub, req.user.entId, id, dto)
+  }
+
+  @Get(':id/versions')
+  async findVersions(@Req() req: any, @Param('id') id: string) {
+    return this.worksService.findVersions(req.user.sub, req.user.entId, id)
+  }
+
+  @Get(':id/versions/:versionId')
+  async findVersion(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+  ) {
+    return this.worksService.findVersion(req.user.sub, req.user.entId, id, versionId)
   }
 
   @Post(':id/export')
