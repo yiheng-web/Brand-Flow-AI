@@ -6,3 +6,9 @@ coverage
 .turbo
 package-lock.json
 Coding.md
+
+.env
+.env.*
+**/.env
+**/.env.*
+.prettierignore

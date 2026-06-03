@@ -11,12 +11,18 @@
     "dev:deps": "node scripts/dev-deps.mjs",
     "dev:deps:down": "node scripts/dev-deps.mjs down",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "prepare": "husky"
   },
   "pnpm": {
     "overrides": {
       "@langchain/core": "^1.1.48"
     }
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,css,less,scss,html,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -26,6 +32,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "prettier": "^3.8.3",
     "turbo": "^2.5.4",
     "typescript": "~6.0.2",
