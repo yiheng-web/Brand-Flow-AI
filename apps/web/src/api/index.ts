@@ -8,7 +8,7 @@ interface ApiResponse {
 }
 
 const apiClient = axios.create({
-  baseURL: 'http://localhost:3000/api',
+  baseURL: '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 })
@@ -29,9 +29,22 @@ apiClient.interceptors.request.use(
 // ----- 响应拦截器 -----
 // 统一处理错误（401 跳登录、网络异常提示等）
 apiClient.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    const resData = response.data
+    // 如果是后端包装的响应结构，就解包它
+    if (resData && typeof resData === 'object' && 'success' in resData) {
+      if (resData.success) {
+        return resData.data // 提取出业务数据并返回
+      } else {
+        const errMessage = resData.message || '请求失败'
+        message.error(errMessage)
+        return Promise.reject(new Error(errMessage))
+      }
+    }
+    return resData
+  },
   (error) => {
-    const backendData = error.response?.data as ApiResponse | undefined
+    const backendData = error.response?.data
     const errorMessage = backendData?.message || error.message || '网络异常，请稍后重试'
     message.error(errorMessage)
 

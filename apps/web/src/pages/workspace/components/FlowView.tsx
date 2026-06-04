@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -75,6 +75,20 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
     })
   }, [setNodes, nodeExecStatuses])
 
+  // 监听外部 nodeExecStatuses 的变化，同步更新画布上的节点状态
+  useEffect(() => {
+    if (!nodeExecStatuses) return
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          execStatus: nodeExecStatuses[n.id as FlowNodeId] ?? n.data.execStatus,
+        },
+      }))
+    )
+  }, [nodeExecStatuses, setNodes])
+
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((eds) => [
@@ -90,6 +104,12 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
     },
     [setEdges]
   )
+
+  const onNodeClickCb = useCallback((_: React.MouseEvent, node: Node) => {
+    if (onNodeClick) {
+      onNodeClick(node.id)
+    }
+  }, [onNodeClick])
 
   const key = layoutDir
 
@@ -121,15 +141,14 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={onNodeClickCb}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         minZoom={0.3}
         maxZoom={1.5}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-        onNodeClick={(_event, node) => {
-          onNodeClick?.(node.id)
-        }}
+
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}

@@ -4,6 +4,7 @@ import type { AgentState } from '@/api/workflow'
 import type { FlowNodeId, NodeExecStatus } from '../pages/workspace/workspace.const'
 
 type WorkflowStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'
+type Updater<T> = T | ((prev: T) => T)
 
 interface WorkflowState {
   workflowId: string | null
@@ -24,8 +25,8 @@ interface WorkflowState {
   setImageUrl: (url: string | null) => void
   setAgentState: (state: AgentState | null) => void
   setError: (error: string | null) => void
-  setNodeExecStatuses: (statuses: Record<FlowNodeId, NodeExecStatus>) => void
-  setNodeStreamData: (data: Record<string, Record<string, any>>) => void
+  setNodeExecStatuses: (statuses: Updater<Record<FlowNodeId, NodeExecStatus>>) => void
+  setNodeStreamData: (data: Updater<Record<string, Record<string, any>>>) => void
   reset: () => void
 }
 
@@ -60,11 +61,16 @@ export const useWorkflowStore = create<WorkflowState>()(
         const content = agentState?.generateResult?.content
         const imageUrl = typeof content === 'string' && content.startsWith('http') ? content : null
         const imagePrompt = agentState?.generateResult?.promptUsed ?? null
-        set({ agentState, imageUrl, status: agentState?.status ?? 'running' })
+        const mappedStatus = agentState?.status === 'success' ? 'completed' : agentState?.status ?? 'running'
+        set({ agentState, imageUrl, status: mappedStatus as WorkflowStatus })
       },
       setError: (error) => set({ error }),
-      setNodeExecStatuses: (statuses) => set({ nodeExecStatuses: statuses }),
-      setNodeStreamData: (data) => set({ nodeStreamData: data }),
+      setNodeExecStatuses: (statuses) => set((state) => ({ 
+        nodeExecStatuses: typeof statuses === 'function' ? statuses(state.nodeExecStatuses) : statuses 
+      })),
+      setNodeStreamData: (data) => set((state) => ({ 
+        nodeStreamData: typeof data === 'function' ? data(state.nodeStreamData) : data 
+      })),
       reset: () => set({
         workflowId: null,
         status: 'idle',

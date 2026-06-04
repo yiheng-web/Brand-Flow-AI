@@ -18,6 +18,7 @@ export interface PromptChainOutput {
   systemPrompt: string;
   userPrompt: string;
   finalPrompt: string;
+  negativePrompt?: string;
   purpose: string;
 }
 
@@ -44,6 +45,7 @@ export function createPromptChain() {
         systemPrompt: "生成失败",
         userPrompt: "生成失败",
         finalPrompt: "生成失败",
+        negativePrompt: "",
         purpose: "解析异常",
       })!;
     },

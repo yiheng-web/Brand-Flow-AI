@@ -26,7 +26,6 @@ const Home = () => {
   const setCurrentEnterpriseId = useUserStore((state) => state.setCurrentEnterpriseId)
   const setEnterprises = useUserStore((state) => state.setEnterprises)
   const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
-
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
 

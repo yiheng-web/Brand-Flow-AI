@@ -1,37 +1,55 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
-import { OwnerType, Visibility } from '@/common/enums';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
+import { Document, Types } from 'mongoose'
+import { OwnerType, Visibility } from '@/common/enums'
 
-export type AssetDocument = Asset & Document;
+export type AssetDocument = Asset & Document
 
 @Schema({ timestamps: true })
 export class Asset {
   @Prop({ required: true })
-  name!: string;
+  name!: string
 
   @Prop({ required: true })
-  type!: string;
+  type!: string
 
   @Prop({ required: true })
-  url!: string;
+  url!: string
+
+  @Prop()
+  bucket?: string
+
+  @Prop({ index: true })
+  objectKey?: string
+
+  @Prop()
+  fileName?: string
+
+  @Prop()
+  mimeType?: string
+
+  @Prop()
+  size?: number
+
+  @Prop()
+  thumbnailObjectKey?: string
 
   @Prop({ type: Types.ObjectId, required: true, index: true })
-  ownerId!: Types.ObjectId;
+  ownerId!: Types.ObjectId
 
   @Prop({ type: String, enum: OwnerType, required: true })
-  ownerType!: OwnerType;
+  ownerType!: OwnerType
 
   @Prop({ type: String, enum: Visibility, default: Visibility.PRIVATE })
-  visibility!: Visibility;
+  visibility!: Visibility
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  creatorId!: Types.ObjectId;
+  creatorId!: Types.ObjectId
 
   @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId;
+  enterpriseId!: Types.ObjectId
 
   @Prop({ type: Object })
-  metadata!: Record<string, any>;
+  metadata!: Record<string, any>
 }
 
-export const AssetSchema = SchemaFactory.createForClass(Asset);
+export const AssetSchema = SchemaFactory.createForClass(Asset)
