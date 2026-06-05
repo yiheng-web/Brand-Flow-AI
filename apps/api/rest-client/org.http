@@ -1,0 +1,56 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
+@enterpriseId = 6a22f3c98568f26d09d55767
+@spaceId = personal
+
+### 创建企业
+POST {{baseUrl}}/org/enterprise
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "测试企业xxxx",
+  "logo": "https://cdn.example.com/logo.png"
+}
+
+### 获取我的企业列表
+GET {{baseUrl}}/org/enterprises
+Authorization: Bearer {{accessToken}}
+
+### 切换当前企业
+PUT {{baseUrl}}/org/enterprise/{{enterpriseId}}/switch
+Authorization: Bearer {{accessToken}}
+
+### 创建团队
+POST {{baseUrl}}/org/team
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "设计团队",
+  "description": "负责品牌设计与物料生成"
+}
+
+### 获取当前企业团队列表
+GET {{baseUrl}}/org/teams
+Authorization: Bearer {{accessToken}}
+
+### 获取当前用户可访问空间
+GET {{baseUrl}}/org/spaces
+Authorization: Bearer {{accessToken}}
+
+### 获取空间成员列表
+GET {{baseUrl}}/org/spaces/{{spaceId}}/members
+Authorization: Bearer {{accessToken}}
+
+### 邀请空间成员
+POST {{baseUrl}}/org/spaces/{{spaceId}}/invitations
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "email": "member@example.com",
+  "role": "admin"
+}
+

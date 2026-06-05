@@ -1,0 +1,83 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NzM1MCwiZXhwIjoxNzgxMjgyMTUwfQ.ahRQhtM3AubyHHjwcQvQtkwYQ3IHPd-E8wb6kgMrXtg
+@userId = 6a22f2148568f26d09d55759
+@assetId = 6a22fd13c7d4d75941634bbe
+@knowledgeId = 6a22f6a57468d83197c53eec
+
+### 获取素材列表
+GET {{baseUrl}}/assets
+Authorization: Bearer {{accessToken}}
+
+### 创建素材
+POST {{baseUrl}}/assets
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "测试素材",
+  "type": "logo",
+  "url": "https://cdn.example.com/assets/logo.png",
+  "ownerId": "{{userId}}",
+  "ownerType": "user",
+  "visibility": "private",
+  "metadata": {
+    "tags": ["logo", "brand"],
+    "description": "品牌官方主 Logo"
+  }
+}
+
+### 上传素材
+# 注意：把 ./example.webp 替换成实际文件路径
+POST {{baseUrl}}/assets/upload
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=----BrandFlowBoundary
+
+------BrandFlowBoundary
+Content-Disposition: form-data; name="file"; filename="example.webp"
+Content-Type: image/webp
+
+< ./example.webp
+------BrandFlowBoundary
+Content-Disposition: form-data; name="name"
+
+夏季活动背景图
+------BrandFlowBoundary
+Content-Disposition: form-data; name="type"
+
+background
+------BrandFlowBoundary
+Content-Disposition: form-data; name="ownerId"
+
+{{userId}}
+------BrandFlowBoundary
+Content-Disposition: form-data; name="ownerType"
+
+user
+------BrandFlowBoundary
+Content-Disposition: form-data; name="visibility"
+
+private
+------BrandFlowBoundary
+Content-Disposition: form-data; name="tags"
+
+海报,夏季,背景
+------BrandFlowBoundary
+Content-Disposition: form-data; name="description"
+
+适合夏季促销海报的背景图
+------BrandFlowBoundary--
+
+### 将素材保存为知识项
+POST {{baseUrl}}/assets/{{assetId}}/save-to-knowledge
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "knowledgeId": "{{knowledgeId}}",
+  "description": "沉淀到知识库的素材说明"
+}
+
+### 删除素材
+DELETE {{baseUrl}}/assets/{{assetId}}
+Authorization: Bearer {{accessToken}}

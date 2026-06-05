@@ -1,0 +1,6 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+
+### 根路径健康检查
+GET {{baseUrl}}
+

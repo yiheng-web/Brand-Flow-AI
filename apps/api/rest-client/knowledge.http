@@ -1,0 +1,92 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
+@knowledgeId = 6a22f6a57468d83197c53eec
+@itemId = 6a22f6657468d83197c53ecd
+
+### 创建知识库
+POST {{baseUrl}}/knowledge
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "瑞幸咖啡品牌规范库",
+  "description": "包含品牌色、Logo 使用规范、禁用词和参考案例"
+}
+
+### 获取知识库列表
+GET {{baseUrl}}/knowledge
+Authorization: Bearer {{accessToken}}
+
+### 获取知识库详情
+GET {{baseUrl}}/knowledge/{{knowledgeId}}
+Authorization: Bearer {{accessToken}}
+
+### 更新知识库
+PUT {{baseUrl}}/knowledge/{{knowledgeId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "瑞幸咖啡品牌规范库-更新",
+  "description": "更新后的知识库描述"
+}
+
+### 将文本写入知识库向量索引
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/ingest
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "content": "品牌主色为绿色，禁止使用低饱和灰色作为主视觉。Logo 必须保持清晰可见。"
+}
+
+### 创建知识项
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "title": "品牌色使用规范",
+  "content": "品牌主色为 #00A862，重要活动海报必须保持 Logo 清晰可见。",
+  "tags": ["品牌色", "Logo", "禁用项"],
+  "metadata": {
+    "source": "manual"
+  }
+}
+
+### 获取知识项列表
+GET {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Authorization: Bearer {{accessToken}}
+
+### 获取知识项详情
+GET {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+
+### 更新知识项
+PUT {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "title": "品牌色使用规范-更新",
+  "content": "品牌主色为 #00A862，重要活动海报必须保持 Logo 清晰可见。",
+  "tags": ["品牌色", "Logo"],
+  "status": "active",
+  "metadata": {
+    "source": "manual"
+  }
+}
+
+### 获取知识库底层向量记录
+GET {{baseUrl}}/knowledge/{{knowledgeId}}/records
+Authorization: Bearer {{accessToken}}
+
+### 删除知识项
+DELETE {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+
+### 删除知识库
+DELETE {{baseUrl}}/knowledge/{{knowledgeId}}
+Authorization: Bearer {{accessToken}}
+
