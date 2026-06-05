@@ -1,0 +1,26 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+@accessToken = 替换成你的登录 token
+
+### 说明
+# 当前源码里没有公开 StorageController。
+# 文件上传请优先使用 assets.http 里的 POST /assets/upload。
+# 下面两个请求是预留模板，除非你后续新增 /storage controller，否则会返回 404。
+
+### 上传文件
+# 注意：把下面的路径替换成本机实际文件路径
+POST {{baseUrl}}/storage/upload
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=----BrandFlowBoundary
+
+------BrandFlowBoundary
+Content-Disposition: form-data; name="file"; filename="example.png"
+Content-Type: image/png
+
+< ./example.png
+------BrandFlowBoundary--
+
+### 获取文件访问地址
+@fileKey = 替换成文件key
+GET {{baseUrl}}/storage/{{fileKey}}
+Authorization: Bearer {{accessToken}}
