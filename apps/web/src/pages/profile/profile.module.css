@@ -1,5 +1,5 @@
 /* ============================================================
-   团队空间管理页面样式（profile.module.css）
+   个人中心页面样式（profile.module.css）
    使用 CSS Modules 方案，所有类名在编译后自动生成唯一 hash，
    避免全局样式污染。
    ============================================================ */
@@ -8,73 +8,112 @@
 .wrapper {
   width: 100%;
   height: 100%;
-  display: flex;          /* 开启 flex 布局 */
-  justify-content: center;/* 水平居中 */
-  padding: 24px;          /* 四周内边距，避免内容贴边 */
-  overflow-y: auto;       /* 内容超出时垂直滚动 */
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
 }
 
 /* ---- 内容容器 ---- */
 .container {
   width: 100%;
-  max-width: 640px;       /* 限制最大宽度，大屏上不显得太宽 */
+  max-width: 640px;
   display: flex;
-  flex-direction: column; /* 垂直排列子元素 */
-  gap: 24px;              /* 子元素之间的间距 */
+  flex-direction: column;
+  gap: 24px;
 }
 
-/* ---- 页面头部：标题 + 底部边框分隔线 ---- */
-.header {
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-color); /* 使用全局 CSS 变量定义的分隔线颜色 */
+/* ====== 个人信息卡片 ====== */
+.profileCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  background: #fff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border-color, #e5e7eb);
 }
 
-.title {
-  margin: 0;              /* 重置默认 h2 的外边距 */
+.profileAvatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #4f6ff7, #7c3aed);
+  color: #fff;
   font-size: 20px;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
-/* ---- 顶部信息区：双列布局 ---- */
+.profileInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profileName {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main, #1a1d26);
+}
+
+.profileEmail {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+
+/* ---- 企业切换区 ---- */
+.headerSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
 .infoRow {
   display: flex;
-  gap: 20px;              /* 两列之间的间距 */
-}
-
-.infoItem {
-  flex: 1;                /* 两列均分剩余宽度 */
-  display: flex;
-  flex-direction: column; /* 标签在上，控件在下 */
-  gap: 8px;
+  align-items: center;
+  gap: 16px;
 }
 
 .infoLabel {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-main);
+  color: var(--text-main, #1a1d26);
+  white-space: nowrap;
+  min-width: 90px;
 }
 
 .spaceSelect {
-  width: 100%;            /* 下拉选择器撑满父容器宽度 */
+  flex: 1;
 }
 
 .roleTag {
-  padding: 8px 14px;      /* 较大的内边距，让标签更醒目 */
+  padding: 4px 12px;
   font-size: 13px;
   font-weight: 600;
-  border-radius: var(--radius-sm);
-  margin: 0;              /* 覆盖 Ant Design Tag 的默认 margin */
-  width: fit-content;     /* 宽度自适应内容 */
+  border-radius: var(--radius-sm, 8px);
+  margin: 0;
+  width: fit-content;
 }
 
-/* ---- 团队成员列表区域 ---- */
+/* ---- 团队管理区 ---- */
 .memberSection {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border-color, #e5e7eb);
 }
 
-/* 列表头部：标题（左）+ 邀请按钮（右）两端对齐 */
 .memberHeader {
   display: flex;
   justify-content: space-between;
@@ -82,79 +121,92 @@
 }
 
 .memberTitle {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
+  margin: 0;
 }
 
-.inviteBtn {
+.inviteBtn,
+.memberHeader button {
   border-radius: 8px;
   font-weight: 500;
 }
 
-/* 成员列表容器：可滚动 */
 .memberList {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 240px;      /* 超出此高度出现滚动条 */
+  max-height: 300px;
   overflow-y: auto;
 }
 
-/* 单个成员卡片行 */
-.memberItem {
+.loadingText {
+  text-align: center;
+  color: var(--text-tertiary, #9ca3af);
+  font-size: 13px;
+  padding: 20px 0;
+}
+
+/* ---- 团队列表项 ---- */
+.teamItem {
+  border-radius: var(--radius-sm, 8px) !important;
+  transition: box-shadow 0.2s;
+}
+
+.teamItem:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.teamItemContent {
   display: flex;
-  justify-content: space-between; /* 名称左对齐，角色标签右对齐 */
+  justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  background: #f8fafd;            /* 浅色背景 */
-  border-radius: var(--radius-md);
-  transition: background 0.2s;     /* hover 过渡动画 */
 }
 
-.memberItem:hover {
-  background: #f0f4f9;            /* hover 时背景稍深 */
-}
-
-/* 成员左侧：头像 + 名称 */
-.memberLeft {
+.teamItemLeft {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
-/* 圆形头像 */
-.memberAvatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;            /* 圆形裁剪 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;                    /* 文字白色 */
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;                 /* 防止被压缩 */
-}
-
-.memberName {
+.teamName {
   font-size: 14px;
   font-weight: 500;
+  color: var(--text-main, #1a1d26);
 }
 
-/* 角色标签：圆角 pill 样式 */
-.memberRole {
+.teamDesc {
   font-size: 12px;
-  border-radius: 12px;
-  padding: 4px 10px;
-  margin: 0;                      /* 覆盖 Ant Design 默认 margin */
+  color: var(--text-secondary, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+.teamDate {
+  font-size: 12px;
+  color: var(--text-tertiary, #9ca3af);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ---- 表单标签 ---- */
+.formLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main, #1a1d26);
+  margin-bottom: 6px;
 }
 
 /* ---- 底部操作区 ---- */
-.footer {
+.footerSection {
   padding-top: 16px;
-  border-top: 1px solid var(--border-color); /* 上部分隔线 */
+  border-top: 1px solid var(--border-color, #e5e7eb);
   display: flex;
-  justify-content: flex-end;      /* 按钮靠右对齐 */
+  justify-content: flex-end;
 }
 
 .logoutButton {

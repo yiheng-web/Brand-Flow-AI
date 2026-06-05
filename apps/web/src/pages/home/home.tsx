@@ -4,27 +4,45 @@
  * 功能说明：
  * - 展示平台核心入口，用户在此输入创意描述并发起 AI 创作
  * - 顶部标题营造氛围感："准备好大干一场了吗"
- * - 下拉选择器切换当前项目空间（如瑞幸项目组）
+ * - 下拉选择器切换当前企业（从 /org/enterprises 动态加载）
  * - 大文本输入框让用户描述创作需求
  * - 右侧圆形蓝色按钮提交创意，调用 submitPrompt API
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Select, Input, Button, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRightOutlined } from '@ant-design/icons'
 import { submitPrompt } from '@/api/workflow'
+import { getMyEnterprises, switchEnterprise } from '@/api/org'
 import { useUserStore } from '@/store/useUserStore'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
 import styles from './home.module.css'
 
 const Home = () => {
   const navigate = useNavigate()
-  const currentSpaceId = useUserStore((state) => state.currentSpaceId)
-  const setCurrentSpaceId = useUserStore((state) => state.setCurrentSpaceId)
-
+  const currentEnterpriseId = useUserStore((state) => state.currentEnterpriseId)
+  const enterprises = useUserStore((state) => state.enterprises)
+  const setCurrentEnterpriseId = useUserStore((state) => state.setCurrentEnterpriseId)
+  const setEnterprises = useUserStore((state) => state.setEnterprises)
+  const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // 加载企业列表
+  useEffect(() => {
+    const loadEnterprises = async () => {
+      try {
+        const res = await getMyEnterprises()
+        if (res.data) {
+          setEnterprises(res.data)
+        }
+      } catch {
+        // 静默处理，使用默认值
+      }
+    }
+    loadEnterprises()
+  }, [setEnterprises])
 
   const handleSubmit = async () => {
     const trimmed = prompt.trim()
@@ -35,17 +53,30 @@ const Home = () => {
 
     setSubmitting(true)
     try {
-      const res = await submitPrompt({ prompt: trimmed, spaceId: currentSpaceId })
-      // API client 已经解包了外层的 ApiResponse，因此 res 直接就是 WorkflowData 类型
-      const workflowId = res.id
-
-      message.success('创意已提交，正在为你生成...')
-      setPrompt('')
-      navigate('/workspace', { state: { prompt: trimmed, workflowId } })
+      const res = await submitPrompt({ prompt: trimmed, spaceId: currentEnterpriseId || '' })
+      if (res.success) {
+        const workflowId = res.data?.id
+        if (workflowId) {
+          setWorkflowId(workflowId)
+        }
+        message.success('创意已提交，正在为你生成...')
+        setPrompt('')
+        navigate('/workspace', { state: { prompt: trimmed, workflowId } })
+      }
     } catch {
       message.error('提交失败，请稍后重试')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  /** 切换企业 */
+  const handleSwitchEnterprise = async (enterpriseId: string) => {
+    setCurrentEnterpriseId(enterpriseId)
+    try {
+      await switchEnterprise(enterpriseId)
+    } catch {
+      // 静默处理
     }
   }
 
@@ -56,6 +87,12 @@ const Home = () => {
     }
   }
 
+  // 企业下拉选项
+  const enterpriseOptions = enterprises.map((ent) => ({
+    value: ent.enterpriseId,
+    label: ent.name,
+  }))
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.container}>
@@ -63,13 +100,11 @@ const Home = () => {
 
         <div className={styles.selectorRow}>
           <Select
-            value={currentSpaceId}
-            onChange={(val) => setCurrentSpaceId(val)}
+            value={currentEnterpriseId}
+            onChange={handleSwitchEnterprise}
             className={styles.spaceSelect}
-            options={[
-              { value: 'team', label: '项目组（成员视角）' },
-              { value: 'personal', label: '个人独立空间' },
-            ]}
+            options={enterpriseOptions.length > 0 ? enterpriseOptions : [{ value: '', label: '加载中...' }]}
+            placeholder="选择企业"
           />
         </div>
 
