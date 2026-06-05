@@ -78,13 +78,10 @@ function toAuthResult(backend: BackendLoginData): AuthResult {
  * - 需要取 res.data 获取 BackendLoginData
  */
 async function realLogin(params: LoginParams) {
-  const res = await apiClient.post<{ success: boolean; data: BackendLoginData }>(
-    '/auth/login',
-    params,
-  )
+  const res = (await apiClient.post('/auth/login', params)) as unknown as BackendLoginData
   return {
     success: true,
-    data: toAuthResult(res.data),
+    data: toAuthResult(res),
   }
 }
 
