@@ -3,7 +3,7 @@
  *
  * 接口：
  * - submitPrompt: 提交创意描述，创建 AI 创作工作流
- * - createWorkflowStream: 创建 SSE 流式订阅
+ * - getWorkflowDetail: 获取工作流完整详情及快照
  */
 
 import apiClient from './index'
@@ -102,7 +102,15 @@ export interface WorkflowStatusResponse {
 
 /** SSE stream 事件类型 */
 export interface StreamEvent {
-  type: 'connected' | 'workflow_completed' | 'workflow_failed' | 'node_completed' | 'node_skipped' | 'node_started' | 'node_progress' | 'node_failed'
+  type:
+    | 'connected'
+    | 'workflow_completed'
+    | 'workflow_failed'
+    | 'node_completed'
+    | 'node_skipped'
+    | 'node_started'
+    | 'node_progress'
+    | 'node_failed'
   workflowId?: string
   data?: Record<string, any>
   error?: string
@@ -117,19 +125,22 @@ export async function submitPrompt(params: SubmitPromptParams): Promise<Workflow
   return apiClient.post<any, WorkflowData>('/workflow/create', params)
 }
 
+export interface WorkflowNodeSnapshot {
+  type: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stale'
+  output?: Record<string, unknown>
+}
+
+export interface WorkflowDetailResponse {
+  workflow: WorkflowData
+  nodes: WorkflowNodeSnapshot[]
+}
 
 /**
- * 创建 SSE 流式订阅
- * 返回 EventSource 实例，调用方通过 onmessage 或 addEventListener 消费
+ * 获取工作流完整详情（包含节点快照）
  */
-export function createWorkflowStream(
-  workflowId: string,
-  baseUrl?: string
-): EventSource {
-  const fallbackBase = 'http://localhost:3000/api'
-  const apiBase = baseUrl || import.meta.env.VITE_API_BASE_URL || fallbackBase
-  const url = `${apiBase.replace(/\/+$/, '')}/workflow/${workflowId}/stream`
-  return new EventSource(url)
+export async function getWorkflowDetail(workflowId: string): Promise<WorkflowDetailResponse> {
+  return apiClient.get<any, WorkflowDetailResponse>(`/workflow/${workflowId}`)
 }
 
 /**
@@ -139,7 +150,7 @@ export function createWorkflowStream(
 export async function updateNodeOutput(
   workflowId: string,
   nodeType: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Promise<any> {
   return apiClient.put(`/workflow/${workflowId}/nodes/${nodeType}`, payload)
 }
@@ -149,7 +160,7 @@ export async function updateNodeOutput(
  */
 export async function rerunNode(
   workflowId: string,
-  nodeType: string
+  nodeType: string,
 ): Promise<{ success: boolean; message: string }> {
   return apiClient.post(`/workflow/${workflowId}/nodes/${nodeType}/run`)
 }

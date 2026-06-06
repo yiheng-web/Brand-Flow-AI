@@ -63,7 +63,7 @@ export const SLIDER_CONFIG = {
 /** 节点流节点定义 */
 export type FlowNodeId = 'intent' | 'brand-kb' | 'prompt' | 'image-gen' | 'compose' | 'eval'
 
-export type NodeExecStatus = 'done' | 'running' | 'pending'
+export type NodeExecStatus = 'done' | 'running' | 'pending' | 'failed'
 export type LayoutDir = 'vertical' | 'horizontal'
 
 export interface FlowNodeDefinition {
