@@ -27,6 +27,8 @@ import {
   type GenerateResult,
   type EvaluationResult,
   type AgentState,
+  type WorkflowNodeSnapshot,
+  getWorkflowDetail,
 } from '../../api/workflow'
 import { createAuthEventSource } from '../../utils/sse'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
@@ -43,14 +45,7 @@ const NODE_ID_TO_GRAPH_KEY: Record<FlowNodeId, string> = {
   eval: 'evaluateNode',
 }
 
-const NODE_ORDER: FlowNodeId[] = [
-  'intent',
-  'brand-kb',
-  'prompt',
-  'image-gen',
-  'compose',
-  'eval',
-]
+const NODE_ORDER: FlowNodeId[] = ['intent', 'brand-kb', 'prompt', 'image-gen', 'compose', 'eval']
 
 const NODE_LABELS: Record<FlowNodeId, string> = {
   intent: '意图解析',
@@ -112,157 +107,234 @@ const Workspace = () => {
   /* ============================
       SSE 流式连接
    ============================ */
-  const connectStream = useCallback((id: string) => {
-    // 关闭旧的 SSE 连接
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-    }
+  const connectStream = useCallback(
+    (id: string) => {
+      // 关闭旧的 SSE 连接
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+      }
 
-    const url = `/api/workflow/${id}/stream`
+      const url = `/api/workflow/${id}/stream`
 
-    const conn = createAuthEventSource(url, {
-      onMessage: (event) => {
-        if (event.type === 'connected') {
-          return
-        }
-
-        // 预留：处理大模型节点增量流式输出
-        if (event.type === 'node_progress') {
-          // 当前预留，后续可根据 delta 拼接字符串并更新 nodeStreamData
-          return
-        }
-
-        // 处理节点启动事件
-        if (event.type === 'node_started') {
-          const nodeKey = (event as any).nodeType as string
-          const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
-            ([, v]) => v === nodeKey
-          )?.[0] as FlowNodeId | undefined
-          if (currentNodeId) {
-            setNodeExecStatuses((prev) => ({ ...prev, [currentNodeId]: 'running' }))
-          }
-          return
-        }
-
-        // 处理节点失败事件
-        if (event.type === 'node_failed') {
-          const nodeKey = (event as any).nodeType as string
-          const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
-            ([, v]) => v === nodeKey
-          )?.[0] as FlowNodeId | undefined
-          if (currentNodeId) {
-            setNodeExecStatuses((prev) => ({ ...prev, [currentNodeId]: 'failed' }))
-          }
-          return
-        }
-
-        // 仅处理新的规范事件 node_completed / node_skipped
-        if (event.type === 'node_completed' || event.type === 'node_skipped') {
-          let nodeKey = (event as any).nodeType as string
-          let nodeValue: Record<string, unknown> = {}
-          let isSkipped = false
-
-          if (event.type === 'node_completed' && event.data) {
-            nodeValue = event.data
-          } else {
-            isSkipped = true
+      const conn = createAuthEventSource(url, {
+        onMessage: (event) => {
+          if (event.type === 'connected') {
+            return
           }
 
-          if (!nodeKey) return
-
-          // 更新累积数据（同步到 store）- 忽略被 skip 的情况
-          if (!isSkipped) {
-            setNodeStreamData((prev) => {
-              const updated = { ...prev, [nodeKey]: nodeValue }
-              nodeStreamDataRef.current = updated
-              return updated
-            })
+          // 预留：处理大模型节点增量流式输出
+          if (event.type === 'node_progress') {
+            // 当前预留，后续可根据 delta 拼接字符串并更新 nodeStreamData
+            return
           }
 
-          // 根据节点 key 更新对应 node 的执行状态 & 标记下一个节点
-          const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
-            ([, v]) => v === nodeKey
-          )?.[0] as FlowNodeId | undefined
-
-          if (currentNodeId) {
-            const currentIdx = NODE_ORDER.indexOf(currentNodeId)
-            setNodeExecStatuses((prev) => {
-              const next: Record<FlowNodeId, NodeExecStatus> = {
-                ...prev,
-                [currentNodeId]: 'done',
-              }
-              // 将下一个节点标记为 running
-              const nextIdx = currentIdx + 1
-              if (nextIdx < NODE_ORDER.length) {
-                next[NODE_ORDER[nextIdx]] = 'running'
-              }
-              return next
-            })
+          // 处理节点启动事件
+          if (event.type === 'node_started') {
+            const nodeKey = (event as any).nodeType as string
+            const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
+              ([, v]) => v === nodeKey,
+            )?.[0] as FlowNodeId | undefined
+            if (currentNodeId) {
+              setNodeExecStatuses((prev) => ({ ...prev, [currentNodeId]: 'running' }))
+            }
+            return
           }
-          return
-        }
 
-        if (event.type === 'workflow_completed' && event.data) {
-          const finalState = event.data as AgentState | undefined
+          // 处理节点失败事件
+          if (event.type === 'node_failed') {
+            const nodeKey = (event as any).nodeType as string
+            const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
+              ([, v]) => v === nodeKey,
+            )?.[0] as FlowNodeId | undefined
+            if (currentNodeId) {
+              setNodeExecStatuses((prev) => ({ ...prev, [currentNodeId]: 'failed' }))
+            }
+            return
+          }
 
-          setWorkflowStatus('completed')
+          // 仅处理新的规范事件 node_completed / node_skipped
+          if (event.type === 'node_completed' || event.type === 'node_skipped') {
+            let nodeKey = (event as any).nodeType as string
+            let nodeValue: Record<string, unknown> = {}
+            let isSkipped = false
 
-          // 写入最终数据（同步到 store）
-          if (finalState) {
-            nodeStreamDataRef.current = {}
-            
-            // finalState 中的 key 分别是 intentResult, knowledgeContext, promptResult 等
-            // 我们需要把它们映射回 nodeStreamData 对应的 nodeKey（如 intentNode, promptNode）
-            const mapping: Record<string, string> = {
-              'intent': 'intentResult',
-              'brand-kb': 'knowledgeContext',
-              'prompt': 'promptResult',
-              'image-gen': 'generateResult',
-              'eval': 'evaluationResult'
+            if (event.type === 'node_completed' && event.data) {
+              nodeValue = event.data
+            } else {
+              isSkipped = true
             }
 
-            NODE_ORDER.forEach((nodeId) => {
-              const graphKey = NODE_ID_TO_GRAPH_KEY[nodeId]
-              const stateKey = mapping[nodeId]
-              if (stateKey) {
-                const val = (finalState as any)[stateKey]
-                if (val) {
-                  // 为了与 node_completed 流输出的数据结构保持一致，包装一层
-                  nodeStreamDataRef.current[graphKey] = { [stateKey]: val } as Record<string, unknown>
+            if (!nodeKey) return
+
+            // 更新累积数据（同步到 store）- 忽略被 skip 的情况
+            if (!isSkipped) {
+              setNodeStreamData((prev) => {
+                const updated = { ...prev, [nodeKey]: nodeValue }
+                nodeStreamDataRef.current = updated
+                return updated
+              })
+            }
+
+            // 根据节点 key 更新对应 node 的执行状态 & 标记下一个节点
+            const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
+              ([, v]) => v === nodeKey,
+            )?.[0] as FlowNodeId | undefined
+
+            if (currentNodeId) {
+              const currentIdx = NODE_ORDER.indexOf(currentNodeId)
+              setNodeExecStatuses((prev) => {
+                const next: Record<FlowNodeId, NodeExecStatus> = {
+                  ...prev,
+                  [currentNodeId]: 'done',
                 }
-              }
-            })
-            setNodeStreamData({ ...nodeStreamDataRef.current })
-            setAgentState(finalState)
+                // 将下一个节点标记为 running
+                const nextIdx = currentIdx + 1
+                if (nextIdx < NODE_ORDER.length) {
+                  next[NODE_ORDER[nextIdx]] = 'running'
+                }
+                return next
+              })
+            }
+            return
           }
 
-          setNodeExecStatuses({
-            intent: 'done',
-            'brand-kb': 'done',
-            prompt: 'done',
-            'image-gen': 'done',
-            compose: 'done',
-            eval: 'done',
-          })
+          if (event.type === 'workflow_completed' && event.data) {
+            const finalState = event.data as AgentState | undefined
 
-          conn.close()
-          eventSourceRef.current = null
-          return
+            setWorkflowStatus('completed')
+
+            // 写入最终数据（同步到 store）
+            if (finalState) {
+              nodeStreamDataRef.current = {}
+
+              // finalState 中的 key 分别是 intentResult, knowledgeContext, promptResult 等
+              // 我们需要把它们映射回 nodeStreamData 对应的 nodeKey（如 intentNode, promptNode）
+              const mapping: Record<string, string> = {
+                intent: 'intentResult',
+                'brand-kb': 'knowledgeContext',
+                prompt: 'promptResult',
+                'image-gen': 'generateResult',
+                eval: 'evaluationResult',
+              }
+
+              NODE_ORDER.forEach((nodeId) => {
+                const graphKey = NODE_ID_TO_GRAPH_KEY[nodeId]
+                const stateKey = mapping[nodeId]
+                if (stateKey) {
+                  const val = (finalState as any)[stateKey]
+                  if (val) {
+                    // 为了与 node_completed 流输出的数据结构保持一致，包装一层
+                    nodeStreamDataRef.current[graphKey] = { [stateKey]: val } as Record<
+                      string,
+                      unknown
+                    >
+                  }
+                }
+              })
+              setNodeStreamData({ ...nodeStreamDataRef.current })
+              setAgentState(finalState)
+            }
+
+            setNodeExecStatuses({
+              intent: 'done',
+              'brand-kb': 'done',
+              prompt: 'done',
+              'image-gen': 'done',
+              compose: 'done',
+              eval: 'done',
+            })
+
+            conn.close()
+            eventSourceRef.current = null
+            return
+          }
+
+          if (event.type === 'workflow_failed' && event.error) {
+            setWorkflowStatus('failed')
+            setWorkflowError(event.error)
+            return
+          }
+        },
+        onError: () => {
+          // SSE 连接错误处理
+        },
+      })
+
+      eventSourceRef.current = conn
+    },
+    [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError],
+  )
+
+  /* ============================
+      状态恢复与同步 (Rehydration)
+   ============================ */
+  const syncWorkflowState = useCallback(
+    async (id: string) => {
+      try {
+        const data = await getWorkflowDetail(id)
+        const workflow = data.workflow
+        const nodes = data.nodes || []
+
+        setWorkflowStatus(workflow.status)
+        if (workflow.errorMessage) {
+          setWorkflowError(workflow.errorMessage)
         }
 
-        if (event.type === 'workflow_failed' && event.error) {
-          setWorkflowStatus('failed')
-          setWorkflowError(event.error)
-          return
+        const newStatuses: Record<FlowNodeId, NodeExecStatus> = {
+          intent: 'pending',
+          'brand-kb': 'pending',
+          prompt: 'pending',
+          'image-gen': 'pending',
+          compose: 'pending',
+          eval: 'pending',
         }
-      },
-      onError: () => {
-        // SSE 连接错误处理
-      },
-    })
+        const newData: Record<string, Record<string, unknown>> = {}
 
-    eventSourceRef.current = conn
-  }, [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError])
+        let hasRunning = false
+        nodes.forEach((node: WorkflowNodeSnapshot) => {
+          const nodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
+            ([, v]) => v === node.type,
+          )?.[0] as FlowNodeId | undefined
+          if (nodeId) {
+            if (node.status === 'completed' || node.status === 'stale') {
+              newStatuses[nodeId] = 'done'
+            } else if (node.status === 'failed') {
+              newStatuses[nodeId] = 'failed'
+            } else if (node.status === 'running') {
+              newStatuses[nodeId] = 'running'
+              hasRunning = true
+            }
+            if (node.output) {
+              newData[node.type] = node.output
+            }
+          }
+        })
+
+        if (workflow.status !== 'completed' && workflow.status !== 'failed' && !hasRunning) {
+          for (const nodeId of NODE_ORDER) {
+            if (newStatuses[nodeId] === 'pending') {
+              newStatuses[nodeId] = 'running'
+              break
+            }
+          }
+        }
+
+        setNodeExecStatuses(newStatuses)
+        setNodeStreamData(newData)
+        nodeStreamDataRef.current = newData
+
+        // 如果未完成，则连接 SSE 接力执行
+        if (workflow.status !== 'completed' && workflow.status !== 'failed') {
+          connectStream(id)
+        }
+      } catch (err) {
+        console.error('获取工作流详情失败:', err)
+        setWorkflowStatus('failed')
+        setWorkflowError('无法恢复工作流状态，可能由于越权拦截或网络异常。')
+      }
+    },
+    [setWorkflowStatus, setWorkflowError, setNodeExecStatuses, setNodeStreamData, connectStream],
+  )
 
   /* ============================
       工作流启动
@@ -289,7 +361,10 @@ const Workspace = () => {
         prompt: userPrompt,
         spaceId: 'personal',
       })
-      const id: string = (res as { data?: { id?: string }; id?: string }).data?.id || (res as { data?: { id?: string }; id?: string }).id || ''
+      const id: string =
+        (res as { data?: { id?: string }; id?: string }).data?.id ||
+        (res as { data?: { id?: string }; id?: string }).id ||
+        ''
       if (!id) throw new Error('创建工作流后未返回 ID')
 
       setWorkflowId(id) // 同步到 store
@@ -303,44 +378,41 @@ const Workspace = () => {
       connectStream(id)
     } catch (err) {
       setWorkflowStatus('failed')
-      setWorkflowError(
-        err instanceof Error ? err.message : '提交创意失败，请重试'
-      )
+      setWorkflowError(err instanceof Error ? err.message : '提交创意失败，请重试')
       setIsSubmitting(false)
     }
-  }, [userPrompt, setStoredPrompt, setWorkflowId, setWorkflowError, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData, connectStream])
+  }, [
+    userPrompt,
+    setStoredPrompt,
+    setWorkflowId,
+    setWorkflowError,
+    setWorkflowStatus,
+    setNodeExecStatuses,
+    setNodeStreamData,
+    connectStream,
+  ])
 
   /* ---- 自动启动工作流 / 断线重连 ---- */
   useEffect(() => {
     // 场景 1: 从首页带来了全新的 workflowId
     if (navState?.workflowId && navState.workflowId !== workflowId) {
       setWorkflowId(navState.workflowId)
-      // 重置上一次可能处于 completed 的状态
-      setWorkflowStatus('running')
-      setNodeExecStatuses({
-        intent: 'running',
-        'brand-kb': 'pending',
-        prompt: 'pending',
-        'image-gen': 'pending',
-        compose: 'pending',
-        eval: 'pending',
-      })
-      setNodeStreamData({})
-      if (nodeStreamDataRef.current) {
-        nodeStreamDataRef.current = {}
-      }
-      
-      connectStream(navState.workflowId)
-    } 
+      // 场景 1: 从外部点进来，先同步恢复状态
+      syncWorkflowState(navState.workflowId)
+    }
     // 场景 2: 仅带来了 prompt，没有 workflowId (直接启动)
     else if (navState?.prompt && workflowStatus === 'idle' && !workflowId) {
       startWorkflow()
     }
-    // 场景 3: 页面刷新，已存在 workflowId，且处于运行中，但 SSE 连接已断开，则重新连接
-    else if (workflowId && (workflowStatus === 'running' || workflowStatus === 'pending') && !eventSourceRef.current) {
-      connectStream(workflowId)
+    // 场景 3: 页面刷新，已存在 workflowId，但 SSE 连接已断开，重新同步状态并连接
+    else if (
+      workflowId &&
+      (workflowStatus === 'running' || workflowStatus === 'pending') &&
+      !eventSourceRef.current
+    ) {
+      syncWorkflowState(workflowId)
     }
-  }, [navState, workflowId, workflowStatus, setWorkflowId, setWorkflowStatus, setNodeExecStatuses, setNodeStreamData, connectStream, startWorkflow])
+  }, [navState, workflowId, workflowStatus, setWorkflowId, syncWorkflowState, startWorkflow])
 
   /* ---- 清理 ---- */
   useEffect(() => {
@@ -357,7 +429,11 @@ const Workspace = () => {
    ============================ */
 
   /** 获取意图解析数据 */
-  const getIntentData = (): { keywords?: string[]; sceneType?: string; intentResult?: IntentOutput } | null => {
+  const getIntentData = (): {
+    keywords?: string[]
+    sceneType?: string
+    intentResult?: IntentOutput
+  } | null => {
     const intentData = nodeStreamData['intentNode'] as { intentResult?: IntentOutput } | undefined
     if (!intentData?.intentResult) return null
     return {
@@ -376,21 +452,27 @@ const Workspace = () => {
 
   /** 获取 Prompt 专家数据 */
   const getPromptData = (): PromptChainOutput | null => {
-    const promptData = nodeStreamData['promptNode'] as { promptResult?: PromptChainOutput } | undefined
+    const promptData = nodeStreamData['promptNode'] as
+      | { promptResult?: PromptChainOutput }
+      | undefined
     if (!promptData) return null
     return promptData.promptResult || (promptData as any)
   }
 
   /** 获取生成结果（图片 URL） */
   const getGenerateData = (): GenerateResult | null => {
-    const genData = nodeStreamData['generateNode'] as { generateResult?: GenerateResult } | undefined
+    const genData = nodeStreamData['generateNode'] as
+      | { generateResult?: GenerateResult }
+      | undefined
     if (!genData) return null
     return genData.generateResult || (genData as any)
   }
 
   /** 获取评估结果 */
   const getEvalData = (): EvaluationResult | null => {
-    const evalData = nodeStreamData['evaluateNode'] as { evaluationResult?: EvaluationResult } | undefined
+    const evalData = nodeStreamData['evaluateNode'] as
+      | { evaluationResult?: EvaluationResult }
+      | undefined
     if (!evalData) return null
     return evalData.evaluationResult || (evalData as any)
   }
@@ -442,14 +524,14 @@ const Workspace = () => {
     try {
       const graphKey = NODE_ID_TO_GRAPH_KEY[nodeId]
       await updateNodeOutput(workflowId, graphKey, payload)
-      
+
       // 更新本地状态，使其生效，并将下游节点设为 stale (这里简化处理，直接让 SSE 处理后续更新)
       setNodeStreamData((prev) => {
         const updated = { ...prev, [graphKey]: payload }
         nodeStreamDataRef.current = updated
         return updated
       })
-      
+
       // 级联将下游节点设为 stale/pending，同时清理其遗留数据
       const currentIdx = NODE_ORDER.indexOf(nodeId)
       if (currentIdx !== -1 && currentIdx < NODE_ORDER.length - 1) {
@@ -482,7 +564,7 @@ const Workspace = () => {
       const graphKey = NODE_ID_TO_GRAPH_KEY[nodeId]
       await rerunNode(workflowId, graphKey)
       message.info('正在触发接力执行...')
-      
+
       // 开启流
       if (workflowStatus !== 'running') {
         setWorkflowStatus('running')
@@ -490,7 +572,7 @@ const Workspace = () => {
           connectStream(workflowId)
         }
       }
-      
+
       // 更新状态：当前节点变为 running，后续节点变为 pending（变灰），并清空后续遗留数据
       const currentIdx = NODE_ORDER.indexOf(nodeId)
       setNodeExecStatuses((prev) => {
@@ -514,7 +596,7 @@ const Workspace = () => {
         nodeStreamDataRef.current = nextData
         return nextData
       })
-      
+
       // 如果重跑的是图像生成节点或其上游节点，需要同步清理 store 中的 imageUrl 以显示 loading
       const imageGenIdx = NODE_ORDER.indexOf('image-gen')
       if (currentIdx !== -1 && currentIdx <= imageGenIdx) {
@@ -631,9 +713,7 @@ const Workspace = () => {
         <div className={styles.statusIndicator}>
           {isExecuting && <div className={styles.spinner} />}
           <span>{statusLabel}</span>
-          {workflowError && (
-            <span className={styles.statusError}> - {workflowError}</span>
-          )}
+          {workflowError && <span className={styles.statusError}> - {workflowError}</span>}
         </div>
       </div>
 
@@ -642,10 +722,7 @@ const Workspace = () => {
           {viewTabIndex === 0 ? (
             <div className={styles.canvasArea}>
               <ReactFlowProvider>
-                <FlowView
-                  onNodeClick={handleNodeClick}
-                  nodeExecStatuses={nodeExecStatuses}
-                />
+                <FlowView onNodeClick={handleNodeClick} nodeExecStatuses={nodeExecStatuses} />
               </ReactFlowProvider>
             </div>
           ) : (
@@ -653,11 +730,7 @@ const Workspace = () => {
               <div className={styles.previewToolbar}>
                 <div className={styles.previewToolGroup}>
                   {baseImageUrl && (
-                    <button
-                      type="button"
-                      className={styles.saveImageBtn}
-                      onClick={handleSaveImage}
-                    >
+                    <button type="button" className={styles.saveImageBtn} onClick={handleSaveImage}>
                       保存图片
                     </button>
                   )}
@@ -682,21 +755,11 @@ const Workspace = () => {
 
           {/* 图片放大灯箱 */}
           {isLightboxOpen && baseImageUrl && (
-            <div
-              className={styles.imageLightbox}
-              onClick={() => setIsLightboxOpen(false)}
-            >
-              <button
-                className={styles.lightboxClose}
-                onClick={() => setIsLightboxOpen(false)}
-              >
+            <div className={styles.imageLightbox} onClick={() => setIsLightboxOpen(false)}>
+              <button className={styles.lightboxClose} onClick={() => setIsLightboxOpen(false)}>
                 ×
               </button>
-              <img
-                src={baseImageUrl}
-                alt="生成海报"
-                onClick={(e) => e.stopPropagation()}
-              />
+              <img src={baseImageUrl} alt="生成海报" onClick={(e) => e.stopPropagation()} />
             </div>
           )}
         </section>
@@ -704,9 +767,7 @@ const Workspace = () => {
         <aside className={styles.right}>
           <div className={styles.rightHeader}>
             <span className={styles.panelTitle}>
-              {selectedNodeLabel
-                ? `节点属性：${selectedNodeLabel}`
-                : '节点属性'}
+              {selectedNodeLabel ? `节点属性：${selectedNodeLabel}` : '节点属性'}
             </span>
           </div>
           {renderRightContent()}
