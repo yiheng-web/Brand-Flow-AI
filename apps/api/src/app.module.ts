@@ -1,14 +1,15 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
-import { BullModule } from '@nestjs/bullmq';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { OrgModule } from './modules/org/org.module';
-import { AssetsModule } from './modules/assets/assets.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { WorkflowModule } from './modules/workflow/workflow.module';
-import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { MongooseModule } from '@nestjs/mongoose'
+import { BullModule } from '@nestjs/bullmq'
+import { AppController } from './app.controller'
+import { AppService } from './app.service'
+import { OrgModule } from './modules/org/org.module'
+import { AssetsModule } from './modules/assets/assets.module'
+import { AuthModule } from './modules/auth/auth.module'
+import { WorkflowModule } from './modules/workflow/workflow.module'
+import { KnowledgeModule } from './modules/knowledge/knowledge.module'
+import { WorksModule } from './modules/works/works.module'
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
     AuthModule,
     WorkflowModule,
     KnowledgeModule,
+    WorksModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -46,4 +48,4 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

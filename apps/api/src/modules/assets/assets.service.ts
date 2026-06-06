@@ -4,8 +4,10 @@ import { Model, Types } from 'mongoose'
 import { Asset, AssetDocument } from './asset.schema'
 import { User, UserDocument } from '@/modules/org/schemas/user.schema'
 import { CreateAssetDto, UploadAssetDto } from './dto/assets.dto'
+import { SaveAssetToKnowledgeDto } from './dto/assets.dto'
 import { Visibility, OwnerType, Role } from '@/common/enums'
 import { StorageService } from '@/modules/storage/storage.service'
+import { KnowledgeService } from '@/modules/knowledge/knowledge.service'
 
 interface UploadedAssetFile {
   originalname: string
@@ -20,6 +22,7 @@ export class AssetsService {
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private readonly storageService: StorageService,
+    private readonly knowledgeService: KnowledgeService,
   ) {}
 
   async createAsset(userId: string, enterpriseId: string, createDto: CreateAssetDto) {
@@ -195,6 +198,66 @@ export class AssetsService {
     return { success: true }
   }
 
+  async saveToKnowledge(
+    userId: string,
+    enterpriseId: string,
+    assetId: string,
+    dto: SaveAssetToKnowledgeDto,
+  ) {
+    if (!enterpriseId) {
+      throw new BadRequestException('请先选择或切换到一家企业')
+    }
+
+    const asset = await this.findAccessibleAsset(userId, enterpriseId, assetId)
+    const tags = Array.isArray(asset.metadata?.tags) ? asset.metadata.tags : []
+    const content = [
+      `素材名称：${asset.name}`,
+      `素材类型：${asset.type}`,
+      dto.description || asset.metadata?.description
+        ? `素材描述：${dto.description || asset.metadata.description}`
+        : undefined,
+      asset.metadata?.tags?.length ? `标签：${asset.metadata.tags.join(', ')}` : undefined,
+      `素材地址：${asset.url}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const result = await this.knowledgeService.createItemFromAsset(
+      userId,
+      enterpriseId,
+      dto.knowledgeId,
+      {
+        title: asset.name,
+        content,
+        assetId: asset._id.toString(),
+        tags,
+        metadata: {
+          assetType: asset.type,
+          assetUrl: asset.url,
+          objectKey: asset.objectKey,
+          description: dto.description || asset.metadata?.description,
+        },
+      },
+    )
+
+    asset.metadata = {
+      ...(asset.metadata || {}),
+      savedToKnowledge: true,
+      savedKnowledgeId: dto.knowledgeId,
+      savedKnowledgeItemId: result.item._id.toString(),
+      savedToKnowledgeAt: new Date().toISOString(),
+    }
+    await asset.save()
+
+    return {
+      success: true,
+      assetId: asset._id,
+      knowledgeId: dto.knowledgeId,
+      item: result.item,
+      ingest: result.ingest,
+    }
+  }
+
   private async assertCanCreateAsset(
     userId: string,
     enterpriseId: string,
@@ -216,6 +279,43 @@ export class AssetsService {
     if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
       throw new BadRequestException('仅部门主管或企业管理员才能往企业/团队库添加规范素材')
     }
+  }
+
+  private async findAccessibleAsset(userId: string, enterpriseId: string, assetId: string) {
+    const asset = await this.assetModel.findOne({
+      _id: assetId,
+      enterpriseId: new Types.ObjectId(enterpriseId),
+    })
+
+    if (!asset) {
+      throw new NotFoundException('资产不存在或无权访问')
+    }
+
+    if (asset.creatorId.toString() === userId || asset.visibility === Visibility.PUBLIC) {
+      return asset
+    }
+
+    const user = await this.userModel.findById(userId)
+
+    if (
+      asset.visibility === Visibility.ENTERPRISE &&
+      user?.memberships.some((m) => m.enterpriseId.toString() === enterpriseId)
+    ) {
+      return asset
+    }
+
+    if (asset.visibility === Visibility.TEAM && asset.ownerType === OwnerType.TEAM) {
+      const membership = user?.memberships.find(
+        (m) =>
+          m.enterpriseId.toString() === enterpriseId &&
+          m.teamId?.toString() === asset.ownerId.toString(),
+      )
+      if (membership) {
+        return asset
+      }
+    }
+
+    throw new NotFoundException('资产不存在或无权访问')
   }
 
   private buildAssetObjectKey(

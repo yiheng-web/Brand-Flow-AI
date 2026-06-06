@@ -3,6 +3,7 @@
 ## 1. 全局配置
 
 - **Base URL**: `http://localhost:3000/api`
+- **实时接口文档**: `http://localhost:3000/api-docs`（由 Swagger/OpenAPI 根据 Controller 和 DTO 自动生成）
 - **默认 Header**: `Content-Type: application/json`
 - **鉴权**: `Authorization: Bearer <JWT_TOKEN>` (除非标记了 `[无需鉴权]`，否则所有接口均需携带)
 - **统一返回格式**: 所有成功响应都会被包装在如下结构中：
@@ -137,6 +138,30 @@ interface UserInfo {
 
 - **`DELETE /assets/:id`**
   - **路径参数**: `id` (要删除的资产 ID)
+
+- **`POST /assets/:id/save-to-knowledge`**
+  - **说明**: 将指定素材沉淀为知识库知识项，并同步写入向量库。
+  - **路径参数**: `id` (素材 ID)
+  - **Body**:
+    ```typescript
+    {
+      knowledgeId: string,  // 目标知识库 ID
+      description?: string  // 覆盖素材原描述的补充说明
+    }
+    ```
+  - **返回 Data**:
+    ```typescript
+    {
+      success: boolean,
+      assetId: string,
+      knowledgeId: string,
+      item: KnowledgeItem,
+      ingest: {
+        message: string,
+        chunks: number
+      }
+    }
+    ```
 
 ---
 
@@ -289,6 +314,65 @@ interface UserInfo {
     }
     ```
 
+- **`POST /knowledge/:id/items`**
+  - **说明**: 在指定知识库下创建一条结构化知识项，并同步写入向量库。
+  - **路径参数**: `id` (知识库 ID)
+  - **Body**:
+    ```typescript
+    {
+      title: string,
+      content: string,
+      tags?: string[],
+      metadata?: Record<string, any>
+    }
+    ```
+  - **返回 Data**:
+    ```typescript
+    {
+      item: KnowledgeItem,
+      ingest: {
+        message: string,
+        chunks: number
+      }
+    }
+    ```
+
+- **`GET /knowledge/:id/items`**
+  - **说明**: 获取指定知识库下的知识项列表。
+  - **路径参数**: `id` (知识库 ID)
+  - **返回 Data**: `Array<KnowledgeItem>`
+
+- **`GET /knowledge/:id/items/:itemId`**
+  - **说明**: 获取指定知识项详情。
+  - **路径参数**:
+    - `id`: 知识库 ID
+    - `itemId`: 知识项 ID
+  - **返回 Data**: `KnowledgeItem`
+
+- **`PUT /knowledge/:id/items/:itemId`**
+  - **说明**: 更新指定知识项。若更新 `content`，会同步重新写入向量库。
+  - **路径参数**:
+    - `id`: 知识库 ID
+    - `itemId`: 知识项 ID
+  - **Body**:
+    ```typescript
+    {
+      title?: string,
+      content?: string,
+      tags?: string[],
+      status?: 'active' | 'archived',
+      metadata?: Record<string, any>
+    }
+    ```
+  - **返回 Data**: `KnowledgeItem`
+
+- **`DELETE /knowledge/:id/items/:itemId`**
+  - **说明**: 删除指定知识项的 MongoDB 记录。
+  - **路径参数**:
+    - `id`: 知识库 ID
+    - `itemId`: 知识项 ID
+  - **返回 Data**: `{ success: boolean }`
+
 - **`GET /knowledge/:id/records`**
   - **说明**: （高级诊断接口）从底层的 Pinecone 向量数据库中，利用 `listPaginated` 暴力遍历并拉取当前知识库名下的所有向量切片明细。
   - **路径参数**: `id` (目标知识库 ID)
@@ -299,4 +383,89 @@ interface UserInfo {
       text: string // 该向量对应的明文切片
       metadata: any // 元数据信息（包含 enterpriseId, knowledgeId 等）
     }>
+    ```
+
+---
+
+### 作品与导出模块 (/works)
+
+- **`POST /works`**
+  - **说明**: 将工作流最终生成结果保存为作品，并自动创建第 1 个作品版本。
+  - **Body**:
+    ```typescript
+    {
+      title: string,
+      description?: string,
+      finalImageUrl: string,
+      objectKey?: string,
+      workflowId?: string,
+      ownerId: string,
+      ownerType: OwnerType,
+      visibility: Visibility,
+      qualityReport?: Record<string, any>,
+      nodesSnapshot?: Record<string, any>,
+      metadata?: Record<string, any>
+    }
+    ```
+  - **返回 Data**: `Work & { versions: WorkVersion[] }`
+
+- **`GET /works`**
+  - **说明**: 获取当前用户在当前企业下可见的作品列表。
+  - **返回 Data**: `Array<Work>`
+
+- **`GET /works/:id`**
+  - **说明**: 获取作品详情和全部版本。
+  - **路径参数**: `id` (作品 ID)
+  - **返回 Data**: `Work & { versions: WorkVersion[] }`
+
+- **`DELETE /works/:id`**
+  - **说明**: 删除作品及其版本记录。
+  - **路径参数**: `id` (作品 ID)
+  - **返回 Data**: `{ success: boolean }`
+
+- **`POST /works/:id/versions`**
+  - **说明**: 为作品新增一个版本，并将作品当前展示图更新为该版本。
+  - **路径参数**: `id` (作品 ID)
+  - **Body**:
+    ```typescript
+    {
+      imageUrl: string,
+      objectKey?: string,
+      sourceWorkflowId?: string,
+      nodesSnapshot?: Record<string, any>,
+      qualityReport?: Record<string, any>
+    }
+    ```
+  - **返回 Data**: `WorkVersion`
+
+- **`GET /works/:id/versions`**
+  - **说明**: 获取作品版本列表。
+  - **路径参数**: `id` (作品 ID)
+  - **返回 Data**: `Array<WorkVersion>`
+
+- **`GET /works/:id/versions/:versionId`**
+  - **说明**: 获取单个作品版本详情。
+  - **路径参数**:
+    - `id`: 作品 ID
+    - `versionId`: 版本 ID
+  - **返回 Data**: `WorkVersion`
+
+- **`POST /works/:id/export`**
+  - **说明**: 导出作品。V1.0 暂仅支持 PNG；接口会记录导出日志并返回下载地址。
+  - **路径参数**: `id` (作品 ID)
+  - **Body**:
+    ```typescript
+    {
+      format?: 'png'
+    }
+    ```
+  - **返回 Data**:
+    ```typescript
+    {
+      workId: string,
+      exportLogId: string,
+      format: 'png',
+      fileName: string,
+      downloadUrl: string
+    }
     ```

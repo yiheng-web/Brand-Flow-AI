@@ -1,0 +1,43 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
+@workflowId = 6a22f6e97468d83197c53f05
+@spaceId = personal
+@knowledgeId = 6a22f6a57468d83197c53eec
+@nodeType = intentNode
+
+### 创建并启动工作流
+POST {{baseUrl}}/workflow/create
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "prompt": "做一张夏日海报极简风格",
+  "spaceId": "{{spaceId}}",
+  "knowledgeId": "{{knowledgeId}}"
+}
+
+### 获取工作流详情
+GET {{baseUrl}}/workflow/{{workflowId}}
+Authorization: Bearer {{accessToken}}
+
+### 更新指定节点输出
+PUT {{baseUrl}}/workflow/{{workflowId}}/nodes/{{nodeType}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "status": "done",
+  "output": {
+    "summary": "手动更新节点输出"
+  }
+}
+
+### 从指定节点重新运行工作流
+POST {{baseUrl}}/workflow/{{workflowId}}/nodes/{{nodeType}}/run
+Authorization: Bearer {{accessToken}}
+
+### 订阅工作流 SSE 事件流
+GET {{baseUrl}}/workflow/{{workflowId}}/stream
+Authorization: Bearer {{accessToken}}
+
