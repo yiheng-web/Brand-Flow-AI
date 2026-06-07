@@ -103,6 +103,7 @@ const Workspace = () => {
   /* ---- 引用：SSE 连接 ---- */
   const eventSourceRef = useRef<{ close: () => void } | null>(null)
   const nodeStreamDataRef = useRef<Record<string, Record<string, unknown>>>({})
+  const syncedWorkflowIdRef = useRef<string | null>(null)
 
   /* ============================
       SSE 流式连接
@@ -395,9 +396,12 @@ const Workspace = () => {
   /* ---- 自动启动工作流 / 断线重连 ---- */
   useEffect(() => {
     // 场景 1: 从首页带来了全新的 workflowId
-    if (navState?.workflowId && navState.workflowId !== workflowId) {
+    if (navState?.workflowId && syncedWorkflowIdRef.current !== navState.workflowId) {
       setWorkflowId(navState.workflowId)
-      // 场景 1: 从外部点进来，先同步恢复状态
+      if (navState.prompt) {
+        setStoredPrompt(navState.prompt)
+      }
+      syncedWorkflowIdRef.current = navState.workflowId
       syncWorkflowState(navState.workflowId)
     }
     // 场景 2: 仅带来了 prompt，没有 workflowId (直接启动)

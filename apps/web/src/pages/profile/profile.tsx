@@ -15,7 +15,7 @@ import { LogoutOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
 import { getMyEnterprises, switchEnterprise, getTeams, createTeam } from '@/api/org'
-import type { EnterpriseData, TeamData } from '@/api/org'
+import type { TeamData } from '@/api/org'
 import styles from './profile.module.css'
 
 /** 角色标签映射 */
@@ -94,6 +94,8 @@ const Profile = () => {
       切换企业
    ============================ */
   const handleSwitchEnterprise = async (enterpriseId: string) => {
+    if (!enterpriseId) return
+
     setCurrentEnterpriseId(enterpriseId)
     try {
       await switchEnterprise(enterpriseId)
@@ -168,14 +170,12 @@ const Profile = () => {
               value={currentEnterpriseId}
               onChange={handleSwitchEnterprise}
               className={styles.spaceSelect}
-              options={
-                enterprises.length > 0
-                  ? enterprises.map((ent) => ({
-                      value: ent.enterpriseId,
-                      label: ent.name,
-                    }))
-                  : [{ value: '', label: '暂无企业' }]
-              }
+              options={enterprises.map((ent) => ({
+                value: ent.enterpriseId,
+                label: ent.name,
+              }))}
+              loading={enterprises.length === 0}
+              placeholder="暂无企业"
             />
           </div>
           <div className={styles.infoRow}>

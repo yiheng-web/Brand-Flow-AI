@@ -53,16 +53,17 @@ const Home = () => {
 
     setSubmitting(true)
     try {
-      const res = await submitPrompt({ prompt: trimmed, spaceId: currentEnterpriseId || '' })
-      if (res.success) {
-        const workflowId = res.data?.id
-        if (workflowId) {
-          setWorkflowId(workflowId)
-        }
-        message.success('创意已提交，正在为你生成...')
-        setPrompt('')
-        navigate('/workspace', { state: { prompt: trimmed, workflowId } })
+      const workflow = await submitPrompt({
+        prompt: trimmed,
+        spaceId: currentEnterpriseId || 'personal',
+      })
+      const workflowId = workflow.id
+      if (workflowId) {
+        setWorkflowId(workflowId)
       }
+      message.success('创意已提交，正在为你生成...')
+      setPrompt('')
+      navigate('/workspace', { state: { prompt: trimmed, workflowId } })
     } catch {
       message.error('提交失败，请稍后重试')
     } finally {
@@ -72,6 +73,8 @@ const Home = () => {
 
   /** 切换企业 */
   const handleSwitchEnterprise = async (enterpriseId: string) => {
+    if (!enterpriseId) return
+
     setCurrentEnterpriseId(enterpriseId)
     try {
       await switchEnterprise(enterpriseId)
@@ -103,9 +106,8 @@ const Home = () => {
             value={currentEnterpriseId}
             onChange={handleSwitchEnterprise}
             className={styles.spaceSelect}
-            options={
-              enterpriseOptions.length > 0 ? enterpriseOptions : [{ value: '', label: '加载中...' }]
-            }
+            options={enterpriseOptions}
+            loading={enterpriseOptions.length === 0}
             placeholder="选择企业"
           />
         </div>
