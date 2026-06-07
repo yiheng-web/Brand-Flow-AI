@@ -9,22 +9,38 @@ import {
 import { InjectQueue } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
 import { Queue, QueueEvents } from 'bullmq'
-import { Model } from 'mongoose'
+import { Model, Types } from 'mongoose'
 import { Observable } from 'rxjs'
 import { CreateWorkflowDto } from './dto/create-workflow.dto'
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
-import { Workflow, WorkflowDocument, WorkflowStatus } from './schemas/workflow.schema'
+import {
+  Workflow,
+  WorkflowDocument,
+  WorkflowSpaceType,
+  WorkflowStatus,
+} from './schemas/workflow.schema'
 import {
   WorkflowNode,
   WorkflowNodeDocument,
   WorkflowNodeType,
 } from './schemas/workflow-node.schema'
+import { OrgService } from '../org/org.service'
+import { KnowledgeService } from '../knowledge/knowledge.service'
 
 export interface WorkflowResponse {
   id: string
   status: WorkflowStatus
   prompt: string
   spaceId: string
+  userId: string
+  entId?: string
+  spaceType: WorkflowSpaceType
+  ownerUserId?: string
+  teamId?: string
+  enterpriseId?: string
+  selectedKnowledgeBaseIds: string[]
+  requiredKnowledgeBaseIds: string[]
+  callableKnowledgeBaseIds: string[]
   createdAt: string
   updatedAt: string
   result?: Record<string, unknown>
@@ -80,11 +96,43 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async create(dto: CreateWorkflowDto, userId: string, entId: string): Promise<WorkflowResponse> {
+    const space = await this.orgService.resolveSpaceContext(userId, dto.spaceId)
+    const selectedKnowledgeBaseIds = this.normalizeSelectedKnowledgeBaseIds(dto)
+    const callableKnowledgeBaseIds = await this.knowledgeService.resolveCallableKnowledgeBases(
+      userId,
+      space.enterpriseId,
+      dto.spaceId,
+      selectedKnowledgeBaseIds,
+    )
+    const availableKnowledgeBases = await this.knowledgeService.findAvailable(
+      userId,
+      space.enterpriseId,
+      dto.spaceId,
+    )
+    const requiredKnowledgeBaseIds = availableKnowledgeBases
+      .filter((item) => item.required && callableKnowledgeBaseIds.includes(item.id))
+      .map((item) => item.id)
+    const brandRules = space.enterpriseId
+      ? await this.orgService.getEnterpriseBrandRules(userId, space.enterpriseId)
+      : undefined
+    const policies = space.policies
+
     const workflow = await this.workflowModel.create({
       prompt: dto.prompt,
       spaceId: dto.spaceId,
       userId,
-      entId,
+      entId: space.enterpriseId ?? undefined,
+      spaceType: space.spaceType,
+      ownerUserId: space.ownerUserId
+        ? new Types.ObjectId(space.ownerUserId)
+        : new Types.ObjectId(userId),
+      teamId: space.teamId ? new Types.ObjectId(space.teamId) : undefined,
+      enterpriseId: space.enterpriseId ? new Types.ObjectId(space.enterpriseId) : undefined,
+      selectedKnowledgeBaseIds: this.toObjectIds(selectedKnowledgeBaseIds),
+      requiredKnowledgeBaseIds: this.toObjectIds(requiredKnowledgeBaseIds),
+      callableKnowledgeBaseIds: this.toObjectIds(callableKnowledgeBaseIds),
+      brandRulesSnapshot: brandRules,
+      policiesSnapshot: policies,
       status: 'pending',
     })
 
@@ -114,7 +162,17 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       RUN_WORKFLOW_JOB,
       {
         workflowId: workflow._id.toString(),
-        knowledgeId: dto.knowledgeId,
+        prompt: workflow.prompt,
+        spaceId: workflow.spaceId,
+        spaceType: workflow.spaceType,
+        ownerUserId: workflow.ownerUserId?.toString(),
+        teamId: workflow.teamId?.toString(),
+        enterpriseId: workflow.enterpriseId?.toString(),
+        selectedKnowledgeBaseIds,
+        requiredKnowledgeBaseIds,
+        callableKnowledgeBaseIds,
+        brandRules,
+        policies,
       },
       {
         jobId: `${workflow._id.toString()}-${Date.now()}`,
@@ -257,6 +315,15 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       status: workflow.status,
       prompt: workflow.prompt,
       spaceId: workflow.spaceId,
+      userId: workflow.userId,
+      entId: workflow.entId,
+      spaceType: workflow.spaceType,
+      ownerUserId: workflow.ownerUserId?.toString(),
+      teamId: workflow.teamId?.toString(),
+      enterpriseId: workflow.enterpriseId?.toString(),
+      selectedKnowledgeBaseIds: this.objectIdsToStrings(workflow.selectedKnowledgeBaseIds),
+      requiredKnowledgeBaseIds: this.objectIdsToStrings(workflow.requiredKnowledgeBaseIds),
+      callableKnowledgeBaseIds: this.objectIdsToStrings(workflow.callableKnowledgeBaseIds),
       createdAt:
         workflow.createdAt instanceof Date
           ? workflow.createdAt.toISOString()
@@ -268,5 +335,23 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       result: workflow.result,
       errorMessage: workflow.errorMessage,
     }
+  }
+
+  private normalizeSelectedKnowledgeBaseIds(dto: CreateWorkflowDto): string[] {
+    const ids = dto.selectedKnowledgeBaseIds?.length
+      ? dto.selectedKnowledgeBaseIds
+      : dto.knowledgeId
+        ? [dto.knowledgeId]
+        : []
+
+    return Array.from(new Set(ids.filter(Boolean)))
+  }
+
+  private toObjectIds(ids: string[]): Types.ObjectId[] {
+    return ids.map((id) => new Types.ObjectId(id))
+  }
+
+  private objectIdsToStrings(ids?: Types.ObjectId[]): string[] {
+    return (ids ?? []).map((id) => id.toString())
   }
 }
