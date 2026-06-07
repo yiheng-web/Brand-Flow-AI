@@ -4,11 +4,31 @@ import {
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { Card, Col, Row, Statistic, Table, Tag } from 'antd'
-import { dashboardSummary } from '../api/dashboard'
-import { auditLogsFixture } from '../api/audit'
+import { Alert, Card, Col, Row, Spin, Statistic, Table, Tag } from 'antd'
+import { useEffect, useState } from 'react'
+import { fetchDashboard } from '../api/dashboard'
+import type { DashboardSummary } from '../types/admin'
 
 export function DashboardPage() {
+  const [summary, setSummary] = useState<DashboardSummary>()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetchDashboard()
+      .then(setSummary)
+      .catch(() => setError('Dashboard 数据加载失败'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) {
+    return <Spin />
+  }
+
+  if (error || !summary) {
+    return <Alert type="error" message={error || 'Dashboard 数据不存在'} />
+  }
+
   return (
     <>
       <div className="page-header">
@@ -18,23 +38,19 @@ export function DashboardPage() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic title="用户总数" value={dashboardSummary.users} prefix={<UserOutlined />} />
+            <Statistic title="用户总数" value={summary.users} prefix={<UserOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic
-              title="企业总数"
-              value={dashboardSummary.enterprises}
-              prefix={<BankOutlined />}
-            />
+            <Statistic title="企业总数" value={summary.enterprises} prefix={<BankOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="今日生成"
-              value={dashboardSummary.generationsToday}
+              value={summary.generationsToday}
               prefix={<ThunderboltOutlined />}
             />
           </Card>
@@ -43,7 +59,7 @@ export function DashboardPage() {
           <Card>
             <Statistic
               title="待审核"
-              value={dashboardSummary.pendingReviews}
+              value={summary.pendingReviews}
               prefix={<CheckCircleOutlined />}
             />
           </Card>
@@ -53,7 +69,7 @@ export function DashboardPage() {
         <Table
           rowKey="id"
           size="middle"
-          dataSource={auditLogsFixture}
+          dataSource={summary.recentAuditLogs ?? []}
           pagination={false}
           columns={[
             { title: '操作人', dataIndex: 'actor' },

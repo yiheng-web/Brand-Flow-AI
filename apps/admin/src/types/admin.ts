@@ -20,6 +20,7 @@ export interface DashboardSummary {
   generationsToday: number
   quotaUsed: number
   pendingReviews: number
+  recentAuditLogs?: AuditLog[]
 }
 
 export interface ManagedUser {
@@ -29,6 +30,24 @@ export interface ManagedUser {
   status: 'active' | 'disabled'
   role: string
   createdAt: string
+}
+
+export interface ManagedTeam {
+  id: string
+  name: string
+  description?: string
+  status: 'active' | 'disabled'
+  createdAt: string
+}
+
+export interface ListQuery {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  status?: string
+  actor?: string
+  action?: string
+  targetType?: string
 }
 
 export interface ManagedEnterprise {

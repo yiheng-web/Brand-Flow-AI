@@ -1,13 +1,36 @@
 import { Button, Card, Input, Popconfirm, Select, Space, Table, message } from 'antd'
 import type { TableProps } from 'antd'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { usersFixture } from '../api/users'
+import { fetchUsers, updateUserStatus } from '../api/users'
 import { StatusTag } from '../components/StatusTag'
-import type { ManagedUser } from '../types/admin'
+import type { ListQuery, ManagedUser } from '../types/admin'
 
 export function UsersPage() {
   const navigate = useNavigate()
   const [messageApi, contextHolder] = message.useMessage()
+  const [users, setUsers] = useState<ManagedUser[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [query, setQuery] = useState<ListQuery>({ page: 1, pageSize: 10 })
+
+  const loadUsers = async (nextQuery = query) => {
+    setLoading(true)
+    try {
+      const result = await fetchUsers(nextQuery)
+      setUsers(result.items)
+      setTotal(result.total)
+    } catch {
+      messageApi.error('用户列表加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const columns: TableProps<ManagedUser>['columns'] = [
     { title: '邮箱', dataIndex: 'email' },
@@ -24,7 +47,11 @@ export function UsersPage() {
           </Button>
           <Popconfirm
             title="确认禁用该用户？"
-            onConfirm={() => messageApi.success('已提交禁用操作')}
+            onConfirm={async () => {
+              await updateUserStatus(record.id, 'disabled')
+              messageApi.success('用户已禁用')
+              await loadUsers()
+            }}
           >
             <Button danger type="link" disabled={record.status === 'disabled'}>
               禁用
@@ -45,11 +72,24 @@ export function UsersPage() {
       <Card>
         <div className="toolbar">
           <div className="toolbar-filters">
-            <Input.Search placeholder="搜索邮箱或昵称" style={{ maxWidth: 280 }} />
+            <Input.Search
+              placeholder="搜索邮箱或昵称"
+              style={{ maxWidth: 280 }}
+              onSearch={(keyword) => {
+                const nextQuery = { ...query, page: 1, keyword }
+                setQuery(nextQuery)
+                void loadUsers(nextQuery)
+              }}
+            />
             <Select
               placeholder="状态"
               allowClear
               style={{ width: 160 }}
+              onChange={(status) => {
+                const nextQuery = { ...query, page: 1, status }
+                setQuery(nextQuery)
+                void loadUsers(nextQuery)
+              }}
               options={[
                 { label: 'active', value: 'active' },
                 { label: 'disabled', value: 'disabled' },
@@ -60,8 +100,18 @@ export function UsersPage() {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={usersFixture}
-          pagination={{ pageSize: 10 }}
+          dataSource={users}
+          loading={loading}
+          pagination={{
+            current: query.page,
+            pageSize: query.pageSize,
+            total,
+            onChange: (page, pageSize) => {
+              const nextQuery = { ...query, page, pageSize }
+              setQuery(nextQuery)
+              void loadUsers(nextQuery)
+            },
+          }}
         />
       </Card>
     </>

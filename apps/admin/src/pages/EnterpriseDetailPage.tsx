@@ -1,13 +1,42 @@
-import { Card, Descriptions, Tabs, Table } from 'antd'
+import { Alert, Card, Descriptions, Spin, Tabs, Table } from 'antd'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { enterprisesFixture } from '../api/enterprises'
-import { usersFixture } from '../api/users'
+import { fetchEnterprise, fetchEnterpriseMembers, fetchEnterpriseTeams } from '../api/enterprises'
 import { StatusTag } from '../components/StatusTag'
+import type { ManagedEnterprise, ManagedTeam, ManagedUser } from '../types/admin'
 
 export function EnterpriseDetailPage() {
   const { enterpriseId } = useParams()
-  const enterprise =
-    enterprisesFixture.find((item) => item.id === enterpriseId) ?? enterprisesFixture[0]
+  const [enterprise, setEnterprise] = useState<ManagedEnterprise>()
+  const [members, setMembers] = useState<ManagedUser[]>([])
+  const [teams, setTeams] = useState<ManagedTeam[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!enterpriseId) return
+
+    Promise.all([
+      fetchEnterprise(enterpriseId),
+      fetchEnterpriseMembers(enterpriseId, { page: 1, pageSize: 10 }),
+      fetchEnterpriseTeams(enterpriseId, { page: 1, pageSize: 10 }),
+    ])
+      .then(([enterpriseResult, membersResult, teamsResult]) => {
+        setEnterprise(enterpriseResult)
+        setMembers(membersResult.items)
+        setTeams(teamsResult.items)
+      })
+      .catch(() => setError('企业详情加载失败'))
+      .finally(() => setLoading(false))
+  }, [enterpriseId])
+
+  if (loading) {
+    return <Spin />
+  }
+
+  if (error || !enterprise) {
+    return <Alert type="error" message={error || '企业不存在'} />
+  }
 
   return (
     <>
@@ -42,7 +71,7 @@ export function EnterpriseDetailPage() {
               <Card>
                 <Table
                   rowKey="id"
-                  dataSource={usersFixture}
+                  dataSource={members}
                   pagination={{ pageSize: 5 }}
                   columns={[
                     { title: '邮箱', dataIndex: 'email' },
@@ -65,14 +94,11 @@ export function EnterpriseDetailPage() {
               <Card>
                 <Table
                   rowKey="id"
-                  dataSource={[
-                    { id: 'team_1', name: '新品项目组', members: 16, status: 'active' },
-                    { id: 'team_2', name: '电商运营组', members: 12, status: 'active' },
-                  ]}
-                  pagination={false}
+                  dataSource={teams}
+                  pagination={{ pageSize: 5 }}
                   columns={[
                     { title: '团队名称', dataIndex: 'name' },
-                    { title: '成员数', dataIndex: 'members' },
+                    { title: '描述', dataIndex: 'description' },
                     {
                       title: '状态',
                       dataIndex: 'status',

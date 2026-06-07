@@ -1,11 +1,32 @@
-import { Card, Descriptions } from 'antd'
+import { Alert, Card, Descriptions, Spin } from 'antd'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { usersFixture } from '../api/users'
+import { fetchUser } from '../api/users'
 import { StatusTag } from '../components/StatusTag'
+import type { ManagedUser } from '../types/admin'
 
 export function UserDetailPage() {
   const { userId } = useParams()
-  const user = usersFixture.find((item) => item.id === userId) ?? usersFixture[0]
+  const [user, setUser] = useState<ManagedUser>()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!userId) return
+
+    fetchUser(userId)
+      .then(setUser)
+      .catch(() => setError('用户详情加载失败'))
+      .finally(() => setLoading(false))
+  }, [userId])
+
+  if (loading) {
+    return <Spin />
+  }
+
+  if (error || !user) {
+    return <Alert type="error" message={error || '用户不存在'} />
+  }
 
   return (
     <>

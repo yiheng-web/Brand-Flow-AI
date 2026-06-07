@@ -1,13 +1,36 @@
 import { Button, Card, Input, Popconfirm, Progress, Select, Space, Table, message } from 'antd'
 import type { TableProps } from 'antd'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { enterprisesFixture } from '../api/enterprises'
+import { fetchEnterprises, updateEnterpriseStatus } from '../api/enterprises'
 import { StatusTag } from '../components/StatusTag'
-import type { ManagedEnterprise } from '../types/admin'
+import type { ListQuery, ManagedEnterprise } from '../types/admin'
 
 export function EnterprisesPage() {
   const navigate = useNavigate()
   const [messageApi, contextHolder] = message.useMessage()
+  const [enterprises, setEnterprises] = useState<ManagedEnterprise[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [query, setQuery] = useState<ListQuery>({ page: 1, pageSize: 10 })
+
+  const loadEnterprises = async (nextQuery = query) => {
+    setLoading(true)
+    try {
+      const result = await fetchEnterprises(nextQuery)
+      setEnterprises(result.items)
+      setTotal(result.total)
+    } catch {
+      messageApi.error('企业列表加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadEnterprises()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const columns: TableProps<ManagedEnterprise>['columns'] = [
     { title: '企业名称', dataIndex: 'name' },
@@ -29,7 +52,11 @@ export function EnterprisesPage() {
           </Button>
           <Popconfirm
             title="确认禁用该企业？"
-            onConfirm={() => messageApi.success('已提交禁用操作')}
+            onConfirm={async () => {
+              await updateEnterpriseStatus(record.id, 'disabled')
+              messageApi.success('企业已禁用')
+              await loadEnterprises()
+            }}
           >
             <Button danger type="link" disabled={record.status === 'disabled'}>
               禁用
@@ -50,11 +77,24 @@ export function EnterprisesPage() {
       <Card>
         <div className="toolbar">
           <div className="toolbar-filters">
-            <Input.Search placeholder="搜索企业名称" style={{ maxWidth: 280 }} />
+            <Input.Search
+              placeholder="搜索企业名称"
+              style={{ maxWidth: 280 }}
+              onSearch={(keyword) => {
+                const nextQuery = { ...query, page: 1, keyword }
+                setQuery(nextQuery)
+                void loadEnterprises(nextQuery)
+              }}
+            />
             <Select
               placeholder="状态"
               allowClear
               style={{ width: 160 }}
+              onChange={(status) => {
+                const nextQuery = { ...query, page: 1, status }
+                setQuery(nextQuery)
+                void loadEnterprises(nextQuery)
+              }}
               options={[
                 { label: 'active', value: 'active' },
                 { label: 'disabled', value: 'disabled' },
@@ -65,8 +105,18 @@ export function EnterprisesPage() {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={enterprisesFixture}
-          pagination={{ pageSize: 10 }}
+          dataSource={enterprises}
+          loading={loading}
+          pagination={{
+            current: query.page,
+            pageSize: query.pageSize,
+            total,
+            onChange: (page, pageSize) => {
+              const nextQuery = { ...query, page, pageSize }
+              setQuery(nextQuery)
+              void loadEnterprises(nextQuery)
+            },
+          }}
         />
       </Card>
     </>

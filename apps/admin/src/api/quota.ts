@@ -1,4 +1,6 @@
-import type { ManagedEnterprise } from '../types/admin'
-import { enterprisesFixture } from './enterprises'
+import { fetchEnterprises } from './enterprises'
+import type { ListQuery } from '../types/admin'
 
-export const quotaFixture: ManagedEnterprise[] = enterprisesFixture
+export async function fetchQuotaUsage(query: ListQuery) {
+  return fetchEnterprises(query)
+}
