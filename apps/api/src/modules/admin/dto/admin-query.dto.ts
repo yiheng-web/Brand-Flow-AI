@@ -42,3 +42,8 @@ export class AuditLogQueryDto extends AdminListQueryDto {
   @IsString()
   targetType?: string
 }
+
+export class RejectReviewItemDto {
+  @IsString()
+  reason!: string
+}

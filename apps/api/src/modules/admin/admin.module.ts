@@ -14,6 +14,10 @@ import { PlatformPermissionGuard } from './guards/platform-permission.guard'
 import { User, UserSchema } from '@/modules/org/schemas/user.schema'
 import { Enterprise, EnterpriseSchema } from '@/modules/org/schemas/enterprise.schema'
 import { Team, TeamSchema } from '@/modules/org/schemas/team.schema'
+import {
+  KnowledgeItem,
+  KnowledgeItemSchema,
+} from '@/modules/knowledge/schemas/knowledge-item.schema'
 
 @Module({
   imports: [
@@ -23,6 +27,7 @@ import { Team, TeamSchema } from '@/modules/org/schemas/team.schema'
       { name: User.name, schema: UserSchema },
       { name: Enterprise.name, schema: EnterpriseSchema },
       { name: Team.name, schema: TeamSchema },
+      { name: KnowledgeItem.name, schema: KnowledgeItemSchema },
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

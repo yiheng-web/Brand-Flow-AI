@@ -1,8 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { AuditLogService } from './audit-log.service'
-import { AdminListQueryDto, AuditLogQueryDto, UpdateStatusDto } from './dto/admin-query.dto'
+import {
+  AdminListQueryDto,
+  AuditLogQueryDto,
+  RejectReviewItemDto,
+  UpdateStatusDto,
+} from './dto/admin-query.dto'
 import { PlatformAdminGuard } from './guards/platform-admin.guard'
 import { PlatformPermissionGuard } from './guards/platform-permission.guard'
 import { PlatformPermissions } from './decorators/platform-permissions.decorator'
@@ -101,5 +106,36 @@ export class AdminController {
   @ApiOperation({ summary: '后台审计日志列表' })
   listAuditLogs(@Query() query: AuditLogQueryDto) {
     return this.auditLogService.list(query)
+  }
+
+  @Get('review-queue')
+  @PlatformPermissions('admin.review.read')
+  @ApiOperation({ summary: '后台审核队列' })
+  listReviewQueue(@Query() query: AdminListQueryDto) {
+    return this.adminService.listReviewQueue(query)
+  }
+
+  @Post('review-queue/:itemId/approve')
+  @PlatformPermissions('admin.review.write')
+  @ApiOperation({ summary: '后台审核通过' })
+  approveReviewItem(@Req() req: any, @Param('itemId') itemId: string) {
+    return this.adminService.approveReviewItem(req.admin, itemId, {
+      ip: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    })
+  }
+
+  @Post('review-queue/:itemId/reject')
+  @PlatformPermissions('admin.review.write')
+  @ApiOperation({ summary: '后台审核拒绝' })
+  rejectReviewItem(
+    @Req() req: any,
+    @Param('itemId') itemId: string,
+    @Body() dto: RejectReviewItemDto,
+  ) {
+    return this.adminService.rejectReviewItem(req.admin, itemId, dto.reason, {
+      ip: req.ip,
+      userAgent: req.headers?.['user-agent'],
+    })
   }
 }

@@ -6,6 +6,10 @@ import { Team, TeamDocument } from '@/modules/org/schemas/team.schema'
 import { User, UserDocument } from '@/modules/org/schemas/user.schema'
 import { AdminListQueryDto, UpdateStatusDto } from './dto/admin-query.dto'
 import { AuditLogService } from './audit-log.service'
+import {
+  KnowledgeItem,
+  KnowledgeItemDocument,
+} from '@/modules/knowledge/schemas/knowledge-item.schema'
 
 @Injectable()
 export class AdminService {
@@ -14,14 +18,17 @@ export class AdminService {
     @InjectModel(Enterprise.name)
     private readonly enterpriseModel: Model<EnterpriseDocument>,
     @InjectModel(Team.name) private readonly teamModel: Model<TeamDocument>,
+    @InjectModel(KnowledgeItem.name)
+    private readonly knowledgeItemModel: Model<KnowledgeItemDocument>,
     private readonly auditLogService: AuditLogService,
   ) {}
 
   async getDashboard() {
-    const [users, enterprises, teams, recentAuditLogs] = await Promise.all([
+    const [users, enterprises, teams, pendingReviews, recentAuditLogs] = await Promise.all([
       this.userModel.countDocuments(),
       this.enterpriseModel.countDocuments(),
       this.teamModel.countDocuments(),
+      this.knowledgeItemModel.countDocuments({ status: 'pending_review' }),
       this.auditLogService.list({ page: 1, pageSize: 5 }),
     ])
 
@@ -31,7 +38,7 @@ export class AdminService {
       teams,
       generationsToday: 0,
       quotaUsed: 0,
-      pendingReviews: 0,
+      pendingReviews,
       recentAuditLogs: recentAuditLogs.items,
     }
   }
@@ -213,6 +220,91 @@ export class AdminService {
       })),
       total,
     }
+  }
+
+  async listReviewQueue(query: AdminListQueryDto) {
+    const page = query.page ?? 1
+    const pageSize = query.pageSize ?? 10
+    const filter: Record<string, any> = { status: 'pending_review' }
+
+    if (query.keyword) {
+      filter.title = { $regex: query.keyword, $options: 'i' }
+    }
+
+    const [items, total] = await Promise.all([
+      this.knowledgeItemModel
+        .find(filter)
+        .populate('creatorId', 'email profile')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
+      this.knowledgeItemModel.countDocuments(filter),
+    ])
+
+    return {
+      items: items.map((item: any) => ({
+        id: item._id.toString(),
+        title: item.title,
+        type: item.type === 'image_asset' ? 'asset' : 'knowledge',
+        enterpriseName: item.enterpriseId?.toString() ?? '-',
+        submitter: item.creatorId?.email ?? '-',
+        status: item.status,
+        createdAt: item.createdAt,
+      })),
+      total,
+    }
+  }
+
+  async approveReviewItem(admin: any, itemId: string, meta: { ip?: string; userAgent?: string }) {
+    const item = await this.knowledgeItemModel.findById(itemId)
+    if (!item) throw new NotFoundException('审核项不存在')
+
+    const before = { status: item.status, rejectedReason: item.rejectedReason }
+    item.status = 'active'
+    item.approvedBy = admin.userId as any
+    item.rejectedReason = undefined
+    await item.save()
+
+    await this.auditLogService.write({
+      actor: admin,
+      action: 'APPROVE_REVIEW_ITEM',
+      targetType: 'review',
+      targetId: item._id.toString(),
+      targetName: item.title,
+      before,
+      after: { status: item.status },
+      ...meta,
+    })
+
+    return { success: true }
+  }
+
+  async rejectReviewItem(
+    admin: any,
+    itemId: string,
+    reason: string,
+    meta: { ip?: string; userAgent?: string },
+  ) {
+    const item = await this.knowledgeItemModel.findById(itemId)
+    if (!item) throw new NotFoundException('审核项不存在')
+
+    const before = { status: item.status, rejectedReason: item.rejectedReason }
+    item.status = 'rejected'
+    item.rejectedReason = reason
+    await item.save()
+
+    await this.auditLogService.write({
+      actor: admin,
+      action: 'REJECT_REVIEW_ITEM',
+      targetType: 'review',
+      targetId: item._id.toString(),
+      targetName: item.title,
+      before,
+      after: { status: item.status, rejectedReason: item.rejectedReason },
+      ...meta,
+    })
+
+    return { success: true }
   }
 
   private toManagedUser(user: any) {
