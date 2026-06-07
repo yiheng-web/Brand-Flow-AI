@@ -103,7 +103,9 @@ const Home = () => {
             value={currentEnterpriseId}
             onChange={handleSwitchEnterprise}
             className={styles.spaceSelect}
-            options={enterpriseOptions.length > 0 ? enterpriseOptions : [{ value: '', label: '加载中...' }]}
+            options={
+              enterpriseOptions.length > 0 ? enterpriseOptions : [{ value: '', label: '加载中...' }]
+            }
             placeholder="选择企业"
           />
         </div>
@@ -113,7 +115,7 @@ const Home = () => {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-              placeholder="描述你的创意，例如：为某品牌做一张夏日户外海报，极简风格..."
+            placeholder="描述你的创意，例如：为某品牌做一张夏日户外海报，极简风格..."
             className={styles.promptInput}
             autoSize={{ minRows: 2, maxRows: 6 }}
             disabled={submitting}

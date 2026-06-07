@@ -169,6 +169,7 @@ interface UserInfo {
 
 - **`POST /workflow/create`**
   - **说明**: 触发异步 AI 执行，返回状态为 `pending`。
+  - **权限拦截**: 该模块下所有接口（包括查询和更新）将严格校验企业边界（`entId`）与空间归属（`spaceId === 'personal'` 时严格校验 `userId`），越权访问将返回 `403 Forbidden`。
   - **Body**:
     ```typescript
     {
@@ -184,6 +185,8 @@ interface UserInfo {
       status: WorkflowStatus,   // 初始状态（pending）
       prompt: string,           // 记录的原始提示词
       spaceId: string,          // 记录的空间 ID
+      userId: string,           // [新增] 创建者用户 ID
+      entId?: string,           // [新增] 关联的企业 ID（如果是团队空间）
       createdAt: string,        // 创建时间
       updatedAt: string         // 更新时间
     }

@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  ForbiddenException,
   OnModuleInit,
   OnModuleDestroy,
   MessageEvent,
@@ -8,36 +9,22 @@ import {
 import { InjectQueue } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
 import { Queue, QueueEvents } from 'bullmq'
-import { Model, Types } from 'mongoose'
+import { Model } from 'mongoose'
 import { Observable } from 'rxjs'
 import { CreateWorkflowDto } from './dto/create-workflow.dto'
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
-import {
-  Workflow,
-  WorkflowDocument,
-  WorkflowSpaceType,
-  WorkflowStatus,
-} from './schemas/workflow.schema'
+import { Workflow, WorkflowDocument, WorkflowStatus } from './schemas/workflow.schema'
 import {
   WorkflowNode,
   WorkflowNodeDocument,
   WorkflowNodeType,
 } from './schemas/workflow-node.schema'
-import { OrgService } from '../org/org.service'
-import { KnowledgeService } from '../knowledge/knowledge.service'
 
 export interface WorkflowResponse {
   id: string
   status: WorkflowStatus
   prompt: string
   spaceId: string
-  spaceType: WorkflowSpaceType
-  ownerUserId?: string
-  teamId?: string
-  enterpriseId?: string
-  selectedKnowledgeBaseIds: string[]
-  requiredKnowledgeBaseIds: string[]
-  callableKnowledgeBaseIds: string[]
   createdAt: string
   updatedAt: string
   result?: Record<string, unknown>
@@ -69,42 +56,35 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     await this.queueEvents.close()
   }
 
-  async create(userId: string, dto: CreateWorkflowDto): Promise<WorkflowResponse> {
-    const space = await this.orgService.resolveSpaceContext(userId, dto.spaceId)
-    const selectedKnowledgeBaseIds = this.normalizeSelectedKnowledgeBaseIds(dto)
-    const callableKnowledgeBaseIds = await this.knowledgeService.resolveCallableKnowledgeBases(
-      userId,
-      space.enterpriseId,
-      dto.spaceId,
-      selectedKnowledgeBaseIds,
-    )
-    const availableKnowledgeBases = await this.knowledgeService.findAvailable(
-      userId,
-      space.enterpriseId,
-      dto.spaceId,
-    )
-    const requiredKnowledgeBaseIds = availableKnowledgeBases
-      .filter((item) => item.required && callableKnowledgeBaseIds.includes(item.id))
-      .map((item) => item.id)
-    const brandRules = space.enterpriseId
-      ? await this.orgService.getEnterpriseBrandRules(userId, space.enterpriseId)
-      : undefined
-    const policies = space.policies
+  private async verifyWorkflowAccess(
+    id: string,
+    userId: string,
+    entId: string,
+  ): Promise<WorkflowDocument> {
+    const workflow = await this.workflowModel.findById(id)
+    if (!workflow) {
+      throw new NotFoundException(`Workflow ${id} not found`)
+    }
 
+    // 第一道红线：跨企业隔离
+    if (workflow.entId && entId && workflow.entId !== entId) {
+      throw new ForbiddenException('跨企业越权访问被拒绝')
+    }
+
+    // 第二道红线：个人空间隔离
+    if (workflow.spaceId === 'personal' && workflow.userId !== userId) {
+      throw new ForbiddenException('个人空间工作流越权访问被拒绝')
+    }
+
+    return workflow
+  }
+
+  async create(dto: CreateWorkflowDto, userId: string, entId: string): Promise<WorkflowResponse> {
     const workflow = await this.workflowModel.create({
       prompt: dto.prompt,
       spaceId: dto.spaceId,
-      spaceType: space.spaceType,
-      ownerUserId: space.ownerUserId
-        ? new Types.ObjectId(space.ownerUserId)
-        : new Types.ObjectId(userId),
-      teamId: space.teamId ? new Types.ObjectId(space.teamId) : undefined,
-      enterpriseId: space.enterpriseId ? new Types.ObjectId(space.enterpriseId) : undefined,
-      selectedKnowledgeBaseIds: this.toObjectIds(selectedKnowledgeBaseIds),
-      requiredKnowledgeBaseIds: this.toObjectIds(requiredKnowledgeBaseIds),
-      callableKnowledgeBaseIds: this.toObjectIds(callableKnowledgeBaseIds),
-      brandRulesSnapshot: brandRules,
-      policiesSnapshot: policies,
+      userId,
+      entId,
       status: 'pending',
     })
 
@@ -134,17 +114,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       RUN_WORKFLOW_JOB,
       {
         workflowId: workflow._id.toString(),
-        prompt: workflow.prompt,
-        spaceId: workflow.spaceId,
-        spaceType: workflow.spaceType,
-        ownerUserId: workflow.ownerUserId?.toString(),
-        teamId: workflow.teamId?.toString(),
-        enterpriseId: workflow.enterpriseId?.toString(),
-        selectedKnowledgeBaseIds,
-        requiredKnowledgeBaseIds,
-        callableKnowledgeBaseIds,
-        brandRules,
-        policies,
+        knowledgeId: dto.knowledgeId,
       },
       {
         jobId: `${workflow._id.toString()}-${Date.now()}`,
@@ -154,11 +124,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return this.toResponse(workflow)
   }
 
-  async getWorkflowDetail(id: string) {
-    const workflow = await this.workflowModel.findById(id)
-    if (!workflow) {
-      throw new NotFoundException(`Workflow ${id} not found`)
-    }
+  async getWorkflowDetail(id: string, userId: string, entId: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
     const nodes = await this.workflowNodeModel.find({ workflowId: id }).sort({ createdAt: 1 })
     return {
       workflow: this.toResponse(workflow),
@@ -166,7 +133,15 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async updateNodeOutput(id: string, nodeType: WorkflowNodeType, payload: Record<string, unknown>) {
+  async updateNodeOutput(
+    id: string,
+    nodeType: WorkflowNodeType,
+    payload: Record<string, unknown>,
+    userId: string,
+    entId: string,
+  ) {
+    await this.verifyWorkflowAccess(id, userId, entId)
+
     const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType })
     if (!node) {
       throw new NotFoundException(`Node ${nodeType} not found for workflow ${id}`)
@@ -200,7 +175,9 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return node
   }
 
-  async runNode(id: string, nodeType: WorkflowNodeType) {
+  async runNode(id: string, nodeType: WorkflowNodeType, userId: string, entId: string) {
+    await this.verifyWorkflowAccess(id, userId, entId)
+
     // 触发对应节点的重新执行（实际会发布给 Agent 服务或 Processor，这里仅负责状态更改与触发）
     const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType })
     if (!node) {
@@ -225,9 +202,17 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return { success: true, message: `Node ${nodeType} queued for rerun.` }
   }
 
-  streamWorkflow(id: string): Observable<MessageEvent> {
+  streamWorkflow(id: string, userId: string, entId: string): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
-      subscriber.next({ data: { type: 'connected', workflowId: id } })
+      // 在连接前校验权限，如果不通过，则直接断开不予监听
+      this.verifyWorkflowAccess(id, userId, entId)
+        .then(() => {
+          subscriber.next({ data: { type: 'connected', workflowId: id } })
+        })
+        .catch((err) => {
+          subscriber.next({ data: { type: 'workflow_failed', error: err.message } })
+          subscriber.complete()
+        })
 
       const onProgress = ({ jobId, data }: { jobId: string; data: any }) => {
         if (!jobId) return
@@ -272,13 +257,6 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       status: workflow.status,
       prompt: workflow.prompt,
       spaceId: workflow.spaceId,
-      spaceType: workflow.spaceType,
-      ownerUserId: workflow.ownerUserId?.toString(),
-      teamId: workflow.teamId?.toString(),
-      enterpriseId: workflow.enterpriseId?.toString(),
-      selectedKnowledgeBaseIds: this.objectIdsToStrings(workflow.selectedKnowledgeBaseIds),
-      requiredKnowledgeBaseIds: this.objectIdsToStrings(workflow.requiredKnowledgeBaseIds),
-      callableKnowledgeBaseIds: this.objectIdsToStrings(workflow.callableKnowledgeBaseIds),
       createdAt:
         workflow.createdAt instanceof Date
           ? workflow.createdAt.toISOString()
@@ -290,23 +268,5 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       result: workflow.result,
       errorMessage: workflow.errorMessage,
     }
-  }
-
-  private normalizeSelectedKnowledgeBaseIds(dto: CreateWorkflowDto): string[] {
-    const ids = dto.selectedKnowledgeBaseIds?.length
-      ? dto.selectedKnowledgeBaseIds
-      : dto.knowledgeId
-        ? [dto.knowledgeId]
-        : []
-
-    return Array.from(new Set(ids.filter(Boolean)))
-  }
-
-  private toObjectIds(ids: string[]): Types.ObjectId[] {
-    return ids.map((id) => new Types.ObjectId(id))
-  }
-
-  private objectIdsToStrings(ids?: Types.ObjectId[]): string[] {
-    return (ids ?? []).map((id) => id.toString())
   }
 }

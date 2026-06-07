@@ -14,12 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { LogoutOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
-import {
-  getMyEnterprises,
-  switchEnterprise,
-  getTeams,
-  createTeam,
-} from '@/api/org'
+import { getMyEnterprises, switchEnterprise, getTeams, createTeam } from '@/api/org'
 import type { EnterpriseData, TeamData } from '@/api/org'
 import styles from './profile.module.css'
 
@@ -156,7 +151,6 @@ const Profile = () => {
   return (
     <div className={styles.wrapper}>
       <div className={styles.container}>
-
         {/* ====== 个人信息区 ====== */}
         <div className={styles.profileCard}>
           <div className={styles.profileAvatar}>{avatarChar}</div>
@@ -235,7 +229,6 @@ const Profile = () => {
             退出登录
           </Button>
         </div>
-
       </div>
 
       {/* 创建团队弹窗 */}

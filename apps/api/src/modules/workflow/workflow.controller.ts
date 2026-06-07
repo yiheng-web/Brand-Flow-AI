@@ -9,6 +9,7 @@ import {
   UseGuards,
   Sse,
   MessageEvent,
+  Req,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
@@ -25,14 +26,14 @@ export class WorkflowController {
 
   @Post('create')
   @ApiOperation({ summary: '创建并启动工作流' })
-  create(@Req() req: any, @Body() dto: CreateWorkflowDto): Promise<WorkflowResponse> {
-    return this.workflowService.create(req.user.sub, dto)
+  create(@Body() dto: CreateWorkflowDto, @Req() req: any): Promise<WorkflowResponse> {
+    return this.workflowService.create(dto, req.user?.sub, req.user?.entId)
   }
 
   @Get(':id')
   @ApiOperation({ summary: '获取工作流详情' })
-  getWorkflowDetail(@Param('id') id: string) {
-    return this.workflowService.getWorkflowDetail(id)
+  getWorkflowDetail(@Param('id') id: string, @Req() req: any) {
+    return this.workflowService.getWorkflowDetail(id, req.user?.sub, req.user?.entId)
   }
 
   @Put(':id/nodes/:nodeType')
@@ -41,19 +42,26 @@ export class WorkflowController {
     @Param('id') id: string,
     @Param('nodeType') nodeType: any,
     @Body() payload: Record<string, unknown>,
+    @Req() req: any,
   ) {
-    return this.workflowService.updateNodeOutput(id, nodeType, payload)
+    return this.workflowService.updateNodeOutput(
+      id,
+      nodeType,
+      payload,
+      req.user?.sub,
+      req.user?.entId,
+    )
   }
 
   @Post(':id/nodes/:nodeType/run')
   @ApiOperation({ summary: '从指定节点重新运行工作流' })
-  runNode(@Param('id') id: string, @Param('nodeType') nodeType: any) {
-    return this.workflowService.runNode(id, nodeType)
+  runNode(@Param('id') id: string, @Param('nodeType') nodeType: any, @Req() req: any) {
+    return this.workflowService.runNode(id, nodeType, req.user?.sub, req.user?.entId)
   }
 
   @Sse(':id/stream')
   @ApiOperation({ summary: '订阅工作流 SSE 事件流' })
-  stream(@Param('id') id: string): Observable<MessageEvent> {
-    return this.workflowService.streamWorkflow(id)
+  stream(@Param('id') id: string, @Req() req: any): Observable<MessageEvent> {
+    return this.workflowService.streamWorkflow(id, req.user?.sub, req.user?.entId)
   }
 }

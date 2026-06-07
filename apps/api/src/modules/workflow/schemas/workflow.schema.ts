@@ -1,8 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document } from 'mongoose'
 
 export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed'
-export type WorkflowSpaceType = 'personal' | 'team' | 'enterprise'
 export type WorkflowDocument = Workflow &
   Document & {
     createdAt: Date
@@ -17,37 +16,11 @@ export class Workflow {
   @Prop({ required: true, index: true })
   spaceId!: string
 
-  @Prop({
-    type: String,
-    enum: ['personal', 'team', 'enterprise'],
-    required: true,
-    index: true,
-  })
-  spaceType!: WorkflowSpaceType
+  @Prop({ required: true, index: true })
+  userId!: string
 
-  @Prop({ type: Types.ObjectId, ref: 'User', index: true })
-  ownerUserId?: Types.ObjectId
-
-  @Prop({ type: Types.ObjectId, ref: 'Team', index: true })
-  teamId?: Types.ObjectId
-
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
-  enterpriseId?: Types.ObjectId
-
-  @Prop({ type: [{ type: Types.ObjectId, ref: 'Knowledge' }], default: [] })
-  selectedKnowledgeBaseIds!: Types.ObjectId[]
-
-  @Prop({ type: [{ type: Types.ObjectId, ref: 'Knowledge' }], default: [] })
-  requiredKnowledgeBaseIds!: Types.ObjectId[]
-
-  @Prop({ type: [{ type: Types.ObjectId, ref: 'Knowledge' }], default: [] })
-  callableKnowledgeBaseIds!: Types.ObjectId[]
-
-  @Prop({ type: Object })
-  brandRulesSnapshot?: Record<string, unknown>
-
-  @Prop({ type: Object })
-  policiesSnapshot?: Record<string, unknown>
+  @Prop({ index: true })
+  entId?: string
 
   @Prop({
     type: String,
