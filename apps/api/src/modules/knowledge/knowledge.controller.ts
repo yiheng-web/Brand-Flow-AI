@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Req } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger'
 import {
   ApiCreatedSuccessResponse,
@@ -43,8 +54,18 @@ export class KnowledgeController {
   @Get()
   @ApiOperation({ summary: '获取知识库列表', description: '返回当前激活企业下的全部知识库。' })
   @ApiSuccessArrayResponse(KnowledgeResponseDto, '返回封装后的知识库列表。')
-  async findAll(@Req() req: any) {
-    return this.knowledgeService.findAll(req.user.entId)
+  async findAll(@Req() req: any, @Query('spaceId') spaceId?: string) {
+    return this.knowledgeService.findAll(req.user.sub, req.user.entId, spaceId)
+  }
+
+  @Get('available')
+  @ApiOperation({
+    summary: '获取当前创作空间可用知识库',
+    description: '用于首页 KnowledgeSelector。团队空间会返回团队知识库和企业强制知识库。',
+  })
+  @ApiSuccessArrayResponse(KnowledgeResponseDto, '返回当前空间可用的知识库列表。')
+  async findAvailable(@Req() req: any, @Query('spaceId') spaceId?: string) {
+    return this.knowledgeService.findAvailable(req.user.sub, req.user.entId, spaceId)
   }
 
   @Get(':id')
@@ -55,7 +76,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessResponse(KnowledgeResponseDto, '返回封装后的知识库详情。')
   async findOne(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.findOne(req.user.entId, id)
+    return this.knowledgeService.findOne(req.user.sub, req.user.entId, id)
   }
 
   @Put(':id')
@@ -103,7 +124,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessArrayResponse(KnowledgeItemResponseDto, '返回封装后的知识项列表。')
   async findItems(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.findItems(req.user.entId, id)
+    return this.knowledgeService.findItems(req.user.sub, req.user.entId, id)
   }
 
   @Get(':id/items/:itemId')
@@ -115,7 +136,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'itemId', description: '知识项 ID' })
   @ApiSuccessResponse(KnowledgeItemResponseDto, '返回封装后的知识项详情。')
   async findItem(@Req() req: any, @Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.knowledgeService.findItem(req.user.entId, id, itemId)
+    return this.knowledgeService.findItem(req.user.sub, req.user.entId, id, itemId)
   }
 
   @Put(':id/items/:itemId')
@@ -155,7 +176,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessArrayResponse(KnowledgeRecordResponseDto, '返回封装后的底层向量记录列表。')
   async getRecords(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.getRecords(req.user.entId, id)
+    return this.knowledgeService.getRecords(req.user.sub, req.user.entId, id)
   }
 
   @Delete(':id')

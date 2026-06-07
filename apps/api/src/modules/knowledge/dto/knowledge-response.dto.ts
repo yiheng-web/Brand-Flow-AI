@@ -13,11 +13,32 @@ export class KnowledgeResponseDto {
   @ApiPropertyOptional({ description: 'Pinecone 命名空间' })
   pineconeNamespace?: string
 
+  @ApiProperty({ description: '知识库归属范围', enum: ['personal', 'team', 'enterprise'] })
+  scope!: 'personal' | 'team' | 'enterprise'
+
+  @ApiProperty({ description: '知识库可见范围', enum: ['private', 'team', 'enterprise'] })
+  visibility!: 'private' | 'team' | 'enterprise'
+
+  @ApiProperty({ description: '是否为强制知识库' })
+  isRequired!: boolean
+
+  @ApiProperty({ description: '知识项数量' })
+  itemCount!: number
+
+  @ApiProperty({ description: '已使用存储量' })
+  storageUsed!: number
+
+  @ApiPropertyOptional({ description: '个人知识库所有者用户 ID' })
+  ownerUserId?: string
+
+  @ApiPropertyOptional({ description: '团队 ID' })
+  teamId?: string
+
   @ApiProperty({ description: '创建者用户 ID' })
   creatorId!: string
 
-  @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  @ApiPropertyOptional({ description: '企业 ID' })
+  enterpriseId?: string
 }
 
 export class KnowledgeIngestResponseDto {
@@ -36,13 +57,34 @@ export class KnowledgeItemResponseDto {
   knowledgeId!: string
 
   @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  enterpriseId?: string
+
+  @ApiProperty({ description: '知识项归属范围', enum: ['personal', 'team', 'enterprise'] })
+  scope!: 'personal' | 'team' | 'enterprise'
+
+  @ApiPropertyOptional({ description: '个人知识项所有者用户 ID' })
+  ownerUserId?: string
+
+  @ApiPropertyOptional({ description: '团队 ID' })
+  teamId?: string
+
+  @ApiProperty({ description: '知识项可见范围', enum: ['private', 'team', 'enterprise'] })
+  visibility!: 'private' | 'team' | 'enterprise'
+
+  @ApiProperty({ description: '知识项类型' })
+  type!: string
 
   @ApiProperty({ description: '知识项标题', example: '品牌色使用规范' })
   title!: string
 
-  @ApiProperty({ description: '知识项正文' })
-  content!: string
+  @ApiPropertyOptional({ description: '知识项正文' })
+  content?: string
+
+  @ApiPropertyOptional({ description: '文件 URL' })
+  fileUrl?: string
+
+  @ApiPropertyOptional({ description: '缩略图 URL' })
+  thumbnailUrl?: string
 
   @ApiProperty({ description: '知识项标签', type: [String] })
   tags!: string[]
@@ -53,22 +95,31 @@ export class KnowledgeItemResponseDto {
   @ApiPropertyOptional({ description: '来源素材 ID' })
   assetId?: string
 
-  @ApiProperty({ description: '知识项状态', enum: ['active', 'archived'] })
-  status!: 'active' | 'archived'
+  @ApiProperty({
+    description: '知识项状态',
+    enum: ['draft', 'pending_review', 'active', 'rejected', 'archived'],
+  })
+  status!: 'draft' | 'pending_review' | 'active' | 'rejected' | 'archived'
 
   @ApiProperty({ description: '创建者用户 ID' })
   creatorId!: string
 
   @ApiPropertyOptional({ description: '扩展信息' })
   metadata?: Record<string, any>
+
+  @ApiPropertyOptional({ description: '审核人 ID' })
+  approvedBy?: string
+
+  @ApiPropertyOptional({ description: '拒绝原因' })
+  rejectedReason?: string
 }
 
 export class CreateKnowledgeItemResponseDto {
   @ApiProperty({ description: '创建出的知识项' })
   item!: KnowledgeItemResponseDto
 
-  @ApiProperty({ description: '向量入库结果' })
-  ingest!: KnowledgeIngestResponseDto
+  @ApiPropertyOptional({ description: '向量入库结果。只有 active 且存在正文内容时返回。' })
+  ingest?: KnowledgeIngestResponseDto
 }
 
 export class KnowledgeRecordResponseDto {
