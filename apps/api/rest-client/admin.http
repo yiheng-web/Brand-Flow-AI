@@ -1,0 +1,136 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTI1MWM1Y2FmNGQ4Yzk1NDY4YzM0Y2UiLCJlbWFpbCI6ImFkbWluQGJyYW5kLWZsb3cuYWkiLCJ0eXBlIjoicGxhdGZvcm1fYWRtaW4iLCJwbGF0Zm9ybVJvbGUiOiJzdXBlcl9hZG1pbiIsImlhdCI6MTc4MDgyMzQ1MCwiZXhwIjoxNzgwODY2NjUwfQ.UIdPHgHpOwraIYcufd6aItg8xXfewj8G-WLPVS8Qw64
+@userId = 6a2515ad8c6f92202091a1
+@enterpriseId = 6a22f3c98568f26d09d55767
+@reviewItemId = 6a22f6657468d83197c53ecd
+
+### 后台管理员登录
+POST {{baseUrl}}/admin/login
+Content-Type: application/json
+
+{
+  "email": "admin@brand-flow.ai",
+  "password": "12345678"
+}
+
+### 获取当前后台管理员信息
+GET {{baseUrl}}/admin/me
+Authorization: Bearer {{adminToken}}
+
+### 后台管理员退出登录
+POST {{baseUrl}}/admin/logout
+Authorization: Bearer {{adminToken}}
+
+### Dashboard 汇总
+GET {{baseUrl}}/admin/dashboard
+Authorization: Bearer {{adminToken}}
+
+### 用户列表
+GET {{baseUrl}}/admin/users?page=1&pageSize=10
+Authorization: Bearer {{adminToken}}
+
+### 用户列表 - 按关键字搜索
+GET {{baseUrl}}/admin/users?page=1&pageSize=10&keyword=test
+Authorization: Bearer {{adminToken}}
+
+### 用户列表 - 按状态筛选
+GET {{baseUrl}}/admin/users?page=1&pageSize=10&status=active
+Authorization: Bearer {{adminToken}}
+
+### 用户详情
+GET {{baseUrl}}/admin/users/{{userId}}
+Authorization: Bearer {{adminToken}}
+
+### 禁用用户
+PATCH {{baseUrl}}/admin/users/{{userId}}/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "status": "disabled"
+}
+
+### 启用用户
+PATCH {{baseUrl}}/admin/users/{{userId}}/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "status": "active"
+}
+
+### 企业列表
+GET {{baseUrl}}/admin/enterprises?page=1&pageSize=10
+Authorization: Bearer {{adminToken}}
+
+### 企业列表 - 按关键字搜索
+GET {{baseUrl}}/admin/enterprises?page=1&pageSize=10&keyword=测试企业
+Authorization: Bearer {{adminToken}}
+
+### 企业详情
+GET {{baseUrl}}/admin/enterprises/{{enterpriseId}}
+Authorization: Bearer {{adminToken}}
+
+### 禁用企业
+PATCH {{baseUrl}}/admin/enterprises/{{enterpriseId}}/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "status": "disabled"
+}
+
+### 启用企业
+PATCH {{baseUrl}}/admin/enterprises/{{enterpriseId}}/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "status": "active"
+}
+
+### 企业成员列表
+GET {{baseUrl}}/admin/enterprises/{{enterpriseId}}/members?page=1&pageSize=10
+Authorization: Bearer {{adminToken}}
+
+### 企业团队列表
+GET {{baseUrl}}/admin/enterprises/{{enterpriseId}}/teams?page=1&pageSize=10
+Authorization: Bearer {{adminToken}}
+
+### 审计日志列表
+GET {{baseUrl}}/admin/audit-logs?page=1&pageSize=10
+Authorization: Bearer {{adminToken}}
+
+### 审计日志 - 按操作者筛选
+GET {{baseUrl}}/admin/audit-logs?page=1&pageSize=10&actor=admin
+Authorization: Bearer {{adminToken}}
+
+### 审计日志 - 按动作筛选
+GET {{baseUrl}}/admin/audit-logs?page=1&pageSize=10&action=update_user_status
+Authorization: Bearer {{adminToken}}
+
+### 审计日志 - 按目标类型筛选
+GET {{baseUrl}}/admin/audit-logs?page=1&pageSize=10&targetType=user
+Authorization: Bearer {{adminToken}}
+
+### 审核队列
+GET {{baseUrl}}/admin/review-queue?page=1&pageSize=10
+Authorization: Bearer {{adminToken}}
+
+### 审核队列 - 搜索
+GET {{baseUrl}}/admin/review-queue?page=1&pageSize=10&keyword=品牌
+Authorization: Bearer {{adminToken}}
+
+### 审核通过
+POST {{baseUrl}}/admin/review-queue/{{reviewItemId}}/approve
+Authorization: Bearer {{adminToken}}
+
+### 审核拒绝
+POST {{baseUrl}}/admin/review-queue/{{reviewItemId}}/reject
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "reason": "素材来源不明确，暂不允许进入知识库"
+}

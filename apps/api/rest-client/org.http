@@ -3,6 +3,8 @@
 @accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
 @enterpriseId = 6a22f3c98568f26d09d55767
 @spaceId = personal
+@teamSpaceId = 6a22f4b38568f26d09d55760
+@targetUserId = 6a2515ad8c6f92202091a1
 
 ### 创建企业
 POST {{baseUrl}}/org/enterprise
@@ -40,6 +42,18 @@ Authorization: Bearer {{accessToken}}
 GET {{baseUrl}}/org/spaces
 Authorization: Bearer {{accessToken}}
 
+### 获取个人空间上下文
+GET {{baseUrl}}/org/spaces/personal/context
+Authorization: Bearer {{accessToken}}
+
+### 获取企业空间上下文
+GET {{baseUrl}}/org/spaces/{{enterpriseId}}/context
+Authorization: Bearer {{accessToken}}
+
+### 获取团队空间上下文
+GET {{baseUrl}}/org/spaces/{{teamSpaceId}}/context
+Authorization: Bearer {{accessToken}}
+
 ### 获取空间成员列表
 GET {{baseUrl}}/org/spaces/{{spaceId}}/members
 Authorization: Bearer {{accessToken}}
@@ -51,6 +65,57 @@ Authorization: Bearer {{accessToken}}
 
 {
   "email": "member@example.com",
+  "role": "member"
+}
+
+### 修改空间成员角色
+PATCH {{baseUrl}}/org/spaces/{{spaceId}}/members/{{targetUserId}}/role
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
   "role": "admin"
+}
+
+### 移除空间成员
+DELETE {{baseUrl}}/org/spaces/{{spaceId}}/members/{{targetUserId}}
+Authorization: Bearer {{accessToken}}
+
+### 获取企业品牌规则
+GET {{baseUrl}}/org/enterprises/{{enterpriseId}}/brand-rules
+Authorization: Bearer {{accessToken}}
+
+### 更新企业品牌规则
+PATCH {{baseUrl}}/org/enterprises/{{enterpriseId}}/brand-rules
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "requiredLogo": "https://cdn.example.com/brand-logo.png",
+  "standardColors": ["#00A862", "#FFFFFF"],
+  "bannedColors": ["#111111"],
+  "bannedStyles": ["黑金奢华风", "低饱和灰色主视觉"],
+  "brandVoice": "年轻、清爽、可信赖",
+  "minExportScore": 7
+}
+
+### 获取企业权限策略
+GET {{baseUrl}}/org/enterprises/{{enterpriseId}}/policies
+Authorization: Bearer {{accessToken}}
+
+### 更新企业权限策略
+PATCH {{baseUrl}}/org/enterprises/{{enterpriseId}}/policies
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "requireEnterpriseKnowledgeBase": true,
+  "allowPersonalKnowledgeInEnterpriseCreation": false,
+  "teamKnowledgeRequiresReview": true,
+  "worksDefaultToEnterprise": true,
+  "memberCanExport": true,
+  "allowExternalAssets": true,
+  "allowExternalModels": false,
+  "allowLowScoreExport": false
 }
 

@@ -3,19 +3,73 @@
 @accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
 @knowledgeId = 6a22f6a57468d83197c53eec
 @itemId = 6a22f6657468d83197c53ecd
+@personalSpaceId = personal
+@enterpriseSpaceId = 6a22f3a38568f26d09d5575f
+@teamSpaceId = 6a22f4b38568f26d09d55760
 
-### 创建知识库
+### 创建个人知识库
 POST {{baseUrl}}/knowledge
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "name": "瑞幸咖啡品牌规范库",
-  "description": "包含品牌色、Logo 使用规范、禁用词和参考案例"
+  "name": "我的小红书风格库",
+  "description": "个人常用 Prompt、参考图和创作偏好",
+  "spaceId": "{{personalSpaceId}}",
+  "visibility": "private"
 }
 
-### 获取知识库列表
+### 创建企业知识库
+POST {{baseUrl}}/knowledge
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "瑞幸咖啡企业品牌规范库",
+  "description": "包含品牌色、Logo 使用规范、禁用词和参考案例",
+  "spaceId": "{{enterpriseSpaceId}}",
+  "visibility": "enterprise",
+  "isRequired": true
+}
+
+### 创建团队知识库
+POST {{baseUrl}}/knowledge
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "瑞幸新品项目组知识库",
+  "description": "团队共享产品图、活动规范和项目案例",
+  "spaceId": "{{teamSpaceId}}",
+  "visibility": "team"
+}
+
+### 获取当前默认空间知识库列表（兼容旧逻辑：优先当前企业，否则个人）
 GET {{baseUrl}}/knowledge
+Authorization: Bearer {{accessToken}}
+
+### 获取个人空间知识库列表
+GET {{baseUrl}}/knowledge?spaceId={{personalSpaceId}}
+Authorization: Bearer {{accessToken}}
+
+### 获取企业空间知识库列表
+GET {{baseUrl}}/knowledge?spaceId={{enterpriseSpaceId}}
+Authorization: Bearer {{accessToken}}
+
+### 获取团队空间知识库列表
+GET {{baseUrl}}/knowledge?spaceId={{teamSpaceId}}
+Authorization: Bearer {{accessToken}}
+
+### 获取个人空间可用于创作的知识库
+GET {{baseUrl}}/knowledge/available?spaceId={{personalSpaceId}}
+Authorization: Bearer {{accessToken}}
+
+### 获取企业空间可用于创作的知识库
+GET {{baseUrl}}/knowledge/available?spaceId={{enterpriseSpaceId}}
+Authorization: Bearer {{accessToken}}
+
+### 获取团队空间可用于创作的知识库（团队知识库 + 企业强制知识库）
+GET {{baseUrl}}/knowledge/available?spaceId={{teamSpaceId}}
 Authorization: Bearer {{accessToken}}
 
 ### 获取知识库详情
@@ -29,7 +83,9 @@ Authorization: Bearer {{accessToken}}
 
 {
   "name": "瑞幸咖啡品牌规范库-更新",
-  "description": "更新后的知识库描述"
+  "description": "更新后的知识库描述",
+  "visibility": "enterprise",
+  "isRequired": true
 }
 
 ### 将文本写入知识库向量索引
@@ -41,17 +97,87 @@ Authorization: Bearer {{accessToken}}
   "content": "品牌主色为绿色，禁止使用低饱和灰色作为主视觉。Logo 必须保持清晰可见。"
 }
 
-### 创建知识项
+### 创建文本资料知识项
 POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
+  "type": "text_doc",
   "title": "品牌色使用规范",
   "content": "品牌主色为 #00A862，重要活动海报必须保持 Logo 清晰可见。",
+  "status": "active",
   "tags": ["品牌色", "Logo", "禁用项"],
   "metadata": {
     "source": "manual"
+  }
+}
+
+### 创建 Prompt 模板知识项
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "type": "prompt_template",
+  "title": "夏季新品海报 Prompt 模板",
+  "content": "商业摄影风格，清爽夏日光线，产品居中，背景留出标题安全区，高级但不夸张。",
+  "status": "active",
+  "tags": ["Prompt", "夏季", "海报"],
+  "metadata": {
+    "platform": "xiaohongshu",
+    "aspectRatio": "4:5"
+  }
+}
+
+### 创建禁用规则知识项
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "type": "negative_rule",
+  "title": "禁用黑金奢华风",
+  "content": "企业品牌规范禁止使用黑金奢华风格，避免偏离清爽、年轻、可信赖的品牌调性。",
+  "status": "active",
+  "tags": ["禁用规则", "品牌风格"],
+  "metadata": {
+    "severity": "high"
+  }
+}
+
+### 创建 Logo 知识项
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "type": "logo",
+  "title": "品牌标准 Logo",
+  "content": "品牌标准 Logo，生成图文海报时应优先使用。",
+  "fileUrl": "https://example.com/logo.png",
+  "thumbnailUrl": "https://example.com/logo-thumb.png",
+  "status": "active",
+  "tags": ["Logo", "品牌资产"],
+  "metadata": {
+    "usage": "primary"
+  }
+}
+
+### 创建待审核团队知识项
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "type": "image_asset",
+  "title": "团队活动参考图",
+  "content": "团队上传的活动参考图，待管理员审核后进入生成流程。",
+  "fileUrl": "https://example.com/team-reference.png",
+  "status": "pending_review",
+  "tags": ["参考图", "团队素材"],
+  "metadata": {
+    "source": "team_upload"
   }
 }
 
@@ -69,6 +195,7 @@ Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
+  "type": "text_doc",
   "title": "品牌色使用规范-更新",
   "content": "品牌主色为 #00A862，重要活动海报必须保持 Logo 清晰可见。",
   "tags": ["品牌色", "Logo"],
@@ -76,6 +203,25 @@ Authorization: Bearer {{accessToken}}
   "metadata": {
     "source": "manual"
   }
+}
+
+### 将知识项归档
+PUT {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "status": "archived"
+}
+
+### 拒绝待审核知识项
+PUT {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "status": "rejected",
+  "rejectedReason": "图片来源不明确，暂不允许进入团队知识库。"
 }
 
 ### 获取知识库底层向量记录

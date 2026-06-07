@@ -2,19 +2,59 @@
 @baseUrl = http://localhost:3000/api
 @accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
 @workflowId = 6a22f6e97468d83197c53f05
-@spaceId = personal
+@personalSpaceId = personal
+@enterpriseSpaceId = 6a22f3a38568f26d09d5575f
+@teamSpaceId = 6a22f4b38568f26d09d55760
 @knowledgeId = 6a22f6a57468d83197c53eec
+@knowledgeId2 = 6a22f6a57468d83197c53eed
 @nodeType = intentNode
 
-### 创建并启动工作流
+### 创建个人空间工作流（不选择知识库）
+POST {{baseUrl}}/workflow/create
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "prompt": "制作一张夏日海报，小猫主题，清爽极简风格",
+  "spaceId": "{{personalSpaceId}}"
+}
+
+### 创建个人空间工作流（兼容旧字段 knowledgeId）
 POST {{baseUrl}}/workflow/create
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
   "prompt": "做一张夏日海报极简风格",
-  "spaceId": "{{spaceId}}",
+  "spaceId": "{{personalSpaceId}}",
   "knowledgeId": "{{knowledgeId}}"
+}
+
+### 创建工作流（新版多知识库选择）
+POST {{baseUrl}}/workflow/create
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "prompt": "做一张新品发布海报，使用品牌清爽调性，不要黑金奢华风",
+  "spaceId": "{{teamSpaceId}}",
+  "selectedKnowledgeBaseIds": [
+    "{{knowledgeId}}",
+    "{{knowledgeId2}}"
+  ]
+}
+
+### 创建企业空间工作流
+POST {{baseUrl}}/workflow/create
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "prompt": "基于企业品牌规范生成一张官方活动海报",
+  "spaceId": "{{enterpriseSpaceId}}",
+  "selectedKnowledgeBaseIds": [
+    "{{knowledgeId}}"
+  ]
 }
 
 ### 获取工作流详情
@@ -27,10 +67,10 @@ Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "status": "done",
-  "output": {
-    "summary": "手动更新节点输出"
-  }
+  "intent": "夏日海报",
+  "confidence": 0.92,
+  "reason": "用户明确提出夏日海报和极简风格",
+  "suggestedAction": "继续进行知识库匹配和 Prompt 生成"
 }
 
 ### 从指定节点重新运行工作流
