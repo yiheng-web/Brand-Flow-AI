@@ -40,11 +40,7 @@ export function LoginPage() {
           </Typography.Title>
           <Typography.Text type="secondary">平台运营后台</Typography.Text>
         </div>
-        <Form<LoginFormValues>
-          layout="vertical"
-          initialValues={{ email: 'demo@brand-flow.ai', password: 'demo123456' }}
-          onFinish={handleFinish}
-        >
+        <Form<LoginFormValues> layout="vertical" onFinish={handleFinish}>
           <Form.Item
             label="邮箱"
             name="email"

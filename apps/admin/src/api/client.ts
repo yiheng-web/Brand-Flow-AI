@@ -1,6 +1,13 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth.store'
 
+export interface ApiEnvelope<T> {
+  success: boolean
+  statusCode: number
+  data: T
+  message: string
+}
+
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   timeout: 15000,
@@ -26,3 +33,17 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+export function unwrapResponse<T>(payload: T | ApiEnvelope<T>): T {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    'success' in payload &&
+    'statusCode' in payload
+  ) {
+    return (payload as ApiEnvelope<T>).data
+  }
+
+  return payload as T
+}

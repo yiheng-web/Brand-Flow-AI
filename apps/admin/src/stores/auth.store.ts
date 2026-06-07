@@ -12,29 +12,12 @@ interface AuthState {
   loadMe: () => Promise<void>
 }
 
-const demoAdmin: AdminUser = {
-  userId: 'admin_demo',
-  email: 'admin@brand-flow.ai',
-  name: '平台运营管理员',
-  platformRole: 'super_admin',
-  permissions: ['*'],
-}
-
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       token: '',
       permissions: [],
       async login(email, password) {
-        if (email === 'demo@brand-flow.ai' && password === 'demo123456') {
-          set({
-            token: 'demo-admin-token',
-            adminUser: demoAdmin,
-            permissions: demoAdmin.permissions,
-          })
-          return
-        }
-
         const result = await loginAdmin(email, password)
         set({
           token: result.token,
@@ -46,11 +29,6 @@ export const useAuthStore = create<AuthState>()(
         set({ token: '', adminUser: undefined, permissions: [] })
       },
       async loadMe() {
-        if (get().token === 'demo-admin-token') {
-          set({ adminUser: demoAdmin, permissions: demoAdmin.permissions })
-          return
-        }
-
         const adminUser = await fetchAdminMe()
         set({ adminUser, permissions: adminUser.permissions })
       },
