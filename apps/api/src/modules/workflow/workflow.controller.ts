@@ -5,6 +5,7 @@ import {
   Param,
   Post,
   Put,
+  Req,
   UseGuards,
   Sse,
   MessageEvent,
@@ -24,8 +25,8 @@ export class WorkflowController {
 
   @Post('create')
   @ApiOperation({ summary: '创建并启动工作流' })
-  create(@Body() dto: CreateWorkflowDto): Promise<WorkflowResponse> {
-    return this.workflowService.create(dto)
+  create(@Req() req: any, @Body() dto: CreateWorkflowDto): Promise<WorkflowResponse> {
+    return this.workflowService.create(req.user.sub, dto)
   }
 
   @Get(':id')
