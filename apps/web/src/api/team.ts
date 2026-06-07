@@ -42,15 +42,16 @@ export interface InviteMemberParams {
 
 /** 获取所有可用空间列表 */
 export async function getSpaces() {
-  return apiClient.get('/team/spaces')
+  return apiClient.get('/org/spaces')
 }
 
 /** 获取指定空间的团队成员列表 */
 export async function getTeamMembers(spaceId: string) {
-  return apiClient.get(`/team/${spaceId}/members`)
+  return apiClient.get(`/org/spaces/${spaceId}/members`)
 }
 
 /** 邀请成员加入空间 */
 export async function inviteMember(params: InviteMemberParams) {
-  return apiClient.post('/team/invite', params)
+  const { email, roleType, spaceId } = params
+  return apiClient.post(`/org/spaces/${spaceId}/invitations`, { email, roleType })
 }

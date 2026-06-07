@@ -34,8 +34,8 @@ const Home = () => {
     const loadEnterprises = async () => {
       try {
         const res = await getMyEnterprises()
-        if (res.data) {
-          setEnterprises(res.data)
+        if (Array.isArray(res)) {
+          setEnterprises(res)
         }
       } catch {
         // 静默处理，使用默认值
