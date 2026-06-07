@@ -1,22 +1,24 @@
-import type { ReviewItem } from '../types/admin'
+import { apiClient, unwrapResponse } from './client'
+import type { ListQuery, PageResult, ReviewItem } from '../types/admin'
 
-export const reviewQueueFixture: ReviewItem[] = [
-  {
-    id: 'review_1001',
-    title: '夏日冰咖啡产品图',
-    type: 'asset',
-    enterpriseName: '瑞幸咖啡',
-    submitter: 'creator@example.com',
-    status: 'pending_review',
-    createdAt: '2026-06-07',
-  },
-  {
-    id: 'review_1002',
-    title: '招生海报 Prompt 模板',
-    type: 'knowledge',
-    enterpriseName: '高校招生中心',
-    submitter: 'brand@example.com',
-    status: 'pending_review',
-    createdAt: '2026-06-07',
-  },
-]
+export async function fetchReviewQueue(query: ListQuery) {
+  const response = await apiClient.get<PageResult<ReviewItem>>('/admin/review-queue', {
+    params: query,
+  })
+  return unwrapResponse<PageResult<ReviewItem>>(response.data)
+}
+
+export async function approveReviewItem(itemId: string) {
+  const response = await apiClient.post<{ success: boolean }>(
+    `/admin/review-queue/${itemId}/approve`,
+  )
+  return unwrapResponse<{ success: boolean }>(response.data)
+}
+
+export async function rejectReviewItem(itemId: string, reason: string) {
+  const response = await apiClient.post<{ success: boolean }>(
+    `/admin/review-queue/${itemId}/reject`,
+    { reason },
+  )
+  return unwrapResponse<{ success: boolean }>(response.data)
+}
