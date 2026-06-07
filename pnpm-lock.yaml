@@ -50,6 +50,67 @@ importers:
         specifier: ^8.58.2
         version: 8.59.3(eslint@10.3.0)(typescript@6.0.3)
 
+  apps/admin:
+    dependencies:
+      '@ant-design/icons':
+        specifier: ^6.2.2
+        version: 6.2.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      antd:
+        specifier: ^6.3.7
+        version: 6.3.7(luxon@3.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      axios:
+        specifier: ^1.16.0
+        version: 1.16.0
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.2.6
+        version: 19.2.6(react@19.2.6)
+      react-router-dom:
+        specifier: ^7.15.0
+        version: 7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      zustand:
+        specifier: ^5.0.13
+        version: 5.0.13(@types/react@19.2.14)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
+    devDependencies:
+      '@eslint/js':
+        specifier: ^10.0.1
+        version: 10.0.1(eslint@10.3.0)
+      '@types/node':
+        specifier: ^24.12.3
+        version: 24.12.4
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.1
+        version: 6.0.1(vite@8.0.12(@types/node@24.12.4)(less@4.6.4)(terser@5.47.1)(yaml@2.9.0))
+      eslint:
+        specifier: ^10.3.0
+        version: 10.3.0
+      eslint-plugin-react-hooks:
+        specifier: ^7.1.1
+        version: 7.1.1(eslint@10.3.0)
+      eslint-plugin-react-refresh:
+        specifier: ^0.5.2
+        version: 0.5.2(eslint@10.3.0)
+      globals:
+        specifier: ^17.6.0
+        version: 17.6.0
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      typescript-eslint:
+        specifier: ^8.59.2
+        version: 8.59.3(eslint@10.3.0)(typescript@6.0.3)
+      vite:
+        specifier: ^8.0.12
+        version: 8.0.12(@types/node@24.12.4)(less@4.6.4)(terser@5.47.1)(yaml@2.9.0)
+
   apps/api:
     dependencies:
       '@aws-sdk/client-s3':

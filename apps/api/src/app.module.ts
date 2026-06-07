@@ -10,12 +10,14 @@ import { AuthModule } from './modules/auth/auth.module'
 import { WorkflowModule } from './modules/workflow/workflow.module'
 import { KnowledgeModule } from './modules/knowledge/knowledge.module'
 import { WorksModule } from './modules/works/works.module'
+import { AdminModule } from './modules/admin/admin.module'
 
 @Module({
   imports: [
     OrgModule,
     AssetsModule,
     AuthModule,
+    AdminModule,
     WorkflowModule,
     KnowledgeModule,
     WorksModule,
