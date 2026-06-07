@@ -231,6 +231,8 @@ export class AssetsService {
         content,
         assetId: asset._id.toString(),
         tags,
+        fileUrl: asset.url,
+        thumbnailUrl: asset.url,
         metadata: {
           assetType: asset.type,
           assetUrl: asset.url,
