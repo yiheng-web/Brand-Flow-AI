@@ -1,7 +1,7 @@
 // ↑ 旧代码保留不动
 import type { PromptChainOutput } from '../ai-logic/chains/prompt-chain'
 
-export type GenerateType = 'image' | 'text' | 'brand_material'
+export type GenerateType = 'image' | 'text' | 'brand_material' | 'art_text'
 
 export interface GenerateRequest {
   promptData: PromptChainOutput
