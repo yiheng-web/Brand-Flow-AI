@@ -44,6 +44,12 @@ export class GenerateService {
         )
       } else if (generateType === 'text') {
         resultContent = await this.callTextGenerationApi(promptData, brand.brandName)
+      } else if (generateType === 'art_text') {
+        resultContent = await this.generateSingleSvgDataUrl(
+          promptData.finalPrompt,
+          '',
+          '请根据文案语境自由发挥最合适的版式',
+        )
       } else {
         // brand_material：调用 GPT 生成物料描述
         resultContent = await this.callBrandMaterialApi(promptData, brand)
@@ -213,6 +219,104 @@ export class GenerateService {
   private generateFourSeeds(): number[] {
     const base = Math.floor(Math.random() * 1000000)
     return [base, base + 1, base + 2, base + 3]
+  }
+
+  /**
+   * 生成 4 个候选排版 SVG (艺术字/排版文本)
+   * 并发调用 4 次 Text LLM，显著提升生成速度和排版多样性
+   */
+  async generateFourArtTextCandidates(
+    textContent: string,
+    stylePrompt: string = '',
+    negativePrompt: string = '',
+  ): Promise<CandidateImageBatch> {
+    const prefix = `svg_cand_${Date.now()}`
+    const baseStyle = stylePrompt || '现代、极简、富有层级感的干净排版，比如海报风格'
+
+    // 定义 4 种不同的排版倾向，增加多样性
+    const variations = [
+      '方案1：居中对称排版，主标题最大，副标题在下方。',
+      '方案2：左对齐排版，文字大小错落有致，像杂志封面。',
+      '方案3：极简风格，留白多，字重对比强。',
+      '方案4：带有简单 SVG 线条（如 <line> 或 <path>）修饰的创意排版。',
+    ]
+
+    const generateSingleSvg = async (variation: string, index: number) => {
+      const url = await this.generateSingleSvgDataUrl(textContent, baseStyle, variation)
+      return {
+        id: `${prefix}_${index + 1}`,
+        url,
+        index: index + 1,
+        promptUsed: `${baseStyle} - ${variation}`,
+        seed: index,
+      } as CandidateImage
+    }
+
+    // 并发 4 个请求
+    const results = await Promise.allSettled(variations.map((v, i) => generateSingleSvg(v, i)))
+
+    const candidates = results.map((r, i) => {
+      if (r.status === 'fulfilled') return r.value
+      return {
+        id: `${prefix}_${i + 1}`,
+        url: '',
+        index: i + 1,
+        promptUsed: stylePrompt,
+        seed: i,
+      }
+    }) as [CandidateImage, CandidateImage, CandidateImage, CandidateImage]
+
+    return {
+      candidates,
+      basePrompt: `并发生成SVG: ${baseStyle}`,
+      negativePrompt,
+      generatedAt: new Date().toISOString(),
+    }
+  }
+
+  /**
+   * 核心：调用 LLM 生成单张 SVG 排版并转换为 Data URL
+   */
+  private async generateSingleSvgDataUrl(
+    textContent: string,
+    baseStyle: string,
+    variation: string,
+  ): Promise<string> {
+    const prompt = `你是一个资深的平面排版设计师和前端工程师。
+任务：根据用户提供的文案，利用纯 SVG 技术生成 1 个极具设计感的文字排版方案。
+
+用户文案内容：
+"${textContent}"
+整体风格要求：${baseStyle}
+当前方案版式要求：${variation}
+
+要求：
+1. 只生成 1 个 SVG 代码块，放在 \`\`\`xml 和 \`\`\` 之间。
+2. viewBox 设为 "0 0 800 400" 或合适的比例。
+3. 必须是完全透明背景，不要有 <rect> 填充背景。
+4. 使用标准的 SVG <text> 标签，如果需要多行请使用多个 <text> 或 <tspan>。
+5. 必须通过字体大小 (font-size)、字重 (font-weight: bold/normal)、颜色 (fill) 建立强烈的视觉层级。
+6. 使用干净的无衬线字体，例如 font-family="system-ui, -apple-system, sans-serif"。
+7. 确保文案的所有内容都被完整包含进去，根据语意自行断句。`
+
+    const chatPrompt = ChatPromptTemplate.fromMessages([
+      [
+        'system',
+        '你是一个顶级文字排版设计专家。只输出包裹在 ```xml ``` 中的 SVG 代码，不要多余废话。',
+      ],
+      ['human', prompt],
+    ])
+
+    const chain = chatPrompt.pipe(asRunnableLlm(this.textLlm))
+    const result = await chain.invoke({})
+    const output = result.content.toString()
+
+    const svgRegex = /<svg[\s\S]*?<\/svg>/gi
+    const match = output.match(svgRegex)
+    if (!match) return ''
+
+    const base64Svg = Buffer.from(match[0], 'utf-8').toString('base64')
+    return `data:image/svg+xml;base64,${base64Svg}`
   }
 }
 
