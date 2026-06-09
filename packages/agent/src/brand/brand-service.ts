@@ -2,6 +2,7 @@ import { BrandGuidelines, BrandContext, BrandConstraintPackage } from './brand-t
 import { searchKnowledge } from '../retrieval'
 import { ChatOpenAI } from '@langchain/openai'
 import { safeJsonParse } from '../common'
+import { HumanMessage } from '@langchain/core/messages'
 
 const DEFAULT_BRAND: BrandGuidelines = {
   brandName: '默认品牌',
@@ -65,7 +66,12 @@ export class BrandService {
     }
 
     // 3. 让 LLM 分类并生成约束包
-    return this.classifyWithLLM(userIntent, allDocs)
+    try {
+      return await this.classifyWithLLM(userIntent, allDocs)
+    } catch (e) {
+      console.warn('LLM 分类失败，使用默认约束:', e)
+      return this.buildDefaultConstraint()
+    }
   }
 
   private buildDefaultConstraint(): BrandConstraintPackage {
@@ -127,7 +133,7 @@ ${docsText}
 - relevance：matched表示文档明确提及，partial表示部分相关，unmatched表示不相关（不要输出unmatched的项）
 `.trim()
 
-    const response = await llm.invoke(prompt)
+    const response = await llm.invoke([new HumanMessage(prompt)])
     const raw =
       typeof response.content === 'string' ? response.content : JSON.stringify(response.content)
     const json = safeJsonParse<any>(raw, {
