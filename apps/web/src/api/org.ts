@@ -1,7 +1,8 @@
-// 组织 / 企业 / 团队管理
+// 组织 / 企业 / 团队 / 空间管理
 import apiClient from './index'
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer'
+export type SpaceType = 'personal' | 'team' | 'enterprise'
 
 // 创建企业请求参数
 export interface CreateEnterpriseParams {
@@ -40,6 +41,16 @@ export interface TeamData {
   updatedAt?: string
 }
 
+// 空间数据（后端 GET /org/spaces 返回）
+export interface SpaceData {
+  spaceId: string
+  name: string
+  type: SpaceType
+  enterpriseId?: string
+  teamId?: string
+  description?: string
+}
+
 // 创建企业
 export async function createEnterprise(params: CreateEnterpriseParams) {
   return apiClient.post('/org/enterprise', params)
@@ -53,6 +64,11 @@ export async function getMyEnterprises() {
 // 切换当前企业
 export async function switchEnterprise(enterpriseId: string) {
   return apiClient.put(`/org/enterprise/${enterpriseId}/switch`)
+}
+
+// 获取当前用户可访问的空间列表
+export async function getMySpaces() {
+  return apiClient.get('/org/spaces')
 }
 
 // 创建团队

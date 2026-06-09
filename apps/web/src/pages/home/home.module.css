@@ -1,87 +1,440 @@
 /* ============================================================
-   首页（创意输入页）样式（home.module.css）
-   内容居中布局，包含大标题、空间选择器和创意输入区域
+   首页（创意输入页）样式
+   匹配设计稿：顶部栏 + Space选择器 + 创意输入 + 底部卡片
    ============================================================ */
 
 /* ---- 最外层容器 ---- */
-/* 填满 AppLayout 的 main 区域，内容垂直水平居中 */
 .wrapper {
-  flex: 1;                    /* 撑满父容器的剩余高度 */
+  flex: 1;
   display: flex;
-  align-items: center;        /* 垂直居中 */
-  justify-content: center;    /* 水平居中 */
+  flex-direction: column;
   width: 100%;
+  overflow-y: auto;
+  background: #f5f6fa;
 }
 
-/* ---- 内容容器 ---- */
-.container {
-  width: 100%;
-  max-width: 680px;           /* 限制最大宽度，大屏上保持适中 */
+/* ==================== 顶部栏 ==================== */
+.topBar {
   display: flex;
-  flex-direction: column;     /* 从上到下排列 */
-  align-items: center;        /* 子元素水平居中 */
-  gap: 28px;                  /* 各元素之间的间距 */
-  padding: 20px 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 28px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  flex-shrink: 0;
 }
 
-/* ---- 主标题 ---- */
+.topBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topBarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Logo */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logoIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2f6af6, #5b8def);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logoText {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.3px;
+}
+
+.topBarDivider {
+  width: 1px;
+  height: 20px;
+  background: #e0e0e0;
+}
+
+/* 额度文字 */
+.quotaText {
+  font-size: 13px;
+  color: #666;
+  margin-right: 4px;
+}
+
+/* ==================== Space 下拉选择器 ==================== */
+.spaceDropdown {
+  position: relative;
+}
+
+.spaceTrigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.spaceTrigger:hover {
+  border-color: #2f6af6;
+  color: #2f6af6;
+}
+
+.spaceTriggerText {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spaceTriggerIcon {
+  font-size: 10px;
+  color: #999;
+  transition: transform 0.2s;
+}
+
+/* ---- 下拉面板 ---- */
+.spacePanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 280px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  z-index: 1000;
+  animation: panelFadeIn 0.15s ease;
+}
+
+@keyframes panelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 单个空间选项 */
+.spaceOption {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.spaceOption:hover {
+  background: #f0f4ff;
+}
+
+.spaceOptionActive {
+  background: #eef3ff;
+}
+
+.optionMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.optionName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* 类型标签 */
+.optionBadge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 10px;
+  line-height: 18px;
+}
+
+.optionBadge_personal {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.optionBadge_team {
+  background: #e8f4fd;
+  color: #1677ff;
+}
+
+.optionBadge_enterprise {
+  background: #fff7e6;
+  color: #d48806;
+}
+
+.optionDesc {
+  font-size: 12px;
+  color: #999;
+  line-height: 1.4;
+}
+
+/* ==================== 主内容区 ==================== */
+.mainContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px 24px;
+  overflow-y: auto;
+}
+
+.heroSection {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 标题 */
 .title {
-  margin: 0;                  /* 重置 h1 默认外边距 */
-  font-size: 32px;
-  font-weight: 800;           /* 加粗字体，增加视觉冲击力 */
-  text-align: center;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  color: #1a1a2e;
+  text-align: left;
   line-height: 1.3;
 }
 
-/* ---- 空间选择器行 ---- */
-.selectorRow {
-  width: 100%;
-  display: flex;
-  justify-content: center;    /* 选择器居中显示 */
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #888;
+  text-align: left;
+  line-height: 1.5;
 }
 
-/* 下拉选择器样式 */
-.spaceSelect {
-  width: 260px;               /* 固定宽度，足够展示选项文字 */
+/* ---- 创意输入卡片 ---- */
+.inputCard {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
 }
 
-/* ---- 创意输入区域 ---- */
-/* 输入框和提交按钮水平排列在同一行 */
-.inputRow {
-  width: 100%;
-  display: flex;
-  align-items: flex-end;      /* 底部对齐，使按钮与输入框底边对齐 */
-  gap: 12px;
+.inputCard:focus-within {
+  border-color: #2f6af6;
+  box-shadow: 0 4px 20px rgba(47, 108, 246, 0.1);
 }
 
-/* 大文本输入框 */
 .promptInput {
-  flex: 1;                    /* 撑满按钮左侧的剩余宽度 */
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  resize: none;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: #333;
+}
+
+.promptInput::placeholder {
+  color: #bbb;
+}
+
+/* 输入框底部区域 */
+.inputFooter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.footerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.spaceLabel {
+  font-size: 12.5px;
+  color: #555;
+  font-weight: 500;
+}
+
+.tagRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 11.5px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: #f0f4ff;
+  color: #2f6af6;
+  border: 1px solid #d6e4ff;
+  white-space: nowrap;
+}
+
+.addTagBtn {
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: none;
+  border: 1px dashed #ccc;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.2s;
+}
+
+.addTagBtn:hover {
+  border-color: #2f6af6;
+  color: #2f6af6;
+}
+
+.tagHint {
+  font-size: 12px;
+  color: #bbb;
+}
+
+.footerRight {
+  flex-shrink: 0;
+  margin-left: 12px;
+  padding-top: 2px;
+}
+
+.switchSpaceBtn {
+  font-size: 12.5px;
+  padding: 4px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  color: #555;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.switchSpaceBtn:hover {
+  border-color: #2f6af6;
+  color: #2f6af6;
+}
+
+/* ---- 开始创作按钮行 ---- */
+.actionRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.createBtn {
+  min-width: 120px;
+  height: 42px;
+  border-radius: 22px;
+  font-weight: 600;
   font-size: 15px;
-  line-height: 1.6;
-  border-color: var(--border-color);
-  resize: none;               /* 禁用手动拖拽调整大小（由 autoSize 控制） */
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s, border-color 0.2s;
+  box-shadow: 0 4px 14px rgba(47, 108, 246, 0.3);
 }
 
-.promptInput:focus {
-  border-color: var(--primary);
-  box-shadow: 0 4px 16px rgba(47, 108, 246, 0.15);
-}
-
-/* 圆形蓝色提交按钮 */
-.submitBtn {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;             /* 防止被压缩 */
-  box-shadow: 0 4px 12px rgba(47, 108, 246, 0.3);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.submitBtn:hover {
-  transform: scale(1.05);     /* hover 时略微放大 */
+.createBtn:hover {
+  transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(47, 108, 246, 0.4);
+}
+
+/* ==================== 底部快捷入口卡片 ==================== */
+.cardsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  width: 100%;
+  max-width: 720px;
+  margin-top: 8px;
+}
+
+.quickCard {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px 18px;
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+
+.quickCard:hover {
+  border-color: #d6e4ff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+}
+
+.cardLabel {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 6px;
+}
+
+.cardValue {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 640px) {
+  .topBar {
+    padding: 10px 16px;
+  }
+
+  .logoText {
+    display: none;
+  }
+
+  .cardsRow {
+    grid-template-columns: 1fr;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+
+  .inputFooter {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .footerRight {
+    margin-left: 0;
+    align-self: flex-end;
+  }
 }
