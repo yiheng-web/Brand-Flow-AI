@@ -1,5 +1,6 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
+@accessToken = paste-login-token-here
 
 ### 注册
 POST {{baseUrl}}/auth/register
@@ -12,6 +13,8 @@ Content-Type: application/json
 }
 
 ### 登录
+# 登录后复制 response.access_token 到 @accessToken。
+# 同时记录 response.user.activeWorkspaceId，后续 workspace 相关接口会用到。
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
@@ -21,6 +24,5 @@ Content-Type: application/json
 }
 
 ### 获取当前用户
-@accessToken = accessToken
 GET {{baseUrl}}/auth/profile
 Authorization: Bearer {{accessToken}}

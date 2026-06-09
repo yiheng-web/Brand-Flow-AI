@@ -1,31 +1,26 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NjkwNSwiZXhwIjoxNzgxMjgxNzA1fQ.ccxa6LRzZU7_mCXvbBfmtnQpvFrg_2iYXcrkbmTaqMc
-@workId = 6a22f9ef7468d83197c53f55
-@versionId = 6a22f9ef7468d83197c53f57
+@accessToken = paste-login-or-switch-token-here
+@workflowId = paste-workflow-id-here
+@workId = paste-work-id-here
+@versionId = paste-work-version-id-here
 
 ### 获取作品列表
 GET {{baseUrl}}/works
 Authorization: Bearer {{accessToken}}
 
-### 获取作品详情
-GET {{baseUrl}}/works/{{workId}}
-Authorization: Bearer {{accessToken}}
-
-### 创建作品
+### 保存作品
+# 作品归属继承 workflow，前端不要传 spaceId / ownerId / ownerType / visibility。
 POST {{baseUrl}}/works
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "title": "测试作品",
+  "title": "测试作品 {{$timestamp}}",
   "description": "REST Client 创建的测试作品",
   "finalImageUrl": "https://cdn.example.com/works/final.png",
-  "objectKey": "works/user/123/final.png",
-  "workflowId": "6a22f9dc7468d83197c53f4c",
-  "ownerId": "6a22f2148568f26d09d55759",
-  "ownerType": "user",
-  "visibility": "private",
+  "objectKey": "works/rest-client/final.png",
+  "workflowId": "{{workflowId}}",
   "qualityReport": {
     "totalScore": 86,
     "issues": []
@@ -39,6 +34,10 @@ Authorization: Bearer {{accessToken}}
   }
 }
 
+### 获取作品详情
+GET {{baseUrl}}/works/{{workId}}
+Authorization: Bearer {{accessToken}}
+
 ### 新增作品版本
 POST {{baseUrl}}/works/{{workId}}/versions
 Content-Type: application/json
@@ -46,8 +45,8 @@ Authorization: Bearer {{accessToken}}
 
 {
   "imageUrl": "https://cdn.example.com/works/final-v2.png",
-  "objectKey": "works/user/123/final.png",
-  "sourceWorkflowId": "6a22f9dc7468d83197c53f4c",
+  "objectKey": "works/rest-client/final-v2.png",
+  "sourceWorkflowId": "{{workflowId}}",
   "nodesSnapshot": {},
   "qualityReport": {
     "totalScore": 91,

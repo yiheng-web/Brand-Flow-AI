@@ -17,7 +17,21 @@ export class KnowledgeResponseDto {
   creatorId!: string
 
   @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  workspaceId!: string
+
+  @ApiPropertyOptional({
+    description: '归属方 ID。个人空间为用户 ID，团队空间为团队 ID，企业空间为企业 ID',
+  })
+  ownerId?: string
+
+  @ApiPropertyOptional({ description: '归属类型', enum: ['user', 'team', 'Workspace'] })
+  ownerType?: 'user' | 'team' | 'Workspace'
+
+  @ApiPropertyOptional({ description: '可见性', enum: ['private', 'team', 'Workspace', 'public'] })
+  visibility?: 'private' | 'team' | 'Workspace' | 'public'
+
+  @ApiPropertyOptional({ description: '状态', enum: ['active', 'archived'] })
+  status?: 'active' | 'archived'
 }
 
 export class KnowledgeIngestResponseDto {
@@ -36,7 +50,7 @@ export class KnowledgeItemResponseDto {
   knowledgeId!: string
 
   @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  workspaceId!: string
 
   @ApiProperty({ description: '知识项标题', example: '品牌色使用规范' })
   title!: string

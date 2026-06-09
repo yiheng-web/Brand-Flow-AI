@@ -31,7 +31,7 @@ export class WorksController {
   })
   @ApiCreatedSuccessResponse(WorkDetailResponseDto, '保存成功，返回封装后的作品详情和版本列表。')
   async create(@Req() req: any, @Body() dto: CreateWorkDto) {
-    return this.worksService.create(req.user.sub, req.user.entId, dto)
+    return this.worksService.create(req.user.sub, req.user.workspaceId, dto)
   }
 
   @Get()
@@ -41,7 +41,7 @@ export class WorksController {
   })
   @ApiSuccessArrayResponse(WorkResponseDto, '返回封装后的作品列表。')
   async findAll(@Req() req: any) {
-    return this.worksService.findAll(req.user.sub, req.user.entId)
+    return this.worksService.findAll(req.user.sub, req.user.workspaceId)
   }
 
   @Get(':id')
@@ -53,7 +53,7 @@ export class WorksController {
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(WorkDetailResponseDto, '返回封装后的作品详情和版本列表。')
   async findOne(@Req() req: any, @Param('id') id: string) {
-    return this.worksService.findOne(req.user.sub, req.user.entId, id)
+    return this.worksService.findOne(req.user.sub, req.user.workspaceId, id)
   }
 
   @Delete(':id')
@@ -64,7 +64,7 @@ export class WorksController {
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
   async remove(@Req() req: any, @Param('id') id: string) {
-    return this.worksService.remove(req.user.sub, req.user.entId, id)
+    return this.worksService.remove(req.user.sub, req.user.workspaceId, id)
   }
 
   @Post(':id/versions')
@@ -76,7 +76,7 @@ export class WorksController {
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiCreatedSuccessResponse(WorkVersionResponseDto, '创建成功，返回封装后的新作品版本。')
   async createVersion(@Req() req: any, @Param('id') id: string, @Body() dto: CreateWorkVersionDto) {
-    return this.worksService.createVersion(req.user.sub, req.user.entId, id, dto)
+    return this.worksService.createVersion(req.user.sub, req.user.workspaceId, id, dto)
   }
 
   @Get(':id/versions')
@@ -87,7 +87,7 @@ export class WorksController {
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessArrayResponse(WorkVersionResponseDto, '返回封装后的作品版本列表。')
   async findVersions(@Req() req: any, @Param('id') id: string) {
-    return this.worksService.findVersions(req.user.sub, req.user.entId, id)
+    return this.worksService.findVersions(req.user.sub, req.user.workspaceId, id)
   }
 
   @Get(':id/versions/:versionId')
@@ -103,7 +103,7 @@ export class WorksController {
     @Param('id') id: string,
     @Param('versionId') versionId: string,
   ) {
-    return this.worksService.findVersion(req.user.sub, req.user.entId, id, versionId)
+    return this.worksService.findVersion(req.user.sub, req.user.workspaceId, id, versionId)
   }
 
   @Post(':id/export')
@@ -114,6 +114,6 @@ export class WorksController {
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(ExportWorkResponseDto, '返回封装后的导出日志 ID、文件名和下载地址。')
   async export(@Req() req: any, @Param('id') id: string, @Body() dto: ExportWorkDto) {
-    return this.worksService.export(req.user.sub, req.user.entId, id, dto)
+    return this.worksService.export(req.user.sub, req.user.workspaceId, id, dto)
   }
 }

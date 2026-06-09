@@ -27,7 +27,7 @@ export class AssetResponseDto {
   creatorId!: string
 
   @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  workspaceId!: string
 
   @ApiPropertyOptional({ description: '对象存储 bucket' })
   bucket?: string

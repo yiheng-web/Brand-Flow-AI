@@ -12,8 +12,8 @@ export class ExportLog {
   @Prop({ type: Types.ObjectId, ref: 'Work', required: true, index: true })
   workId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId
+  @Prop({ type: Types.ObjectId, ref: 'Workspace', required: true, index: true })
+  workspaceId!: Types.ObjectId
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   exportedBy!: Types.ObjectId

@@ -26,13 +26,13 @@ export class WorkflowController {
   @Post('create')
   @ApiOperation({ summary: '创建并启动工作流' })
   create(@Body() dto: CreateWorkflowDto, @Req() req: any): Promise<WorkflowResponse> {
-    return this.workflowService.create(dto, req.user?.sub, req.user?.entId)
+    return this.workflowService.create(dto, req.user?.sub, req.user?.workspaceId)
   }
 
   @Get(':id')
   @ApiOperation({ summary: '获取工作流详情' })
   getWorkflowDetail(@Param('id') id: string, @Req() req: any) {
-    return this.workflowService.getWorkflowDetail(id, req.user?.sub, req.user?.entId)
+    return this.workflowService.getWorkflowDetail(id, req.user?.sub, req.user?.workspaceId)
   }
 
   @Put(':id/nodes/:nodeType')
@@ -48,19 +48,19 @@ export class WorkflowController {
       nodeType,
       payload,
       req.user?.sub,
-      req.user?.entId,
+      req.user?.workspaceId,
     )
   }
 
   @Post(':id/nodes/:nodeType/run')
   @ApiOperation({ summary: '从指定节点重新运行工作流' })
   runNode(@Param('id') id: string, @Param('nodeType') nodeType: any, @Req() req: any) {
-    return this.workflowService.runNode(id, nodeType, req.user?.sub, req.user?.entId)
+    return this.workflowService.runNode(id, nodeType, req.user?.sub, req.user?.workspaceId)
   }
 
   @Sse(':id/stream')
   @ApiOperation({ summary: '订阅工作流 SSE 事件流' })
   stream(@Param('id') id: string, @Req() req: any): Observable<MessageEvent> {
-    return this.workflowService.streamWorkflow(id, req.user?.sub, req.user?.entId)
+    return this.workflowService.streamWorkflow(id, req.user?.sub, req.user?.workspaceId)
   }
 }

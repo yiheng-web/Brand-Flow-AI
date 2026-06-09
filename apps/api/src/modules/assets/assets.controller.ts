@@ -31,7 +31,6 @@ import { AssetResponseDto, SaveAssetToKnowledgeResponseDto } from './dto/assets-
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
 
 @ApiTags('素材资产 Assets')
-@ApiBearerAuth()
 @Controller('assets')
 @UseGuards(JwtAuthGuard) // 保护所有资产端点
 export class AssetsController {
@@ -40,14 +39,11 @@ export class AssetsController {
   @Post()
   @ApiOperation({
     summary: '创建资产记录',
-    description:
-      '用于登记已经存在 URL 的素材资产。适合外部 CDN 图片、生成图 URL 或已上传对象的补录。',
   })
-  @ApiCreatedSuccessResponse(AssetResponseDto, '创建成功，返回封装后的资产记录。')
   async createAsset(@Req() req: any, @Body() createDto: CreateAssetDto) {
     const userId = req.user.sub
-    const enterpriseId = req.user.entId
-    return this.assetsService.createAsset(userId, enterpriseId, createDto)
+    const workspaceId = req.user.workspaceId
+    return this.assetsService.createAsset(userId, workspaceId, createDto)
   }
 
   @Post('upload')
@@ -55,31 +51,12 @@ export class AssetsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: '上传图片素材',
-    description:
-      '上传图片文件到对象存储，并创建 Asset 记录。生产环境返回短期 signedUrl 供前端预览。',
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['file', 'name', 'type', 'ownerId', 'ownerType', 'visibility'],
-      properties: {
-        file: { type: 'string', format: 'binary', description: '要上传的图片文件' },
-        name: { type: 'string', example: '夏季活动背景图' },
-        type: { type: 'string', example: 'background' },
-        ownerId: { type: 'string', description: '归属方 ID' },
-        ownerType: { type: 'string', enum: ['user', 'team', 'enterprise'] },
-        visibility: { type: 'string', enum: ['private', 'team', 'enterprise', 'public'] },
-        tags: { type: 'string', example: '海报,夏季,背景' },
-        description: { type: 'string', example: '适合夏季促销海报的背景图' },
-        metadata: { type: 'string', example: '{"source":"designer-upload"}' },
-      },
-    },
   })
   @ApiCreatedSuccessResponse(AssetResponseDto, '上传成功，返回封装后的资产记录和 signedUrl。')
   async uploadAsset(@Req() req: any, @Body() uploadDto: UploadAssetDto, @UploadedFile() file: any) {
     const userId = req.user.sub
-    const enterpriseId = req.user.entId
-    return this.assetsService.uploadAsset(userId, enterpriseId, uploadDto, file)
+    const workspaceId = req.user.workspaceId
+    return this.assetsService.uploadAsset(userId, workspaceId, uploadDto, file)
   }
 
   @Get()
@@ -90,8 +67,8 @@ export class AssetsController {
   @ApiSuccessArrayResponse(AssetResponseDto, '返回封装后的资产列表。')
   async getAssets(@Req() req: any) {
     const userId = req.user.sub
-    const enterpriseId = req.user.entId
-    return this.assetsService.getAssets(userId, enterpriseId)
+    const workspaceId = req.user.workspaceId
+    return this.assetsService.getAssets(userId, workspaceId)
   }
 
   @Post(':id/save-to-knowledge')
@@ -111,8 +88,8 @@ export class AssetsController {
     @Body() dto: SaveAssetToKnowledgeDto,
   ) {
     const userId = req.user.sub
-    const enterpriseId = req.user.entId
-    return this.assetsService.saveToKnowledge(userId, enterpriseId, assetId, dto)
+    const workspaceId = req.user.workspaceId
+    return this.assetsService.saveToKnowledge(userId, workspaceId, assetId, dto)
   }
 
   @Delete(':id')
@@ -124,6 +101,7 @@ export class AssetsController {
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
   async deleteAsset(@Req() req: any, @Param('id') assetId: string) {
     const userId = req.user.sub
-    return this.assetsService.deleteAsset(userId, assetId)
+    const workspaceId = req.user.workspaceId
+    return this.assetsService.deleteAsset(userId, workspaceId, assetId)
   }
 }

@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
-import { OwnerType, Visibility } from '@/common/enums'
+import { IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
 
 export class CreateAssetDto {
   @ApiProperty({ description: '资产名称，用于资产列表和知识沉淀展示', example: '品牌 Logo 主标' })
@@ -21,20 +20,10 @@ export class CreateAssetDto {
   @IsNotEmpty({ message: '资产地址/内容不能为空' })
   url!: string
 
-  @ApiProperty({
-    description:
-      '资产归属方 ID。ownerType=user 时为用户 ID，team 时为团队 ID，enterprise 时为企业 ID',
-  })
-  @IsNotEmpty({ message: '归属方 ID 不能为空' })
-  ownerId!: string
-
-  @ApiProperty({ enum: OwnerType, description: '资产归属范围' })
-  @IsEnum(OwnerType, { message: '不正确的归属类型' })
-  ownerType!: OwnerType
-
-  @ApiProperty({ enum: Visibility, description: '资产可见性，决定谁能在素材库中看到该资产' })
-  @IsEnum(Visibility, { message: '不正确的可见性级别' })
-  visibility!: Visibility
+  @ApiProperty({ description: '资产所属空间 ID' })
+  @IsString()
+  @IsNotEmpty({ message: '空间 ID 不能为空' })
+  spaceId!: string
 
   @ApiPropertyOptional({
     description: '资产扩展信息，如 tags、description、sourceWorkflowId、尺寸等',
@@ -57,20 +46,10 @@ export class UploadAssetDto {
   @IsNotEmpty({ message: '资产类型不能为空' })
   type!: string
 
-  @ApiProperty({
-    description:
-      '资产归属方 ID。ownerType=user 时为用户 ID，team 时为团队 ID，enterprise 时为企业 ID',
-  })
-  @IsNotEmpty({ message: '归属方 ID 不能为空' })
-  ownerId!: string
-
-  @ApiProperty({ enum: OwnerType, description: '资产归属范围' })
-  @IsEnum(OwnerType, { message: '不正确的归属类型' })
-  ownerType!: OwnerType
-
-  @ApiProperty({ enum: Visibility, description: '资产可见性，决定谁能访问该上传素材' })
-  @IsEnum(Visibility, { message: '不正确的可见性级别' })
-  visibility!: Visibility
+  @ApiProperty({ description: '资产所属空间 ID' })
+  @IsString()
+  @IsNotEmpty({ message: '空间 ID 不能为空' })
+  spaceId!: string
 
   @ApiPropertyOptional({
     description: '逗号分隔标签，上传接口使用 multipart/form-data 字符串传入',

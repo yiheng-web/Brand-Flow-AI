@@ -2,12 +2,13 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { Asset, AssetDocument } from './asset.schema'
-import { User, UserDocument } from '@/modules/org/schemas/user.schema'
+import { Membership, MembershipDocument } from '@/modules/org/schemas/membership.schema'
 import { CreateAssetDto, UploadAssetDto } from './dto/assets.dto'
 import { SaveAssetToKnowledgeDto } from './dto/assets.dto'
 import { Visibility, OwnerType, Role } from '@/common/enums'
 import { StorageService } from '@/modules/storage/storage.service'
 import { KnowledgeService } from '@/modules/knowledge/knowledge.service'
+import { OrgService } from '@/modules/org/org.service'
 
 interface UploadedAssetFile {
   originalname: string
@@ -20,40 +21,34 @@ interface UploadedAssetFile {
 export class AssetsService {
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Membership.name) private membershipModel: Model<MembershipDocument>,
     private readonly storageService: StorageService,
     private readonly knowledgeService: KnowledgeService,
+    private readonly orgService: OrgService,
   ) {}
 
-  async createAsset(userId: string, enterpriseId: string, createDto: CreateAssetDto) {
-    if (!enterpriseId) {
+  async createAsset(userId: string, workspaceId: string, createDto: CreateAssetDto) {
+    if (!workspaceId) {
       throw new BadRequestException('请先选择或切换到一家企业')
     }
 
-    const { name, type, url, ownerId, ownerType, visibility, metadata } = createDto
-
-    if (visibility === Visibility.TEAM || visibility === Visibility.ENTERPRISE) {
-      const user = await this.userModel.findById(userId)
-      const membership = user?.memberships.find(
-        (m) =>
-          m.enterpriseId.toString() === enterpriseId &&
-          (!m.teamId || (ownerType === OwnerType.TEAM && m.teamId.toString() === ownerId)),
-      )
-
-      if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-        throw new BadRequestException('仅部门主管或企业管理员才能往企业/团队库添加规范素材')
-      }
-    }
+    const { name, type, url, metadata } = createDto
+    const space = await this.orgService.resolveAccessibleSpace(
+      userId,
+      createDto.spaceId,
+      workspaceId,
+    )
 
     const asset = await this.assetModel.create({
       name,
       type,
       url,
-      ownerId: new Types.ObjectId(ownerId),
-      ownerType,
-      visibility,
+      spaceId: new Types.ObjectId(space.spaceId),
+      ownerId: new Types.ObjectId(space.ownerId),
+      ownerType: space.ownerType,
+      visibility: space.visibility,
       creatorId: new Types.ObjectId(userId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
+      workspaceId: new Types.ObjectId(space.workspaceId),
       metadata: metadata || {},
     })
 
@@ -62,11 +57,11 @@ export class AssetsService {
 
   async uploadAsset(
     userId: string,
-    enterpriseId: string,
+    workspaceId: string,
     uploadDto: UploadAssetDto,
     file: UploadedAssetFile,
   ) {
-    if (!enterpriseId) {
+    if (!workspaceId) {
       throw new BadRequestException('请先选择或切换到一家企业')
     }
 
@@ -78,12 +73,10 @@ export class AssetsService {
       throw new BadRequestException('当前仅支持上传图片素材')
     }
 
-    await this.assertCanCreateAsset(
+    const space = await this.orgService.resolveAccessibleSpace(
       userId,
-      enterpriseId,
-      uploadDto.ownerId,
-      uploadDto.ownerType,
-      uploadDto.visibility,
+      uploadDto.spaceId,
+      workspaceId,
     )
 
     const assetId = new Types.ObjectId()
@@ -97,8 +90,9 @@ export class AssetsService {
       size: file.size,
       metadata: {
         uploadedBy: userId,
-        ownerType: uploadDto.ownerType,
-        ownerId: uploadDto.ownerId,
+        ownerType: space.ownerType,
+        ownerId: space.ownerId,
+        spaceId: space.spaceId,
       },
     })
 
@@ -112,11 +106,12 @@ export class AssetsService {
       fileName: file.originalname,
       mimeType: file.mimetype,
       size: file.size,
-      ownerId: new Types.ObjectId(uploadDto.ownerId),
-      ownerType: uploadDto.ownerType,
-      visibility: uploadDto.visibility,
+      spaceId: new Types.ObjectId(space.spaceId),
+      ownerId: new Types.ObjectId(space.ownerId),
+      ownerType: space.ownerType,
+      visibility: space.visibility,
       creatorId: new Types.ObjectId(userId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
+      workspaceId: new Types.ObjectId(space.workspaceId),
       metadata: {
         tags: this.parseTags(uploadDto.tags),
         description: uploadDto.description,
@@ -127,26 +122,19 @@ export class AssetsService {
     return this.attachSignedUrl(asset)
   }
 
-  async getAssets(userId: string, enterpriseId: string) {
-    if (!enterpriseId) {
+  async getAssets(userId: string, workspaceId: string) {
+    if (!workspaceId) {
       throw new BadRequestException('请先选择或切换到一家企业')
     }
 
-    const user = await this.userModel.findById(userId)
-    if (!user) {
-      throw new NotFoundException('用户不存在')
-    }
-
-    const myTeams = user.memberships
-      .filter((m) => m.enterpriseId.toString() === enterpriseId && m.teamId)
-      .map((m) => m.teamId?.toString())
+    const myTeams = await this.findUserTeamIds(userId, workspaceId)
 
     const query = {
-      enterpriseId: new Types.ObjectId(enterpriseId),
+      workspaceId: new Types.ObjectId(workspaceId),
       $or: [
         { visibility: Visibility.PUBLIC },
         { creatorId: new Types.ObjectId(userId) },
-        { visibility: Visibility.ENTERPRISE },
+        { visibility: Visibility.WORKSPACE },
         {
           visibility: Visibility.TEAM,
           ownerType: OwnerType.TEAM,
@@ -163,21 +151,26 @@ export class AssetsService {
     return Promise.all(assets.map((asset) => this.attachSignedUrl(asset)))
   }
 
-  async deleteAsset(userId: string, assetId: string) {
-    const asset = await this.assetModel.findById(assetId)
+  async deleteAsset(userId: string, workspaceId: string, assetId: string) {
+    if (!workspaceId) {
+      throw new BadRequestException('请先选择或切换到一家企业')
+    }
+
+    const asset = await this.assetModel.findOne({
+      _id: assetId,
+      workspaceId: new Types.ObjectId(workspaceId),
+    })
     if (!asset) {
-      throw new NotFoundException('资产不存在')
+      throw new NotFoundException('资产不存在或无权访问')
     }
 
     if (asset.creatorId.toString() !== userId) {
-      if (asset.visibility === Visibility.TEAM || asset.visibility === Visibility.ENTERPRISE) {
-        const user = await this.userModel.findById(userId)
-        const membership = user?.memberships.find(
-          (m) =>
-            m.enterpriseId.toString() === asset.enterpriseId.toString() &&
-            (!m.teamId ||
-              (asset.ownerType === OwnerType.TEAM &&
-                m.teamId.toString() === asset.ownerId.toString())),
+      if (asset.visibility === Visibility.TEAM || asset.visibility === Visibility.WORKSPACE) {
+        const membership = await this.findManagerMembership(
+          userId,
+          asset.workspaceId.toString(),
+          asset.ownerId.toString(),
+          asset.ownerType,
         )
 
         if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
@@ -200,15 +193,15 @@ export class AssetsService {
 
   async saveToKnowledge(
     userId: string,
-    enterpriseId: string,
+    workspaceId: string,
     assetId: string,
     dto: SaveAssetToKnowledgeDto,
   ) {
-    if (!enterpriseId) {
+    if (!workspaceId) {
       throw new BadRequestException('请先选择或切换到一家企业')
     }
 
-    const asset = await this.findAccessibleAsset(userId, enterpriseId, assetId)
+    const asset = await this.findAccessibleAsset(userId, workspaceId, assetId)
     const tags = Array.isArray(asset.metadata?.tags) ? asset.metadata.tags : []
     const content = [
       `素材名称：${asset.name}`,
@@ -224,7 +217,7 @@ export class AssetsService {
 
     const result = await this.knowledgeService.createItemFromAsset(
       userId,
-      enterpriseId,
+      workspaceId,
       dto.knowledgeId,
       {
         title: asset.name,
@@ -260,31 +253,26 @@ export class AssetsService {
 
   private async assertCanCreateAsset(
     userId: string,
-    enterpriseId: string,
+    workspaceId: string,
     ownerId: string,
     ownerType: OwnerType,
     visibility: Visibility,
   ) {
-    if (visibility !== Visibility.TEAM && visibility !== Visibility.ENTERPRISE) {
+    if (visibility !== Visibility.TEAM && visibility !== Visibility.WORKSPACE) {
       return
     }
 
-    const user = await this.userModel.findById(userId)
-    const membership = user?.memberships.find(
-      (m) =>
-        m.enterpriseId.toString() === enterpriseId &&
-        (!m.teamId || (ownerType === OwnerType.TEAM && m.teamId.toString() === ownerId)),
-    )
+    const membership = await this.findManagerMembership(userId, workspaceId, ownerId, ownerType)
 
     if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
       throw new BadRequestException('仅部门主管或企业管理员才能往企业/团队库添加规范素材')
     }
   }
 
-  private async findAccessibleAsset(userId: string, enterpriseId: string, assetId: string) {
+  private async findAccessibleAsset(userId: string, workspaceId: string, assetId: string) {
     const asset = await this.assetModel.findOne({
       _id: assetId,
-      enterpriseId: new Types.ObjectId(enterpriseId),
+      workspaceId: new Types.ObjectId(workspaceId),
     })
 
     if (!asset) {
@@ -295,21 +283,21 @@ export class AssetsService {
       return asset
     }
 
-    const user = await this.userModel.findById(userId)
-
     if (
-      asset.visibility === Visibility.ENTERPRISE &&
-      user?.memberships.some((m) => m.enterpriseId.toString() === enterpriseId)
+      asset.visibility === Visibility.WORKSPACE &&
+      (await this.hasWorkspaceMembership(userId, workspaceId))
     ) {
       return asset
     }
 
     if (asset.visibility === Visibility.TEAM && asset.ownerType === OwnerType.TEAM) {
-      const membership = user?.memberships.find(
-        (m) =>
-          m.enterpriseId.toString() === enterpriseId &&
-          m.teamId?.toString() === asset.ownerId.toString(),
-      )
+      const membership = await this.membershipModel.findOne({
+        userId: new Types.ObjectId(userId),
+        workspaceId: new Types.ObjectId(workspaceId),
+        scopeType: 'team',
+        scopeId: asset.ownerId,
+        status: 'active',
+      })
       if (membership) {
         return asset
       }
@@ -325,7 +313,45 @@ export class AssetsService {
   ): string {
     const ext = this.getFileExtension(file)
     // Object keys include ownership scope to make cleanup and permission audits easier.
-    return `assets/${uploadDto.ownerType}/${uploadDto.ownerId}/${assetId}/original${ext}`
+    return `assets/${uploadDto.spaceId}/${assetId}/original${ext}`
+  }
+
+  private async findUserTeamIds(userId: string, workspaceId: string) {
+    const memberships = await this.membershipModel.find({
+      userId: new Types.ObjectId(userId),
+      workspaceId: new Types.ObjectId(workspaceId),
+      scopeType: 'team',
+      status: 'active',
+    })
+
+    return memberships.map((membership) => membership.scopeId.toString())
+  }
+
+  private async hasWorkspaceMembership(userId: string, workspaceId: string) {
+    const membership = await this.membershipModel.exists({
+      userId: new Types.ObjectId(userId),
+      workspaceId: new Types.ObjectId(workspaceId),
+      scopeType: 'workspace',
+      status: 'active',
+    })
+
+    return Boolean(membership)
+  }
+
+  private async findManagerMembership(
+    userId: string,
+    workspaceId: string,
+    ownerId: string,
+    ownerType: OwnerType,
+  ) {
+    return this.membershipModel.findOne({
+      userId: new Types.ObjectId(userId),
+      workspaceId: new Types.ObjectId(workspaceId),
+      status: 'active',
+      ...(ownerType === OwnerType.TEAM
+        ? { scopeType: 'team', scopeId: new Types.ObjectId(ownerId) }
+        : { scopeType: 'workspace', scopeId: new Types.ObjectId(workspaceId) }),
+    })
   }
 
   private getFileExtension(file: UploadedAssetFile): string {

@@ -62,7 +62,7 @@ export class WorkResponseDto {
   creatorId!: string
 
   @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  workspaceId!: string
 
   @ApiPropertyOptional({ description: '品牌质检报告' })
   qualityReport?: Record<string, any>

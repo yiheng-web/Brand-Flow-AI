@@ -36,6 +36,9 @@ export class Asset {
   @Prop({ type: Types.ObjectId, required: true, index: true })
   ownerId!: Types.ObjectId
 
+  @Prop({ type: Types.ObjectId, ref: 'Space', required: true, index: true })
+  spaceId!: Types.ObjectId
+
   @Prop({ type: String, enum: OwnerType, required: true })
   ownerType!: OwnerType
 
@@ -45,8 +48,8 @@ export class Asset {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   creatorId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId
+  @Prop({ type: Types.ObjectId, ref: 'Workspace', required: true, index: true })
+  workspaceId!: Types.ObjectId
 
   @Prop({ type: Object })
   metadata!: Record<string, any>

@@ -19,12 +19,18 @@ import {
   WorkflowNodeDocument,
   WorkflowNodeType,
 } from './schemas/workflow-node.schema'
+import { KnowledgeService } from '@/modules/knowledge/knowledge.service'
 
 export interface WorkflowResponse {
   id: string
   status: WorkflowStatus
   prompt: string
   spaceId: string
+  spaceType?: string
+  ownerType?: string
+  ownerId?: string
+  workspaceId?: string
+  knowledgeIds: string[]
   createdAt: string
   updatedAt: string
   result?: Record<string, unknown>
@@ -42,6 +48,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
     @InjectQueue(WORKFLOW_QUEUE)
     private readonly workflowQueue: Queue,
+    private readonly knowledgeService: KnowledgeService,
   ) {}
 
   async onModuleInit() {
@@ -57,7 +64,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   private async verifyWorkflowAccess(
     id: string,
     userId: string,
-    entId: string,
+    workspaceId: string,
   ): Promise<WorkflowDocument> {
     const workflow = await this.workflowModel.findById(id)
     if (!workflow) {
@@ -65,24 +72,41 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     }
 
     // 第一道红线：跨企业隔离
-    if (workflow.entId && entId && workflow.entId !== entId) {
+    if (workflow.workspaceId.toString() !== workspaceId) {
       throw new ForbiddenException('跨企业越权访问被拒绝')
     }
 
     // 第二道红线：个人空间隔离
-    if (workflow.spaceId === 'personal' && workflow.userId !== userId) {
+    if (workflow.ownerType === 'user' && workflow.userId.toString() !== userId) {
       throw new ForbiddenException('个人空间工作流越权访问被拒绝')
     }
 
     return workflow
   }
 
-  async create(dto: CreateWorkflowDto, userId: string, entId: string): Promise<WorkflowResponse> {
+  async create(
+    dto: CreateWorkflowDto,
+    userId: string,
+    workspaceId: string,
+  ): Promise<WorkflowResponse> {
+    const requestedKnowledgeIds = dto.knowledgeIds || []
+    const { space, knowledgeIds } = await this.knowledgeService.assertSelectableKnowledgeIds(
+      userId,
+      workspaceId,
+      dto.spaceId,
+      requestedKnowledgeIds,
+    )
+
     const workflow = await this.workflowModel.create({
       prompt: dto.prompt,
       spaceId: dto.spaceId,
+      spaceType: space.spaceType,
+      ownerType: space.ownerType,
+      ownerId: space.ownerId,
+      visibility: space.visibility,
+      workspaceId: space.workspaceId,
       userId,
-      entId,
+      knowledgeIds,
       status: 'pending',
     })
 
@@ -112,7 +136,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       RUN_WORKFLOW_JOB,
       {
         workflowId: workflow._id.toString(),
-        knowledgeId: dto.knowledgeId,
+        knowledgeIds,
       },
       {
         jobId: `${workflow._id.toString()}-${Date.now()}`,
@@ -122,8 +146,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return this.toResponse(workflow)
   }
 
-  async getWorkflowDetail(id: string, userId: string, entId: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+  async getWorkflowDetail(id: string, userId: string, workspaceId: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, workspaceId)
     const nodes = await this.workflowNodeModel.find({ workflowId: id }).sort({ createdAt: 1 })
     return {
       workflow: this.toResponse(workflow),
@@ -136,9 +160,9 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     nodeType: WorkflowNodeType,
     payload: Record<string, unknown>,
     userId: string,
-    entId: string,
+    workspaceId: string,
   ) {
-    await this.verifyWorkflowAccess(id, userId, entId)
+    await this.verifyWorkflowAccess(id, userId, workspaceId)
 
     const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType })
     if (!node) {
@@ -173,8 +197,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return node
   }
 
-  async runNode(id: string, nodeType: WorkflowNodeType, userId: string, entId: string) {
-    await this.verifyWorkflowAccess(id, userId, entId)
+  async runNode(id: string, nodeType: WorkflowNodeType, userId: string, workspaceId: string) {
+    await this.verifyWorkflowAccess(id, userId, workspaceId)
 
     // 触发对应节点的重新执行（实际会发布给 Agent 服务或 Processor，这里仅负责状态更改与触发）
     const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType })
@@ -200,10 +224,10 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return { success: true, message: `Node ${nodeType} queued for rerun.` }
   }
 
-  streamWorkflow(id: string, userId: string, entId: string): Observable<MessageEvent> {
+  streamWorkflow(id: string, userId: string, workspaceId: string): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
       // 在连接前校验权限，如果不通过，则直接断开不予监听
-      this.verifyWorkflowAccess(id, userId, entId)
+      this.verifyWorkflowAccess(id, userId, workspaceId)
         .then(() => {
           subscriber.next({ data: { type: 'connected', workflowId: id } })
         })
@@ -255,6 +279,11 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       status: workflow.status,
       prompt: workflow.prompt,
       spaceId: workflow.spaceId,
+      spaceType: workflow.spaceType,
+      ownerType: workflow.ownerType,
+      ownerId: workflow.ownerId,
+      workspaceId: workflow.workspaceId.toString(),
+      knowledgeIds: workflow.knowledgeIds || [],
       createdAt:
         workflow.createdAt instanceof Date
           ? workflow.createdAt.toISOString()

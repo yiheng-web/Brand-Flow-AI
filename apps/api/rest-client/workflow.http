@@ -1,20 +1,32 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
-@workflowId = 6a22f6e97468d83197c53f05
-@spaceId = personal
-@knowledgeId = 6a22f6a57468d83197c53eec
+@accessToken = paste-login-or-switch-token-here
+@spaceId = paste-space-id-from-get-org-spaces-here
+@knowledgeId = paste-knowledge-id-here
+@workflowId = paste-workflow-id-here
 @nodeType = intentNode
 
 ### 创建并启动工作流
+# knowledgeIds 必须是数组，且最多 3 个；这些知识库必须属于同一个 spaceId。
 POST {{baseUrl}}/workflow/create
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "prompt": "做一张夏日海报极简风格",
+  "prompt": "做一张夏日海报，极简风格，突出品牌主色和清晰 Logo",
   "spaceId": "{{spaceId}}",
-  "knowledgeId": "{{knowledgeId}}"
+  "knowledgeIds": ["{{knowledgeId}}"]
+}
+
+### 创建并启动工作流（不使用知识库）
+POST {{baseUrl}}/workflow/create
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "prompt": "做一张夏日海报，极简风格",
+  "spaceId": "{{spaceId}}",
+  "knowledgeIds": []
 }
 
 ### 获取工作流详情
@@ -27,10 +39,8 @@ Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "status": "done",
-  "output": {
-    "summary": "手动更新节点输出"
-  }
+  "summary": "手动更新节点输出",
+  "notes": ["REST Client 调试"]
 }
 
 ### 从指定节点重新运行工作流
@@ -40,4 +50,3 @@ Authorization: Bearer {{accessToken}}
 ### 订阅工作流 SSE 事件流
 GET {{baseUrl}}/workflow/{{workflowId}}/stream
 Authorization: Bearer {{accessToken}}
-

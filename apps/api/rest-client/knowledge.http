@@ -1,21 +1,29 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
-@knowledgeId = 6a22f6a57468d83197c53eec
-@itemId = 6a22f6657468d83197c53ecd
+@accessToken = paste-login-or-switch-token-here
+@spaceId = paste-space-id-from-get-org-spaces-here
+@knowledgeId = paste-knowledge-id-here
+@knowledgeItemId = paste-knowledge-item-id-here
 
 ### 创建知识库
+# spaceId 必须来自 GET /org/spaces，不能使用 personal/team 这类字符串别名。
 POST {{baseUrl}}/knowledge
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "name": "瑞幸咖啡品牌规范库",
+  "spaceId": "{{spaceId}}",
+  "name": "瑞幸咖啡品牌规范库 {{$timestamp}}",
   "description": "包含品牌色、Logo 使用规范、禁用词和参考案例"
 }
 
-### 获取知识库列表
+### 获取当前工作区可访问知识库列表
 GET {{baseUrl}}/knowledge
+Authorization: Bearer {{accessToken}}
+
+### 获取当前创作空间可选知识库
+# 创作页知识库下拉框应该使用这个接口，而不是 GET /knowledge。
+GET {{baseUrl}}/knowledge/selectable?spaceId={{spaceId}}
 Authorization: Bearer {{accessToken}}
 
 ### 获取知识库详情
@@ -60,11 +68,11 @@ GET {{baseUrl}}/knowledge/{{knowledgeId}}/items
 Authorization: Bearer {{accessToken}}
 
 ### 获取知识项详情
-GET {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+GET {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{knowledgeItemId}}
 Authorization: Bearer {{accessToken}}
 
 ### 更新知识项
-PUT {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+PUT {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{knowledgeItemId}}
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
@@ -83,10 +91,9 @@ GET {{baseUrl}}/knowledge/{{knowledgeId}}/records
 Authorization: Bearer {{accessToken}}
 
 ### 删除知识项
-DELETE {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+DELETE {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{knowledgeItemId}}
 Authorization: Bearer {{accessToken}}
 
 ### 删除知识库
 DELETE {{baseUrl}}/knowledge/{{knowledgeId}}
 Authorization: Bearer {{accessToken}}
-

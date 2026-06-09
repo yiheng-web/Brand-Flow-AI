@@ -5,6 +5,7 @@ import { StorageModule } from '@/modules/storage/storage.module'
 import { Work, WorkSchema } from './schemas/work.schema'
 import { WorkVersion, WorkVersionSchema } from './schemas/work-version.schema'
 import { ExportLog, ExportLogSchema } from './schemas/export-log.schema'
+import { Workflow, WorkflowSchema } from '@/modules/workflow/schemas/workflow.schema'
 import { WorksController } from './works.controller'
 import { WorksService } from './works.service'
 
@@ -14,6 +15,7 @@ import { WorksService } from './works.service'
       { name: Work.name, schema: WorkSchema },
       { name: WorkVersion.name, schema: WorkVersionSchema },
       { name: ExportLog.name, schema: ExportLogSchema },
+      { name: Workflow.name, schema: WorkflowSchema },
     ]),
     OrgModule,
     StorageModule,

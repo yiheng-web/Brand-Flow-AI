@@ -1,42 +1,47 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
-@enterpriseId = 6a22f3c98568f26d09d55767
-@spaceId = personal
+@accessToken = paste-login-or-switch-token-here
+@workspaceId = paste-workspace-id-here
+@spaceId = paste-space-id-from-get-org-spaces-here
 
-### 创建企业
-POST {{baseUrl}}/org/enterprise
+### 创建组织工作区
+# 创建后不会自动切换 token；如要进入新 workspace，请调用“切换当前工作区”。
+POST {{baseUrl}}/org/workspace
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "name": "测试企业xxxx",
+  "name": "测试组织 {{$timestamp}}",
   "logo": "https://cdn.example.com/logo.png"
 }
 
-### 获取我的企业列表
-GET {{baseUrl}}/org/enterprises
+### 获取我的工作区列表
+GET {{baseUrl}}/org/workspaces
 Authorization: Bearer {{accessToken}}
 
-### 切换当前企业
-PUT {{baseUrl}}/org/enterprise/{{enterpriseId}}/switch
+### 切换当前工作区
+# 返回新的 access_token。前端/测试时必须用新 token 替换 @accessToken。
+PUT {{baseUrl}}/org/workspace/{{workspaceId}}/switch
 Authorization: Bearer {{accessToken}}
 
 ### 创建团队
+# 需要当前 workspace 下 OWNER 或 ADMIN。
 POST {{baseUrl}}/org/team
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "name": "设计团队",
+  "name": "设计团队 {{$timestamp}}",
   "description": "负责品牌设计与物料生成"
 }
 
-### 获取当前企业团队列表
+### 获取当前工作区团队列表
 GET {{baseUrl}}/org/teams
 Authorization: Bearer {{accessToken}}
 
-### 获取当前用户可访问空间
+### 获取当前工作区可访问空间
+# 返回 personal / organization / team spaces。
+# 后续创建知识库、素材、工作流都需要使用这里返回的真实 spaceId。
 GET {{baseUrl}}/org/spaces
 Authorization: Bearer {{accessToken}}
 
@@ -45,6 +50,7 @@ GET {{baseUrl}}/org/spaces/{{spaceId}}/members
 Authorization: Bearer {{accessToken}}
 
 ### 邀请空间成员
+# personal space 不支持邀请；organization/team space 需要 OWNER 或 ADMIN。
 POST {{baseUrl}}/org/spaces/{{spaceId}}/invitations
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
@@ -53,4 +59,3 @@ Authorization: Bearer {{accessToken}}
   "email": "member@example.com",
   "role": "admin"
 }
-

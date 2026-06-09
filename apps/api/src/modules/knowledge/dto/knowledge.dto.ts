@@ -2,6 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsArray, IsObject, IsString, IsOptional, IsNotEmpty } from 'class-validator'
 
 export class CreateKnowledgeDto {
+  @ApiProperty({
+    description: '知识库所属空间 ID，必须是 Space 表中的真实空间 ID。',
+    example: '665f1f2c7d7b8a001f3f6c12',
+  })
+  @IsString()
+  @IsNotEmpty({ message: '空间 ID 不能为空' })
+  spaceId!: string
+
   @ApiProperty({ description: '知识库名称', example: '瑞幸咖啡品牌规范库' })
   @IsString()
   @IsNotEmpty()

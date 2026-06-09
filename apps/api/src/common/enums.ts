@@ -14,7 +14,7 @@ export enum Role {
 export enum OwnerType {
   USER = 'user',
   TEAM = 'team',
-  ENTERPRISE = 'enterprise',
+  WORKSPACE = 'workspace',
 }
 
 /**
@@ -23,6 +23,6 @@ export enum OwnerType {
 export enum Visibility {
   PRIVATE = 'private',
   TEAM = 'team',
-  ENTERPRISE = 'enterprise',
+  WORKSPACE = 'workspace',
   PUBLIC = 'public',
 }

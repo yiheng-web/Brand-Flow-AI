@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Req } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger'
 import {
   ApiCreatedSuccessResponse,
@@ -37,14 +48,24 @@ export class KnowledgeController {
   })
   @ApiCreatedSuccessResponse(KnowledgeResponseDto, '创建成功，返回封装后的知识库记录。')
   async create(@Req() req: any, @Body() createDto: CreateKnowledgeDto) {
-    return this.knowledgeService.create(req.user.sub, req.user.entId, createDto)
+    return this.knowledgeService.create(req.user.sub, req.user.workspaceId, createDto)
   }
 
   @Get()
   @ApiOperation({ summary: '获取知识库列表', description: '返回当前激活企业下的全部知识库。' })
   @ApiSuccessArrayResponse(KnowledgeResponseDto, '返回封装后的知识库列表。')
   async findAll(@Req() req: any) {
-    return this.knowledgeService.findAll(req.user.entId)
+    return this.knowledgeService.findAll(req.user.sub, req.user.workspaceId)
+  }
+
+  @Get('selectable')
+  @ApiOperation({
+    summary: '获取当前创作空间可选知识库',
+    description: '用于创作入口知识库下拉框。根据 spaceId 返回该空间下可用于本次创作的知识库。',
+  })
+  @ApiSuccessArrayResponse(KnowledgeResponseDto, '返回当前空间可选知识库列表。')
+  async findSelectable(@Req() req: any, @Query('spaceId') spaceId?: string) {
+    return this.knowledgeService.findSelectable(req.user.sub, req.user.workspaceId, spaceId)
   }
 
   @Get(':id')
@@ -55,7 +76,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessResponse(KnowledgeResponseDto, '返回封装后的知识库详情。')
   async findOne(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.findOne(req.user.entId, id)
+    return this.knowledgeService.findOne(req.user.sub, req.user.workspaceId, id)
   }
 
   @Put(':id')
@@ -66,7 +87,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessResponse(KnowledgeResponseDto, '更新成功，返回封装后的知识库记录。')
   async update(@Req() req: any, @Param('id') id: string, @Body() updateDto: UpdateKnowledgeDto) {
-    return this.knowledgeService.update(req.user.sub, req.user.entId, id, updateDto)
+    return this.knowledgeService.update(req.user.sub, req.user.workspaceId, id, updateDto)
   }
 
   @Post(':id/ingest')
@@ -77,7 +98,12 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiCreatedSuccessResponse(KnowledgeIngestResponseDto, '入库成功，返回封装后的切片数量。')
   async ingest(@Req() req: any, @Param('id') id: string, @Body() ingestDto: IngestKnowledgeDto) {
-    return this.knowledgeService.ingestText(req.user.sub, req.user.entId, id, ingestDto.content)
+    return this.knowledgeService.ingestText(
+      req.user.sub,
+      req.user.workspaceId,
+      id,
+      ingestDto.content,
+    )
   }
 
   @Post(':id/items')
@@ -92,7 +118,7 @@ export class KnowledgeController {
     '创建成功，返回封装后的知识项和向量入库结果。',
   )
   async createItem(@Req() req: any, @Param('id') id: string, @Body() dto: CreateKnowledgeItemDto) {
-    return this.knowledgeService.createItem(req.user.sub, req.user.entId, id, dto)
+    return this.knowledgeService.createItem(req.user.sub, req.user.workspaceId, id, dto)
   }
 
   @Get(':id/items')
@@ -103,7 +129,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessArrayResponse(KnowledgeItemResponseDto, '返回封装后的知识项列表。')
   async findItems(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.findItems(req.user.entId, id)
+    return this.knowledgeService.findItems(req.user.sub, req.user.workspaceId, id)
   }
 
   @Get(':id/items/:itemId')
@@ -115,7 +141,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'itemId', description: '知识项 ID' })
   @ApiSuccessResponse(KnowledgeItemResponseDto, '返回封装后的知识项详情。')
   async findItem(@Req() req: any, @Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.knowledgeService.findItem(req.user.entId, id, itemId)
+    return this.knowledgeService.findItem(req.user.sub, req.user.workspaceId, id, itemId)
   }
 
   @Put(':id/items/:itemId')
@@ -132,7 +158,7 @@ export class KnowledgeController {
     @Param('itemId') itemId: string,
     @Body() dto: UpdateKnowledgeItemDto,
   ) {
-    return this.knowledgeService.updateItem(req.user.sub, req.user.entId, id, itemId, dto)
+    return this.knowledgeService.updateItem(req.user.sub, req.user.workspaceId, id, itemId, dto)
   }
 
   @Delete(':id/items/:itemId')
@@ -144,7 +170,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'itemId', description: '知识项 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
   async removeItem(@Req() req: any, @Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.knowledgeService.removeItem(req.user.sub, req.user.entId, id, itemId)
+    return this.knowledgeService.removeItem(req.user.sub, req.user.workspaceId, id, itemId)
   }
 
   @Get(':id/records')
@@ -155,7 +181,7 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessArrayResponse(KnowledgeRecordResponseDto, '返回封装后的底层向量记录列表。')
   async getRecords(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.getRecords(req.user.entId, id)
+    return this.knowledgeService.getRecords(req.user.sub, req.user.workspaceId, id)
   }
 
   @Delete(':id')
@@ -166,6 +192,6 @@ export class KnowledgeController {
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
   async remove(@Req() req: any, @Param('id') id: string) {
-    return this.knowledgeService.remove(req.user.sub, req.user.entId, id)
+    return this.knowledgeService.remove(req.user.sub, req.user.workspaceId, id)
   }
 }

@@ -15,8 +15,8 @@ export class KnowledgeItem {
   @Prop({ type: Types.ObjectId, ref: 'Knowledge', required: true, index: true })
   knowledgeId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId
+  @Prop({ type: Types.ObjectId, ref: 'Workspace', required: true, index: true })
+  workspaceId!: Types.ObjectId
 
   @Prop({ required: true })
   title!: string
