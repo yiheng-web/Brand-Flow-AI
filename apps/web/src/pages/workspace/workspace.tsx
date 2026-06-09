@@ -187,13 +187,30 @@ const Workspace = () => {
                   ...prev,
                   [currentNodeId]: 'done',
                 }
-                // 将下一个节点标记为 running
-                const nextIdx = currentIdx + 1
-                if (nextIdx < NODE_ORDER.length) {
-                  next[NODE_ORDER[nextIdx]] = 'running'
+                // 将下一个节点标记为 running（跳过 compose 节点，因为后端没有 composeNode）
+                let nextIdx = currentIdx + 1
+                while (nextIdx < NODE_ORDER.length) {
+                  const nextNodeId = NODE_ORDER[nextIdx]
+                  // 如果后端不存在该节点映射，继续找下一个
+                  if (NODE_ID_TO_GRAPH_KEY[nextNodeId]) {
+                    next[nextNodeId] = 'running'
+                    break
+                  }
+                  // 跳过无映射的节点（如 compose），直接标记为 done
+                  next[nextNodeId] = 'done'
+                  nextIdx++
                 }
                 return next
               })
+
+              // 从 generateNode 完成事件中提前提取图片 URL
+              if (nodeKey === 'generateNode') {
+                const genResult = (nodeValue as any)?.generateResult || nodeValue
+                const content = genResult?.content
+                if (typeof content === 'string' && content.startsWith('http')) {
+                  setImageUrl(content)
+                }
+              }
             }
             return
           }
@@ -262,7 +279,14 @@ const Workspace = () => {
 
       eventSourceRef.current = conn
     },
-    [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError],
+    [
+      setNodeStreamData,
+      setNodeExecStatuses,
+      setWorkflowStatus,
+      setAgentState,
+      setWorkflowError,
+      setImageUrl,
+    ],
   )
 
   /* ============================
@@ -484,8 +508,7 @@ const Workspace = () => {
   const evaluationResult = getEvalData()
 
   // 图像生成节点专用：只有节点状态不是 done 且 workflow 还在运行时才显示 loading
-  const isImageGenExecuting =
-    (nodeExecStatuses['image-gen'] !== 'done' && isExecuting) || !baseImageUrl
+  const isImageGenExecuting = nodeExecStatuses['image-gen'] !== 'done' && isExecuting
 
   const statusLabel = (() => {
     if (isSubmitting) return '提交中…'
