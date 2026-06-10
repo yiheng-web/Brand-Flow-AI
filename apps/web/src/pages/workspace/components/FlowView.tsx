@@ -13,12 +13,17 @@ import {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import FlowNode from './FlowNode'
-import { FLOW_NODES, type FlowNodeId, type LayoutDir, type NodeExecStatus } from '../workspace.const'
+import {
+  FLOW_NODES,
+  type FlowNodeId,
+  type LayoutDir,
+  type NodeExecStatus,
+} from '../workspace.const'
 
 const nodeTypes = { flowNode: FlowNode }
 
 const NODE_W = 200
-const NODE_H = 130
+const NODE_H = 150
 const GAP = 48
 
 function buildNodes(dir: LayoutDir, execStatuses?: Record<FlowNodeId, NodeExecStatus>): Node[] {
@@ -61,9 +66,7 @@ interface FlowViewProps {
 
 const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
   const [layoutDir, setLayoutDir] = useState<LayoutDir>('vertical')
-  const [nodes, setNodes, onNodesChange] = useNodesState(
-    buildNodes('vertical', nodeExecStatuses)
-  )
+  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('vertical', nodeExecStatuses))
   const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges())
   const [showMiniMap, setShowMiniMap] = useState(true)
 
@@ -85,7 +88,7 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
           ...n.data,
           execStatus: nodeExecStatuses[n.id as FlowNodeId] ?? n.data.execStatus,
         },
-      }))
+      })),
     )
   }, [nodeExecStatuses, setNodes])
 
@@ -102,14 +105,17 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         } as Edge,
       ])
     },
-    [setEdges]
+    [setEdges],
   )
 
-  const onNodeClickCb = useCallback((_: React.MouseEvent, node: Node) => {
-    if (onNodeClick) {
-      onNodeClick(node.id)
-    }
-  }, [onNodeClick])
+  const onNodeClickCb = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (onNodeClick) {
+        onNodeClick(node.id)
+      }
+    },
+    [onNodeClick],
+  )
 
   const key = layoutDir
 
@@ -148,7 +154,6 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         minZoom={0.3}
         maxZoom={1.5}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}

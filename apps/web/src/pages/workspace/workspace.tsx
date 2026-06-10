@@ -629,7 +629,13 @@ const Workspace = () => {
       message.error('触发重跑失败')
     }
   }
-
+  // 前往下一个节点
+  const handleNextNode = () => {
+    if (!selectedNodeId) return
+    const currentIdx = NODE_ORDER.indexOf(selectedNodeId)
+    if (currentIdx === -1 || currentIdx >= NODE_ORDER.length - 1) return
+    setSelectedNodeId(NODE_ORDER[currentIdx + 1])
+  }
   /* ============================
       渲染右侧属性面板
    ============================ */
@@ -794,6 +800,13 @@ const Workspace = () => {
             </span>
           </div>
           {renderRightContent()}
+          {selectedNodeId && NODE_ORDER.indexOf(selectedNodeId) < NODE_ORDER.length - 1 && (
+            <div className={styles.nextNodeBar}>
+              <button type="button" className={styles.nextNodeBtn} onClick={handleNextNode}>
+                下一节点：{NODE_LABELS[NODE_ORDER[NODE_ORDER.indexOf(selectedNodeId) + 1]]} →
+              </button>
+            </div>
+          )}
         </aside>
       </div>
 
