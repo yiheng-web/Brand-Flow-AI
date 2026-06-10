@@ -8,16 +8,27 @@ const STATUS_CONFIG: Record<string, { bg: string; border?: string }> = {
   done: { bg: '#22c55e' },
   running: { bg: '#3b82f6', border: '#3b82f6' },
   pending: { bg: '#d1d5db' },
+  failed: { bg: '#ef4444', border: '#ef4444' },
 }
 
 const FlowNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
   const statusCfg = STATUS_CONFIG[data.execStatus]
   const isRunning = data.execStatus === 'running'
+  const isFailed = data.execStatus === 'failed'
   const isHorizontal = data.layoutDir === 'horizontal'
 
   const style: React.CSSProperties = {
     ...(isRunning
-      ? { borderColor: statusCfg.border, boxShadow: '0 0 0 1px #3b82f6, 0 4px 16px rgba(59,130,246,0.2)' }
+      ? {
+          borderColor: statusCfg.border,
+          boxShadow: '0 0 0 1px #3b82f6, 0 4px 16px rgba(59,130,246,0.2)',
+        }
+      : {}),
+    ...(isFailed
+      ? {
+          borderColor: statusCfg.border,
+          boxShadow: '0 0 0 1px #ef4444, 0 4px 16px rgba(239,68,68,0.2)',
+        }
       : {}),
     ...(selected
       ? { borderColor: '#4f6ff7', boxShadow: '0 0 0 2px #4f6ff7, 0 4px 16px rgba(79,111,247,0.25)' }
@@ -25,10 +36,7 @@ const FlowNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
   }
 
   return (
-    <div
-      className="flow-node"
-      style={style}
-    >
+    <div className="flow-node" style={style}>
       <div className="flow-node-body">
         <div className="flow-node-title">
           <span className="flow-node-emoji">{data.emoji}</span>
@@ -37,8 +45,16 @@ const FlowNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
         </div>
         <div className="flow-node-sub">{data.subtitle}</div>
       </div>
-      <Handle type="target" position={isHorizontal ? Position.Left : Position.Top} className="flow-node-handle" />
-      <Handle type="source" position={isHorizontal ? Position.Right : Position.Bottom} className="flow-node-handle" />
+      <Handle
+        type="target"
+        position={isHorizontal ? Position.Left : Position.Top}
+        className="flow-node-handle"
+      />
+      <Handle
+        type="source"
+        position={isHorizontal ? Position.Right : Position.Bottom}
+        className="flow-node-handle"
+      />
     </div>
   )
 })
