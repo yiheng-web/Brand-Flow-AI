@@ -8,9 +8,11 @@ import {
 } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
+import { generateService } from '@brand-flow/agent'
 import { Queue, QueueEvents } from 'bullmq'
 import { Model } from 'mongoose'
 import { Observable } from 'rxjs'
+import { CreateArtTextCandidatesDto } from './dto/create-art-text-candidates.dto'
 import { CreateWorkflowDto } from './dto/create-workflow.dto'
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
 import { Workflow, WorkflowDocument, WorkflowStatus } from './schemas/workflow.schema'
@@ -129,6 +131,21 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       workflow: this.toResponse(workflow),
       nodes,
     }
+  }
+
+  async generateArtTextCandidates(
+    id: string,
+    dto: CreateArtTextCandidatesDto,
+    userId: string,
+    entId: string,
+  ) {
+    await this.verifyWorkflowAccess(id, userId, entId)
+
+    return generateService.generateFourArtTextCandidates(
+      dto.textContent,
+      dto.stylePrompt ?? '',
+      dto.negativePrompt ?? '',
+    )
   }
 
   async updateNodeOutput(
