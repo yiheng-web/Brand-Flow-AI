@@ -27,8 +27,6 @@ import {
   type GenerateResult,
   type EvaluationResult,
   type AgentState,
-  type WorkflowNodeSnapshot,
-  getWorkflowDetail,
 } from '../../api/workflow'
 import { createAuthEventSource } from '../../utils/sse'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
@@ -181,6 +179,14 @@ const Workspace = () => {
             )?.[0] as FlowNodeId | undefined
 
             if (currentNodeId) {
+              // ★ 如果是 image-gen 节点完成，立即提取图片 URL 到 store
+              if (currentNodeId === 'image-gen' && nodeValue.generateResult) {
+                const genResult = nodeValue.generateResult as GenerateResult
+                if (genResult.content && typeof genResult.content === 'string') {
+                  setImageUrl(genResult.content)
+                }
+              }
+
               const currentIdx = NODE_ORDER.indexOf(currentNodeId)
               setNodeExecStatuses((prev) => {
                 const next: Record<FlowNodeId, NodeExecStatus> = {
@@ -262,78 +268,14 @@ const Workspace = () => {
 
       eventSourceRef.current = conn
     },
-    [setNodeStreamData, setNodeExecStatuses, setWorkflowStatus, setAgentState, setWorkflowError],
-  )
-
-  /* ============================
-      状态恢复与同步 (Rehydration)
-   ============================ */
-  const syncWorkflowState = useCallback(
-    async (id: string) => {
-      try {
-        const data = await getWorkflowDetail(id)
-        const workflow = data.workflow
-        const nodes = data.nodes || []
-
-        setWorkflowStatus(workflow.status)
-        if (workflow.errorMessage) {
-          setWorkflowError(workflow.errorMessage)
-        }
-
-        const newStatuses: Record<FlowNodeId, NodeExecStatus> = {
-          intent: 'pending',
-          'brand-kb': 'pending',
-          prompt: 'pending',
-          'image-gen': 'pending',
-          compose: 'pending',
-          eval: 'pending',
-        }
-        const newData: Record<string, Record<string, unknown>> = {}
-
-        let hasRunning = false
-        nodes.forEach((node: WorkflowNodeSnapshot) => {
-          const nodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
-            ([, v]) => v === node.type,
-          )?.[0] as FlowNodeId | undefined
-          if (nodeId) {
-            if (node.status === 'completed' || node.status === 'stale') {
-              newStatuses[nodeId] = 'done'
-            } else if (node.status === 'failed') {
-              newStatuses[nodeId] = 'failed'
-            } else if (node.status === 'running') {
-              newStatuses[nodeId] = 'running'
-              hasRunning = true
-            }
-            if (node.output) {
-              newData[node.type] = node.output
-            }
-          }
-        })
-
-        if (workflow.status !== 'completed' && workflow.status !== 'failed' && !hasRunning) {
-          for (const nodeId of NODE_ORDER) {
-            if (newStatuses[nodeId] === 'pending') {
-              newStatuses[nodeId] = 'running'
-              break
-            }
-          }
-        }
-
-        setNodeExecStatuses(newStatuses)
-        setNodeStreamData(newData)
-        nodeStreamDataRef.current = newData
-
-        // 如果未完成，则连接 SSE 接力执行
-        if (workflow.status !== 'completed' && workflow.status !== 'failed') {
-          connectStream(id)
-        }
-      } catch (err) {
-        console.error('获取工作流详情失败:', err)
-        setWorkflowStatus('failed')
-        setWorkflowError('无法恢复工作流状态，可能由于越权拦截或网络异常。')
-      }
-    },
-    [setWorkflowStatus, setWorkflowError, setNodeExecStatuses, setNodeStreamData, connectStream],
+    [
+      setNodeStreamData,
+      setNodeExecStatuses,
+      setWorkflowStatus,
+      setAgentState,
+      setWorkflowError,
+      setImageUrl,
+    ],
   )
 
   /* ============================
@@ -397,22 +339,46 @@ const Workspace = () => {
     // 场景 1: 从首页带来了全新的 workflowId
     if (navState?.workflowId && navState.workflowId !== workflowId) {
       setWorkflowId(navState.workflowId)
-      // 场景 1: 从外部点进来，先同步恢复状态
-      syncWorkflowState(navState.workflowId)
+      // 重置上一次可能处于 completed 的状态
+      setWorkflowStatus('running')
+      setNodeExecStatuses({
+        intent: 'running',
+        'brand-kb': 'pending',
+        prompt: 'pending',
+        'image-gen': 'pending',
+        compose: 'pending',
+        eval: 'pending',
+      })
+      setNodeStreamData({})
+      if (nodeStreamDataRef.current) {
+        nodeStreamDataRef.current = {}
+      }
+
+      connectStream(navState.workflowId)
     }
     // 场景 2: 仅带来了 prompt，没有 workflowId (直接启动)
     else if (navState?.prompt && workflowStatus === 'idle' && !workflowId) {
       startWorkflow()
     }
-    // 场景 3: 页面刷新，已存在 workflowId，但 SSE 连接已断开，重新同步状态并连接
+    // 场景 3: 页面刷新，已存在 workflowId，且处于运行中，但 SSE 连接已断开，则重新连接
     else if (
       workflowId &&
       (workflowStatus === 'running' || workflowStatus === 'pending') &&
       !eventSourceRef.current
     ) {
-      syncWorkflowState(workflowId)
+      connectStream(workflowId)
     }
-  }, [navState, workflowId, workflowStatus, setWorkflowId, syncWorkflowState, startWorkflow])
+  }, [
+    navState,
+    workflowId,
+    workflowStatus,
+    setWorkflowId,
+    setWorkflowStatus,
+    setNodeExecStatuses,
+    setNodeStreamData,
+    connectStream,
+    startWorkflow,
+  ])
 
   /* ---- 清理 ---- */
   useEffect(() => {
@@ -500,7 +466,8 @@ const Workspace = () => {
     const url = imageUrl || baseImageUrl
     if (!url) return
     try {
-      const response = await fetch(url)
+      // 尝试 fetch 下载（可能会被 CORS 拦截）
+      const response = await fetch(url, { mode: 'cors' })
       const blob = await response.blob()
       const objectUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -512,7 +479,9 @@ const Workspace = () => {
       URL.revokeObjectURL(objectUrl)
       message.success('图片已保存')
     } catch {
-      message.error('保存失败，请重试')
+      // CORS 拦截时，在新标签页打开图片让用户右键保存
+      message.info('已在新标签页打开图片，请右键保存')
+      window.open(url, '_blank')
     }
   }
 
