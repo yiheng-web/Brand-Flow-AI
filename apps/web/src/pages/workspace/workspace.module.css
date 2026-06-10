@@ -163,7 +163,9 @@
   border-radius: 10px;
   background: transparent;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .previewToolBtn:hover {
@@ -224,7 +226,9 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -299,7 +303,9 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -374,7 +380,9 @@
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tagChipRemove:hover {
@@ -396,7 +404,9 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .tagAddDashed:hover {
@@ -451,7 +461,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
 }
 
 .interceptBtn:hover {
@@ -529,7 +541,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -661,7 +675,9 @@
   color: #8b93a6;
   font-size: 18px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .modalCloseBtn:hover {
@@ -887,7 +903,9 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .modalCancelBtn:hover {
@@ -908,7 +926,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -976,7 +996,7 @@
   height: 20px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s;
   pointer-events: none;
 }
@@ -1060,7 +1080,9 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -1332,7 +1354,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -1484,7 +1508,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -1660,7 +1686,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(231, 76, 60, 0.25);
 }
 
@@ -1673,4 +1701,34 @@
   background: #a93226;
 }
 
+/* 下一个节点按钮 */
+.nextNodeBar {
+  padding: 0 20px 20px;
+  margin-top: auto;
+}
 
+.nextNodeBtn {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  border: none;
+  border-radius: 16px;
+  background: #4f6ff7;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
+}
+
+.nextNodeBtn:hover {
+  background: #3b5de7;
+  box-shadow: 0 4px 14px rgba(79, 111, 247, 0.35);
+}
+.nextNodeBtn:active {
+  background: #2f4fd9;
+  box-shadow: 0 2px 6px rgba(79, 111, 247, 0.2);
+}
