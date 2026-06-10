@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { CreateArtTextCandidatesDto } from './dto/create-art-text-candidates.dto'
 import { CreateWorkflowDto } from './dto/create-workflow.dto'
 import { WorkflowResponse, WorkflowService } from './workflow.service'
 import { Observable } from 'rxjs'
@@ -33,6 +34,16 @@ export class WorkflowController {
   @ApiOperation({ summary: '获取工作流详情' })
   getWorkflowDetail(@Param('id') id: string, @Req() req: any) {
     return this.workflowService.getWorkflowDetail(id, req.user?.sub, req.user?.entId)
+  }
+
+  @Post(':id/composition/art-text/candidates')
+  @ApiOperation({ summary: '生成图文合成节点的 4 个艺术字候选' })
+  generateArtTextCandidates(
+    @Param('id') id: string,
+    @Body() dto: CreateArtTextCandidatesDto,
+    @Req() req: any,
+  ) {
+    return this.workflowService.generateArtTextCandidates(id, dto, req.user?.sub, req.user?.entId)
   }
 
   @Put(':id/nodes/:nodeType')
