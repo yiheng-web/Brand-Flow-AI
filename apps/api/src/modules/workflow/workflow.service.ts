@@ -88,14 +88,15 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       status: 'pending',
     })
 
-    // 初始化 6 个节点数据以供联调测试，对齐 Agent 的真实节点链路
+    // 初始化 7 个节点数据以供联调测试，对齐 Agent 的真实节点链路
     const nodeOrder = [
-      'intentNode',
-      'knowledgeNode',
-      'promptNode',
-      'generateNode',
-      'evaluateNode',
-      'finishNode',
+      'brief',
+      'brand_constraint',
+      'creative_direction',
+      'prompt',
+      'image_generation',
+      'composition',
+      'brand_evaluation',
     ]
 
     await this.workflowNodeModel.insertMany(
@@ -114,7 +115,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       RUN_WORKFLOW_JOB,
       {
         workflowId: workflow._id.toString(),
-        knowledgeId: dto.knowledgeId,
+        spaceType: dto.spaceType,
+        selectedKnowledgeBaseIds: dto.selectedKnowledgeBaseIds,
       },
       {
         jobId: `${workflow._id.toString()}-${Date.now()}`,
@@ -171,12 +173,13 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
     // 2. 级联置空（下游 stale 机制）
     const nodeOrder = [
-      'intentNode',
-      'knowledgeNode',
-      'promptNode',
-      'generateNode',
-      'evaluateNode',
-      'finishNode',
+      'brief',
+      'brand_constraint',
+      'creative_direction',
+      'prompt',
+      'image_generation',
+      'composition',
+      'brand_evaluation',
     ]
     const currentIndex = nodeOrder.indexOf(nodeType)
     if (currentIndex !== -1 && currentIndex < nodeOrder.length - 1) {
@@ -201,6 +204,25 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
     node.status = 'pending'
     await node.save()
+
+    // 把该节点下游的所有节点状态也置为 stale
+    const nodeOrder = [
+      'brief',
+      'brand_constraint',
+      'creative_direction',
+      'prompt',
+      'image_generation',
+      'composition',
+      'brand_evaluation',
+    ]
+    const currentIndex = nodeOrder.indexOf(nodeType)
+    if (currentIndex !== -1 && currentIndex < nodeOrder.length - 1) {
+      const downstreamTypes = nodeOrder.slice(currentIndex + 1)
+      await this.workflowNodeModel.updateMany(
+        { workflowId: id, type: { $in: downstreamTypes } },
+        { $set: { status: 'stale', output: {} } },
+      )
+    }
 
     // 发送任务到消息队列触发 Agent
     await this.workflowQueue.add(

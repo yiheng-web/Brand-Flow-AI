@@ -175,7 +175,8 @@ interface UserInfo {
     {
       prompt: string,       // 用户的原始设计意图或提示词
       spaceId: string,      // 当前工作流关联的前端空间或画布 ID
-      knowledgeId?: string  // 关联的专属知识库 ID（选填，提供后大模型会基于该知识库生成）
+      spaceType: 'personal' | 'team' | 'enterprise', // 当前空间的类型
+      selectedKnowledgeBaseIds?: string[] // 用户选中的多个知识库 ID 数组（选填）
     }
     ```
   - **返回 Data**:
@@ -199,7 +200,7 @@ interface UserInfo {
     ```typescript
     {
       workflow: WorkflowResponse,
-      nodes: Array<WorkflowNode> // 按时间顺序列出的 6 个真实图文生成节点（intentNode 等）的状态与产物
+      nodes: Array<WorkflowNode> // 按时间顺序列出的 7 个真实图文生成节点（brief, prompt 等）的状态与产物
     }
     ```
 
@@ -207,7 +208,7 @@ interface UserInfo {
   - **说明**: 用户手动修改某节点（如 Prompt 生成节点）的中间产物。该操作仅更新当前节点的数据记录，并将下游相关节点全部置为失效 (`stale`) 以清空旧产物，且**不会自动触发后续流程**。
   - **路径参数**:
     - `id`: 工作流 ID
-    - `nodeType`: `intentNode` | `knowledgeNode` | `promptNode` | `generateNode` | `evaluateNode` | `finishNode`
+    - `nodeType`: `brief` | `brand_constraint` | `creative_direction` | `prompt` | `image_generation` | `composition` | `brand_evaluation`
   - **Body**: `Record<string, any>` (更新的具体节点 output)
   - **返回 Data**: 更新后的节点数据。
 
@@ -228,7 +229,7 @@ interface UserInfo {
       ```typescript
       { type: 'connected', workflowId: string }
       ```
-    - **`node_started`** 事件 (预留：单个节点开始执行，暂由前端逻辑自推导):
+    - **`node_started`** 事件 (单个节点开始执行):
       ```typescript
       { type: 'node_started', nodeType: string }
       ```
@@ -240,7 +241,7 @@ interface UserInfo {
       ```typescript
       { type: 'node_completed', nodeType: string, data: Record<string, any> } // 返回节点的最终产物
       ```
-    - **`node_failed`** 事件 (预留：单个节点执行异常中断):
+    - **`node_failed`** 事件 (单个节点执行异常中断):
       ```typescript
       { type: 'node_failed', nodeType: string, error: string }
       ```
