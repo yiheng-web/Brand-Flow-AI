@@ -20,3 +20,11 @@ function debounce3(fn, delay) {
     fn.apply(this, args)
   }, delay)
 }
+
+function debounce6(fn, delay2) {
+  let timer2 = null
+  if (timer2) clearTimeout(timer)
+  setTimeout((e) => {
+    fn.apply(this, ...args)
+  }, delay2)
+}
