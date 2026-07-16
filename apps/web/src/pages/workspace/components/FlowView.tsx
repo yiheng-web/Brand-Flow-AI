@@ -1,197 +1,213 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ReactFlow,
+  ColumnHeightOutlined,
+  ColumnWidthOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
+  FullscreenOutlined,
+  MinusOutlined,
+  PlusOutlined,
+} from '@ant-design/icons'
+import {
   Background,
-  Controls,
-  MiniMap,
-  type Node,
-  type Edge,
-  type Connection,
   MarkerType,
-  useNodesState,
+  MiniMap,
+  ReactFlow,
   useEdgesState,
+  useNodesState,
+  useReactFlow,
+  type Connection,
+  type Edge,
+  type Node,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import FlowNode from './FlowNode'
+
+import { IconButton } from '@/design-system/components'
+import { colorTokens } from '@/design-system/tokens'
+
 import {
   FLOW_NODES,
   type FlowNodeId,
   type LayoutDir,
   type NodeExecStatus,
 } from '../workspace.const'
+import FlowNode from './FlowNode'
+import styles from './FlowView.module.css'
 
 const nodeTypes = { flowNode: FlowNode }
+const NODE_WIDTH = 248
+const NODE_HEIGHT = 182
+const NODE_GAP = 56
 
-const NODE_W = 200
-const NODE_H = 150
-const GAP = 48
-
-function buildNodes(dir: LayoutDir, execStatuses?: Record<FlowNodeId, NodeExecStatus>): Node[] {
+function buildNodes(
+  direction: LayoutDir,
+  execStatuses?: Record<FlowNodeId, NodeExecStatus>,
+): Node[] {
   return FLOW_NODES.map((node, index) => ({
     id: node.id,
     type: 'flowNode',
     position:
-      dir === 'vertical'
-        ? { x: 40, y: index * (NODE_H + GAP) + 20 }
-        : { x: index * (NODE_W + GAP) + 20, y: 40 },
+      direction === 'vertical'
+        ? { x: 56, y: index * (NODE_HEIGHT + NODE_GAP) + 40 }
+        : { x: index * (NODE_WIDTH + NODE_GAP) + 40, y: 72 },
     data: {
       ...node,
-      layoutDir: dir,
-      execStatus: execStatuses?.[node.id as FlowNodeId] ?? node.execStatus,
+      layoutDir: direction,
+      execStatus: execStatuses?.[node.id] ?? node.execStatus,
     },
   }))
 }
 
-function buildEdges(): Edge[] {
-  const edges: Edge[] = []
-  for (let i = 0; i < FLOW_NODES.length - 1; i++) {
-    edges.push({
-      id: `e-${FLOW_NODES[i].id}-${FLOW_NODES[i + 1].id}`,
-      source: FLOW_NODES[i].id,
-      target: FLOW_NODES[i + 1].id,
+function buildEdges(execStatuses?: Record<FlowNodeId, NodeExecStatus>): Edge[] {
+  return FLOW_NODES.slice(0, -1).map((node, index) => {
+    const status = execStatuses?.[node.id] ?? node.execStatus
+    const isRunningPath = status === 'running'
+    const isFailedPath = status === 'failed'
+    const color = isFailedPath
+      ? colorTokens.error
+      : isRunningPath
+        ? colorTokens.primary
+        : colorTokens.border
+
+    return {
+      id: `e-${node.id}-${FLOW_NODES[index + 1].id}`,
+      source: node.id,
+      target: FLOW_NODES[index + 1].id,
       type: 'smoothstep',
-      animated: true,
-      style: { stroke: '#4f6ff7', strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#4f6ff7' },
-    })
-  }
-  return edges
+      animated: isRunningPath,
+      style: { stroke: color, strokeWidth: isRunningPath || isFailedPath ? 2 : 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+    }
+  })
 }
 
 interface FlowViewProps {
   onNodeClick?: (nodeId: string) => void
-  /** 从工作流生命周期传入的每个节点执行状态 */
   nodeExecStatuses?: Record<FlowNodeId, NodeExecStatus>
 }
 
 const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
-  const [layoutDir, setLayoutDir] = useState<LayoutDir>('vertical')
-  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('vertical', nodeExecStatuses))
-  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges())
+  const [layoutDir, setLayoutDir] = useState<LayoutDir>('horizontal')
+  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('horizontal', nodeExecStatuses))
+  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges(nodeExecStatuses))
   const [showMiniMap, setShowMiniMap] = useState(true)
+  const { fitView, zoomIn, zoomOut } = useReactFlow()
 
   const toggleLayout = useCallback(() => {
-    setLayoutDir((prev) => {
-      const next = prev === 'vertical' ? 'horizontal' : 'vertical'
+    setLayoutDir((previous) => {
+      const next = previous === 'vertical' ? 'horizontal' : 'vertical'
       setNodes(buildNodes(next, nodeExecStatuses))
+      window.requestAnimationFrame(() => fitView({ padding: 0.22, duration: 240 }))
       return next
     })
-  }, [setNodes, nodeExecStatuses])
+  }, [fitView, nodeExecStatuses, setNodes])
 
-  // 监听外部 nodeExecStatuses 的变化，同步更新画布上的节点状态
   useEffect(() => {
     if (!nodeExecStatuses) return
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => ({
+        ...node,
         data: {
-          ...n.data,
-          execStatus: nodeExecStatuses[n.id as FlowNodeId] ?? n.data.execStatus,
+          ...node.data,
+          execStatus: nodeExecStatuses[node.id as FlowNodeId] ?? node.data.execStatus,
         },
       })),
     )
-  }, [nodeExecStatuses, setNodes])
+    setEdges(buildEdges(nodeExecStatuses))
+  }, [nodeExecStatuses, setEdges, setNodes])
 
-  const onConnect = useCallback(
+  const handleConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) => [
-        ...eds,
+      setEdges((currentEdges) => [
+        ...currentEdges,
         {
           ...connection,
           type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#4f6ff7', strokeWidth: 2 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#4f6ff7' },
+          animated: false,
+          style: { stroke: colorTokens.border, strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: colorTokens.border },
         } as Edge,
       ])
     },
     [setEdges],
   )
 
-  const onNodeClickCb = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      if (onNodeClick) {
-        onNodeClick(node.id)
-      }
-    },
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => onNodeClick?.(node.id),
     [onNodeClick],
   )
 
-  const key = layoutDir
+  const toolbarLabel = useMemo(
+    () => (layoutDir === 'vertical' ? '切换为横向布局' : '切换为纵向布局'),
+    [layoutDir],
+  )
 
   return (
-    <div className="flow-view-wrapper" style={{ position: 'relative' }}>
-      <button
-        onClick={toggleLayout}
-        style={{
-          position: 'absolute',
-          top: 12,
-          right: 12,
-          zIndex: 10,
-          background: '#fff',
-          border: '1px solid #d7dce5',
-          borderRadius: 8,
-          padding: '6px 12px',
-          fontSize: 12,
-          color: '#555b66',
-          cursor: 'pointer',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-        }}
-      >
-        {layoutDir === 'vertical' ? '⇄ 横向' : '⇅ 纵向'}
-      </button>
+    <div className={styles.wrapper}>
+      <div className={styles.toolbar} aria-label="画布工具栏">
+        <IconButton
+          label="放大画布"
+          icon={<PlusOutlined />}
+          onClick={() => zoomIn()}
+          size="small"
+        />
+        <IconButton
+          label="缩小画布"
+          icon={<MinusOutlined />}
+          onClick={() => zoomOut()}
+          size="small"
+        />
+        <IconButton
+          label="适应全部节点"
+          icon={<FullscreenOutlined />}
+          onClick={() => fitView({ padding: 0.22, duration: 240 })}
+          size="small"
+        />
+        <span className={styles.divider} />
+        <IconButton
+          label={toolbarLabel}
+          icon={layoutDir === 'vertical' ? <ColumnWidthOutlined /> : <ColumnHeightOutlined />}
+          onClick={toggleLayout}
+          size="small"
+        />
+        <IconButton
+          label={showMiniMap ? '隐藏缩略图' : '显示缩略图'}
+          icon={showMiniMap ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+          onClick={() => setShowMiniMap((visible) => !visible)}
+          size="small"
+        />
+      </div>
+
       <ReactFlow
-        key={key}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeClick={onNodeClickCb}
+        onConnect={handleConnect}
+        onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.22 }}
         minZoom={0.3}
         maxZoom={1.5}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-        nodesDraggable={true}
+        nodesDraggable
         nodesConnectable={false}
-        elementsSelectable={true}
+        elementsSelectable
         panOnDrag
         zoomOnScroll
       >
-        <Background color="#d7dadc" gap={24} />
-        <Controls showInteractive={false} />
+        <Background color={colorTokens.border} gap={24} size={1} />
         {showMiniMap && (
           <MiniMap
-            nodeStrokeColor="#4f6ff7"
-            nodeColor="#eef3fb"
-            nodeBorderRadius={8}
-            maskColor="rgba(0,0,0,0.08)"
-            style={{ borderRadius: 12, overflow: 'hidden' }}
+            ariaLabel="工作流缩略图"
+            nodeStrokeColor={colorTokens.primary}
+            nodeColor={colorTokens.primaryContainer}
+            nodeBorderRadius={12}
+            maskColor="rgba(95, 99, 104, 0.08)"
+            className={styles.miniMap}
           />
         )}
       </ReactFlow>
-      <button
-        onClick={() => setShowMiniMap((v) => !v)}
-        style={{
-          position: 'absolute',
-          bottom: 12,
-          right: 12,
-          zIndex: 10,
-          background: '#fff',
-          border: '1px solid #d7dce5',
-          borderRadius: 8,
-          padding: '4px 10px',
-          fontSize: 12,
-          color: '#555b66',
-          cursor: 'pointer',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-          lineHeight: 1.4,
-        }}
-      >
-        {showMiniMap ? '🗺 收起' : '🗺 展开'}
-      </button>
     </div>
   )
 }

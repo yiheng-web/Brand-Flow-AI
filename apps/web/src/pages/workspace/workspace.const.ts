@@ -3,9 +3,9 @@ export const WORKSPACE_VIEW_TABS = ['节点流视图', '画板']
 export const WORKSPACE_SIDE_TABS = ['知识资产', '历史记录']
 
 export const WORKSPACE_GROUP_OPTIONS = [
-  { key: 'member', icon: '👥', label: '项目组（成员视角）' },
-  { key: 'personal', icon: '🏠', label: '个人知识库' },
-  { key: 'admin', icon: '👑', label: '项目组（管理员视角）' },
+  { key: 'member', icon: '组', label: '项目组（成员视角）' },
+  { key: 'personal', icon: '个', label: '个人知识库' },
+  { key: 'admin', icon: '管', label: '项目组（管理员视角）' },
 ]
 
 export const WORKSPACE_HISTORY_RECORDS = [
@@ -63,7 +63,16 @@ export const SLIDER_CONFIG = {
 /** 节点流节点定义 */
 export type FlowNodeId = 'intent' | 'brand-kb' | 'prompt' | 'image-gen' | 'compose' | 'eval'
 
-export type NodeExecStatus = 'done' | 'running' | 'pending' | 'failed'
+export type NodeExecStatus =
+  | 'unconfigured'
+  | 'ready'
+  | 'pending'
+  | 'queued'
+  | 'running'
+  | 'done'
+  | 'warning'
+  | 'failed'
+  | 'skipped'
 export type LayoutDir = 'vertical' | 'horizontal'
 
 export interface FlowNodeDefinition {
@@ -71,7 +80,6 @@ export interface FlowNodeDefinition {
   type: 'input' | 'process' | 'output'
   step: string
   title: string
-  emoji: string
   subtitle: string
   execStatus: NodeExecStatus
 }
@@ -82,8 +90,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     type: 'input',
     step: '1',
     title: '意图解析',
-    emoji: '🧩',
-    subtitle: '主题/风格',
+    subtitle: '识别目标、场景与表达意图',
     execStatus: 'done',
   },
   {
@@ -91,8 +98,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     type: 'process',
     step: '2',
     title: '知识匹配',
-    emoji: '📦',
-    subtitle: '品牌资产',
+    subtitle: '检索品牌规则与可用资产',
     execStatus: 'pending',
   },
   {
@@ -100,8 +106,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     type: 'process',
     step: '3',
     title: 'Prompt专家',
-    emoji: '✍️',
-    subtitle: '绘图指令',
+    subtitle: '生成结构化绘图指令',
     execStatus: 'pending',
   },
   {
@@ -109,8 +114,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     type: 'process',
     step: '4',
     title: '图像生成',
-    emoji: '🎨',
-    subtitle: '生成底图',
+    subtitle: '调用模型生成视觉底图',
     execStatus: 'pending',
   },
   {
@@ -118,8 +122,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     type: 'process',
     step: '5',
     title: '排版合成',
-    emoji: '📐',
-    subtitle: '文字/LOGO',
+    subtitle: '组合文字、Logo 与版式',
     execStatus: 'pending',
   },
   {
@@ -127,8 +130,7 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     type: 'output',
     step: '6',
     title: '自我评估',
-    emoji: '✅',
-    subtitle: '质检评分',
+    subtitle: '检查品牌一致性与质量',
     execStatus: 'pending',
   },
 ]

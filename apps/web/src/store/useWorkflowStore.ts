@@ -17,7 +17,7 @@ interface WorkflowState {
   // 节点执行状态
   nodeExecStatuses: Record<FlowNodeId, NodeExecStatus>
   // 节点流数据
-  nodeStreamData: Record<string, Record<string, any>>
+  nodeStreamData: Record<string, Record<string, unknown>>
   // 操作函数
   setWorkflowId: (id: string) => void
   setStatus: (status: WorkflowStatus) => void
@@ -26,7 +26,7 @@ interface WorkflowState {
   setAgentState: (state: AgentState | null) => void
   setError: (error: string | null) => void
   setNodeExecStatuses: (statuses: Updater<Record<FlowNodeId, NodeExecStatus>>) => void
-  setNodeStreamData: (data: Updater<Record<string, Record<string, any>>>) => void
+  setNodeStreamData: (data: Updater<Record<string, Record<string, unknown>>>) => void
   reset: () => void
 }
 
@@ -61,28 +61,33 @@ export const useWorkflowStore = create<WorkflowState>()(
         const content = agentState?.generateResult?.content
         const imageUrl = typeof content === 'string' && content.startsWith('http') ? content : null
         const imagePrompt = agentState?.generateResult?.promptUsed ?? null
-        const mappedStatus = agentState?.status === 'success' ? 'completed' : agentState?.status ?? 'running'
-        set({ agentState, imageUrl, status: mappedStatus as WorkflowStatus })
+        const mappedStatus =
+          agentState?.status === 'success' ? 'completed' : (agentState?.status ?? 'running')
+        set({ agentState, imageUrl, imagePrompt, status: mappedStatus as WorkflowStatus })
       },
       setError: (error) => set({ error }),
-      setNodeExecStatuses: (statuses) => set((state) => ({ 
-        nodeExecStatuses: typeof statuses === 'function' ? statuses(state.nodeExecStatuses) : statuses 
-      })),
-      setNodeStreamData: (data) => set((state) => ({ 
-        nodeStreamData: typeof data === 'function' ? data(state.nodeStreamData) : data 
-      })),
-      reset: () => set({
-        workflowId: null,
-        status: 'idle',
-        prompt: '',
-        imageUrl: null,
-        imagePrompt: null,
-        error: null,
-        agentState: null,
-        nodeExecStatuses: INITIAL_NODE_EXEC_STATUSES,
-        nodeStreamData: {},
-      }),
+      setNodeExecStatuses: (statuses) =>
+        set((state) => ({
+          nodeExecStatuses:
+            typeof statuses === 'function' ? statuses(state.nodeExecStatuses) : statuses,
+        })),
+      setNodeStreamData: (data) =>
+        set((state) => ({
+          nodeStreamData: typeof data === 'function' ? data(state.nodeStreamData) : data,
+        })),
+      reset: () =>
+        set({
+          workflowId: null,
+          status: 'idle',
+          prompt: '',
+          imageUrl: null,
+          imagePrompt: null,
+          error: null,
+          agentState: null,
+          nodeExecStatuses: INITIAL_NODE_EXEC_STATUSES,
+          nodeStreamData: {},
+        }),
     }),
-    { name: 'brand-flow-workflow' }
-  )
+    { name: 'brand-flow-workflow' },
+  ),
 )

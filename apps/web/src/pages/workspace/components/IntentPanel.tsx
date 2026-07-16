@@ -30,17 +30,17 @@ const IntentPanel = ({ userPrompt, intentResult, onReRun, onSave }: IntentPanelP
 
   // 当后端数据到达时优先使用，否则 fallback 到前端 mock
   useEffect(() => {
-    if (intentResult) {
-      setKeywords(
-        intentResult.intent
-          ? intentResult.intent.split(/[,，、\s]+/).filter(Boolean)
-          : []
-      )
-      setSceneType(intentResult.intent || '')
-    } else if (userPrompt) {
-      setKeywords(mockExtractKeywords(userPrompt))
-      setSceneType(mockInferSceneType(userPrompt))
-    }
+    queueMicrotask(() => {
+      if (intentResult) {
+        setKeywords(
+          intentResult.intent ? intentResult.intent.split(/[,，、\s]+/).filter(Boolean) : [],
+        )
+        setSceneType(intentResult.intent || '')
+      } else if (userPrompt) {
+        setKeywords(mockExtractKeywords(userPrompt))
+        setSceneType(mockInferSceneType(userPrompt))
+      }
+    })
   }, [userPrompt, intentResult])
 
   useEffect(() => {
@@ -52,19 +52,12 @@ const IntentPanel = ({ userPrompt, intentResult, onReRun, onSave }: IntentPanelP
   return (
     <div className={styles.rightContent}>
       {/* ===== 说明文字 ===== */}
-      <p className={styles.intentDesc}>
-        解析用户创意，提取关键词与场景类型
-      </p>
+      <p className={styles.intentDesc}>解析用户创意，提取关键词与场景类型</p>
 
       {/* ===== 用户原始 Prompt ===== */}
       <div className={styles.intentPromptSection}>
         <h3 className={styles.rightSectionTitle}>用户原始 Prompt</h3>
-        <textarea
-          className={styles.intentPromptInput}
-          value={userPrompt}
-          readOnly
-          rows={3}
-        />
+        <textarea className={styles.intentPromptInput} value={userPrompt} readOnly rows={3} />
       </div>
 
       {/* ===== 后端意图置信度（有后端数据时显示） ===== */}
@@ -73,9 +66,7 @@ const IntentPanel = ({ userPrompt, intentResult, onReRun, onSave }: IntentPanelP
           <h3 className={styles.rightSectionTitle}>意图识别</h3>
           <div className={styles.intentConfidenceRow}>
             <span className={styles.intentConfidenceLabel}>意图类型</span>
-            <span className={styles.intentConfidenceValue}>
-              {intentResult.intent}
-            </span>
+            <span className={styles.intentConfidenceValue}>{intentResult.intent}</span>
           </div>
           <div className={styles.intentConfidenceRow}>
             <span className={styles.intentConfidenceLabel}>置信度</span>
@@ -85,16 +76,12 @@ const IntentPanel = ({ userPrompt, intentResult, onReRun, onSave }: IntentPanelP
           </div>
           <div className={styles.intentConfidenceRow}>
             <span className={styles.intentConfidenceLabel}>原因</span>
-            <span className={styles.intentConfidenceValue}>
-              {intentResult.reason}
-            </span>
+            <span className={styles.intentConfidenceValue}>{intentResult.reason}</span>
           </div>
           {intentResult.suggestedAction && (
             <div className={styles.intentConfidenceRow}>
               <span className={styles.intentConfidenceLabel}>建议操作</span>
-              <span className={styles.intentConfidenceValue}>
-                {intentResult.suggestedAction}
-              </span>
+              <span className={styles.intentConfidenceValue}>{intentResult.suggestedAction}</span>
             </div>
           )}
         </div>
@@ -184,7 +171,7 @@ const IntentPanel = ({ userPrompt, intentResult, onReRun, onSave }: IntentPanelP
                 intent: keywords.join(','), // 简单用逗号拼一下作为修改后的 intent 文本
                 confidence: intentResult?.confidence || 1,
                 reason: intentResult?.reason || '',
-                suggestedAction: intentResult?.suggestedAction || ''
+                suggestedAction: intentResult?.suggestedAction || '',
               })
             }
             if (onReRun) onReRun()

@@ -22,6 +22,8 @@ import Home from '@/pages/home/home'
 import LoginPage from '@/pages/login/login'
 import RegisterPage from '@/pages/login/register'
 import ProfilePage from '@/pages/profile/profile'
+import KnowledgeListPage from '@/pages/knowledge'
+import KnowledgeDetailPage from '@/pages/knowledge/detail'
 
 export const router = createBrowserRouter([
   /* 公开路由：无需登录即可访问 */
@@ -48,6 +50,8 @@ export const router = createBrowserRouter([
           { path: 'home', element: <Home /> },
           { path: 'workspace', element: <Workspace /> },
           { path: 'brand', element: <BrandPage /> },
+          { path: 'knowledge', element: <KnowledgeListPage /> },
+          { path: 'knowledge/:id', element: <KnowledgeDetailPage /> },
           { path: 'profile', element: <ProfilePage /> },
         ],
       },

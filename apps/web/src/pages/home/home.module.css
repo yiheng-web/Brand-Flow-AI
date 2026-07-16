@@ -141,7 +141,13 @@
 
 /* 单个空间选项 */
 .spaceOption {
+  display: block;
+  width: 100%;
   padding: 10px 12px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;

@@ -1,0 +1,61 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.icon {
+  display: inline-flex;
+  font-size: 12px;
+}
+
+.unconfigured,
+.skipped {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-container);
+}
+
+.ready,
+.queued {
+  color: var(--color-info);
+  background: var(--color-primary-container);
+}
+
+.running {
+  color: var(--color-primary-hover);
+  background: var(--color-primary-container);
+}
+
+.success {
+  color: var(--color-success);
+  background: var(--color-success-container);
+}
+
+.warning {
+  color: var(--color-warning);
+  background: var(--color-warning-container);
+}
+
+.failed {
+  color: var(--color-error);
+  background: var(--color-error-container);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .running .icon {
+    animation: status-spin 900ms linear infinite;
+  }
+}
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

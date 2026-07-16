@@ -59,11 +59,7 @@ const RegisterPage = () => {
       <p className={styles.subtitle}>加入 Brand-Flow AI 开启智能创作</p>
 
       {/* 注册表单 */}
-      <Form<RegisterFormValues>
-        layout="vertical"
-        onFinish={handleFinish}
-        className={styles.form}
-      >
+      <Form<RegisterFormValues> layout="vertical" onFinish={handleFinish} className={styles.form}>
         {/* 姓名输入 */}
         <Form.Item
           name="name"
@@ -153,7 +149,9 @@ const RegisterPage = () => {
         {/* 底部切换：跳转到登录页 */}
         <div className={styles.switchRow}>
           已有账号？
-          <Link to="/login" className={styles.switchLink}>去登录</Link>
+          <Link to="/login" className={styles.switchLink}>
+            去登录
+          </Link>
         </div>
       </Form>
     </div>

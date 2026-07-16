@@ -80,7 +80,6 @@ const SaveToKbModal = ({ open, onCancel }: SaveToKbModalProps) => {
       className={styles.modal}
     >
       <div className={styles.body}>
-
         {/* 左侧预览区 */}
         <div className={styles.preview}>
           <div className={styles.placeholder}>
@@ -91,7 +90,6 @@ const SaveToKbModal = ({ open, onCancel }: SaveToKbModalProps) => {
 
         {/* 右侧表单区域 */}
         <div className={styles.form}>
-
           {/* 素材名称 */}
           <div className={styles.field}>
             <div className={styles.fieldLabel}>素材名称</div>
@@ -107,7 +105,9 @@ const SaveToKbModal = ({ open, onCancel }: SaveToKbModalProps) => {
             <div className={styles.fieldLabel}>AI 自动标签</div>
             <div className={styles.tags}>
               {defaultTags.map((tag) => (
-                <Tag key={tag} className={styles.tag}>{tag}</Tag>
+                <Tag key={tag} className={styles.tag}>
+                  {tag}
+                </Tag>
               ))}
             </div>
           </div>
@@ -125,7 +125,6 @@ const SaveToKbModal = ({ open, onCancel }: SaveToKbModalProps) => {
               }))}
             />
           </div>
-
         </div>
       </div>
 
@@ -134,12 +133,7 @@ const SaveToKbModal = ({ open, onCancel }: SaveToKbModalProps) => {
         <Button className={styles.cancelBtn} onClick={onCancel} disabled={saving}>
           取消
         </Button>
-        <Button
-          type="primary"
-          className={styles.confirmBtn}
-          onClick={handleSave}
-          loading={saving}
-        >
+        <Button type="primary" className={styles.confirmBtn} onClick={handleSave} loading={saving}>
           确认保存
         </Button>
       </div>

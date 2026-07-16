@@ -69,7 +69,7 @@ export interface EvaluationResult {
 /** Agent 完整状态（AgentStateType） */
 export interface AgentState {
   userQuery: string
-  context?: Record<string, any>
+  context?: Record<string, unknown>
   intentResult?: IntentOutput
   knowledgeContext?: string
   promptResult?: PromptChainOutput
@@ -117,7 +117,8 @@ export interface StreamEvent {
     | 'node_progress'
     | 'node_failed'
   workflowId?: string
-  data?: Record<string, any>
+  nodeType?: string
+  data?: Record<string, unknown>
   error?: string
 }
 
@@ -127,7 +128,7 @@ export interface StreamEvent {
 
 /** 提交创意描述，创建 AI 创作工作流 */
 export async function submitPrompt(params: SubmitPromptParams): Promise<WorkflowData> {
-  return apiClient.post<any, WorkflowData>('/workflow/create', params)
+  return apiClient.post<unknown, WorkflowData>('/workflow/create', params)
 }
 
 export interface WorkflowNodeSnapshot {
@@ -145,7 +146,7 @@ export interface WorkflowDetailResponse {
  * 获取工作流完整详情（包含节点快照）
  */
 export async function getWorkflowDetail(workflowId: string): Promise<WorkflowDetailResponse> {
-  return apiClient.get<any, WorkflowDetailResponse>(`/workflow/${workflowId}`)
+  return apiClient.get<unknown, WorkflowDetailResponse>(`/workflow/${workflowId}`)
 }
 
 /**
@@ -156,7 +157,7 @@ export async function updateNodeOutput(
   workflowId: string,
   nodeType: string,
   payload: Record<string, unknown>,
-): Promise<any> {
+): Promise<unknown> {
   return apiClient.put(`/workflow/${workflowId}/nodes/${nodeType}`, payload)
 }
 

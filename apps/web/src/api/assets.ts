@@ -11,7 +11,7 @@ export interface CreateAssetParams {
   ownerId: string
   ownerType: OwnerType
   visibility: Visibility
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 // 资产数据
@@ -28,10 +28,10 @@ export interface AssetData {
     | {
         _id: string
         email: string
-        profile?: Record<string, any>
+        profile?: Record<string, unknown>
       }
   enterpriseId?: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   createdAt?: string
   updatedAt?: string
 }

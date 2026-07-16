@@ -1,10 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ReactFlowProvider } from 'reactflow'
-import { message } from 'antd'
+import {
+  AppstoreOutlined,
+  ClockCircleOutlined,
+  CloseOutlined,
+  DatabaseOutlined,
+  ExportOutlined,
+  EyeOutlined,
+  FolderOpenOutlined,
+  HistoryOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
+  PlayCircleFilled,
+  QuestionCircleOutlined,
+  RedoOutlined,
+  UndoOutlined,
+} from '@ant-design/icons'
+import { Button, Progress, Tooltip, message } from 'antd'
+
+import { IconButton, StatusBadge, type SemanticStatus } from '@/design-system/components'
+import { useUserStore } from '@/store/useUserStore'
 import { SwitchTabs } from '../../components/SwitchTabs'
 import {
   DEFAULT_TAGS,
+  FLOW_NODES,
   WORKSPACE_VIEW_TABS,
   type FlowNodeId,
   type NodeExecStatus,
@@ -56,13 +76,17 @@ const NODE_LABELS: Record<FlowNodeId, string> = {
   eval: '自我评估',
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
 const Workspace = () => {
   const location = useLocation()
   const navState = location.state as { prompt?: string; workflowId?: string } | null
 
   /* ---- 视图 / 节点选择 ---- */
   const [viewTabIndex, setViewTabIndex] = useState(0)
-  const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId | null>('intent')
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
 
   const handleNodeClick = (nodeId: string) => {
     setSelectedNodeId(nodeId as FlowNodeId)
@@ -74,6 +98,17 @@ const Workspace = () => {
   const [tags, setTags] = useState<string[]>([...DEFAULT_TAGS])
   const [isSaveModalVisible, setIsSaveModalVisible] = useState(false)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const currentSpaceId = useUserStore((state) => state.currentSpaceId)
+  const currentSpaceType = useUserStore((state) => state.currentSpaceType)
+
+  useEffect(() => {
+    if (!isLightboxOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsLightboxOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isLightboxOpen])
 
   /* ===== 工作流生命周期：从 store 读取 ===== */
   const {
@@ -130,7 +165,8 @@ const Workspace = () => {
 
           // 处理节点启动事件
           if (event.type === 'node_started') {
-            const nodeKey = (event as any).nodeType as string
+            const nodeKey = event.nodeType
+            if (!nodeKey) return
             const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
               ([, v]) => v === nodeKey,
             )?.[0] as FlowNodeId | undefined
@@ -142,7 +178,8 @@ const Workspace = () => {
 
           // 处理节点失败事件
           if (event.type === 'node_failed') {
-            const nodeKey = (event as any).nodeType as string
+            const nodeKey = event.nodeType
+            if (!nodeKey) return
             const currentNodeId = Object.entries(NODE_ID_TO_GRAPH_KEY).find(
               ([, v]) => v === nodeKey,
             )?.[0] as FlowNodeId | undefined
@@ -154,7 +191,7 @@ const Workspace = () => {
 
           // 仅处理新的规范事件 node_completed / node_skipped
           if (event.type === 'node_completed' || event.type === 'node_skipped') {
-            let nodeKey = (event as any).nodeType as string
+            const nodeKey = event.nodeType
             let nodeValue: Record<string, unknown> = {}
             let isSkipped = false
 
@@ -185,7 +222,7 @@ const Workspace = () => {
               setNodeExecStatuses((prev) => {
                 const next: Record<FlowNodeId, NodeExecStatus> = {
                   ...prev,
-                  [currentNodeId]: 'done',
+                  [currentNodeId]: isSkipped ? 'skipped' : 'done',
                 }
                 // 将下一个节点标记为 running（跳过 compose 节点，因为后端没有 composeNode）
                 let nextIdx = currentIdx + 1
@@ -205,8 +242,9 @@ const Workspace = () => {
 
               // 从 generateNode 完成事件中提前提取图片 URL
               if (nodeKey === 'generateNode') {
-                const genResult = (nodeValue as any)?.generateResult || nodeValue
-                const content = genResult?.content
+                const nestedResult = nodeValue.generateResult
+                const genResult = isRecord(nestedResult) ? nestedResult : nodeValue
+                const content = genResult.content
                 if (typeof content === 'string' && content.startsWith('http')) {
                   setImageUrl(content)
                 }
@@ -216,7 +254,7 @@ const Workspace = () => {
           }
 
           if (event.type === 'workflow_completed' && event.data) {
-            const finalState = event.data as AgentState | undefined
+            const finalState = event.data as unknown as AgentState | undefined
 
             setWorkflowStatus('completed')
 
@@ -226,27 +264,27 @@ const Workspace = () => {
 
               // finalState 中的 key 分别是 intentResult, knowledgeContext, promptResult 等
               // 我们需要把它们映射回 nodeStreamData 对应的 nodeKey（如 intentNode, promptNode）
-              const mapping: Record<string, string> = {
-                intent: 'intentResult',
-                'brand-kb': 'knowledgeContext',
-                prompt: 'promptResult',
-                'image-gen': 'generateResult',
-                eval: 'evaluationResult',
+              const finalOutputs: Partial<Record<string, unknown>> = {
+                intentNode: finalState.intentResult,
+                knowledgeNode: finalState.knowledgeContext,
+                promptNode: finalState.promptResult,
+                generateNode: finalState.generateResult,
+                evaluateNode: finalState.evaluationResult,
               }
 
-              NODE_ORDER.forEach((nodeId) => {
-                const graphKey = NODE_ID_TO_GRAPH_KEY[nodeId]
-                const stateKey = mapping[nodeId]
-                if (stateKey) {
-                  const val = (finalState as any)[stateKey]
-                  if (val) {
-                    // 为了与 node_completed 流输出的数据结构保持一致，包装一层
-                    nodeStreamDataRef.current[graphKey] = { [stateKey]: val } as Record<
-                      string,
-                      unknown
-                    >
-                  }
-                }
+              Object.entries(finalOutputs).forEach(([graphKey, value]) => {
+                if (!value) return
+                const stateKey =
+                  graphKey === 'intentNode'
+                    ? 'intentResult'
+                    : graphKey === 'knowledgeNode'
+                      ? 'knowledgeContext'
+                      : graphKey === 'promptNode'
+                        ? 'promptResult'
+                        : graphKey === 'generateNode'
+                          ? 'generateResult'
+                          : 'evaluationResult'
+                nodeStreamDataRef.current[graphKey] = { [stateKey]: value }
               })
               setNodeStreamData({ ...nodeStreamDataRef.current })
               setAgentState(finalState)
@@ -383,7 +421,8 @@ const Workspace = () => {
     try {
       const res = await submitPrompt({
         prompt: userPrompt,
-        spaceId: 'personal',
+        spaceId: currentSpaceId || 'personal',
+        spaceType: currentSpaceType,
       })
       const id: string =
         (res as { data?: { id?: string }; id?: string }).data?.id ||
@@ -414,6 +453,8 @@ const Workspace = () => {
     setNodeExecStatuses,
     setNodeStreamData,
     connectStream,
+    currentSpaceId,
+    currentSpaceType,
   ])
 
   /* ---- 自动启动工作流 / 断线重连 ---- */
@@ -426,7 +467,7 @@ const Workspace = () => {
     }
     // 场景 2: 仅带来了 prompt，没有 workflowId (直接启动)
     else if (navState?.prompt && workflowStatus === 'idle' && !workflowId) {
-      startWorkflow()
+      queueMicrotask(() => void startWorkflow())
     }
     // 场景 3: 页面刷新，已存在 workflowId，但 SSE 连接已断开，重新同步状态并连接
     else if (
@@ -480,7 +521,7 @@ const Workspace = () => {
       | { promptResult?: PromptChainOutput }
       | undefined
     if (!promptData) return null
-    return promptData.promptResult || (promptData as any)
+    return promptData.promptResult || (promptData as unknown as PromptChainOutput)
   }
 
   /** 获取生成结果（图片 URL） */
@@ -489,7 +530,7 @@ const Workspace = () => {
       | { generateResult?: GenerateResult }
       | undefined
     if (!genData) return null
-    return genData.generateResult || (genData as any)
+    return genData.generateResult || (genData as unknown as GenerateResult)
   }
 
   /** 获取评估结果 */
@@ -498,7 +539,7 @@ const Workspace = () => {
       | { evaluationResult?: EvaluationResult }
       | undefined
     if (!evalData) return null
-    return evalData.evaluationResult || (evalData as any)
+    return evalData.evaluationResult || (evalData as unknown as EvaluationResult)
   }
 
   /* ---- derived state ---- */
@@ -576,7 +617,7 @@ const Workspace = () => {
         })
       }
       message.success('修改已保存，下游节点状态已更新')
-    } catch (err) {
+    } catch {
       message.error('保存修改失败')
     }
   }
@@ -625,7 +666,7 @@ const Workspace = () => {
       if (currentIdx !== -1 && currentIdx <= imageGenIdx) {
         setImageUrl(null)
       }
-    } catch (err) {
+    } catch {
       message.error('触发重跑失败')
     }
   }
@@ -730,24 +771,114 @@ const Workspace = () => {
     )
   }
 
+  const completedNodeCount = NODE_ORDER.filter((nodeId) =>
+    ['done', 'skipped'].includes(nodeExecStatuses[nodeId]),
+  ).length
+  const progressPercent = Math.round((completedNodeCount / NODE_ORDER.length) * 100)
+  const workflowSemanticStatus: SemanticStatus =
+    workflowStatus === 'completed'
+      ? 'success'
+      : workflowStatus === 'failed'
+        ? 'failed'
+        : workflowStatus === 'running'
+          ? 'running'
+          : workflowStatus === 'pending'
+            ? 'queued'
+            : 'ready'
+
   return (
     <div className={styles.wrapper}>
-      <div className={styles.topBar}>
-        <span className={styles.topBarTitle}>{userPrompt || '新工作流'}</span>
+      <header className={styles.workspaceTopBar}>
+        <div className={styles.workflowIdentity}>
+          <span className={styles.eyebrow}>AI 创作工作流</span>
+          <strong className={styles.workflowTitle}>{userPrompt || '未命名工作流'}</strong>
+          <span className={styles.autoSave}>已自动保存</span>
+        </div>
+
         <SwitchTabs
           items={WORKSPACE_VIEW_TABS}
           defaultIndex={viewTabIndex}
-          onChange={(i) => setViewTabIndex(i)}
+          onChange={(index) => setViewTabIndex(index)}
         />
-        <div className={styles.statusIndicator}>
-          {isExecuting && <div className={styles.spinner} />}
-          <span>{statusLabel}</span>
-          {workflowError && <span className={styles.statusError}> - {workflowError}</span>}
-        </div>
-      </div>
 
-      <div className={styles.body}>
-        <section className={styles.center}>
+        <div className={styles.workspaceActions}>
+          <div className={styles.historyActions}>
+            <IconButton label="撤销（即将支持）" icon={<UndoOutlined />} disabled />
+            <IconButton label="重做（即将支持）" icon={<RedoOutlined />} disabled />
+            <IconButton label="历史版本（即将支持）" icon={<HistoryOutlined />} disabled />
+          </div>
+          <IconButton
+            label="使用帮助"
+            icon={<QuestionCircleOutlined />}
+            onClick={() => message.info('选择节点可查看输入、输出与重跑操作')}
+          />
+          <Button icon={<EyeOutlined />} onClick={() => setViewTabIndex(1)}>
+            预览
+          </Button>
+          <Button icon={<ExportOutlined />} disabled={!baseImageUrl} onClick={handleSaveImage}>
+            导出
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlayCircleFilled />}
+            loading={isSubmitting}
+            disabled={!userPrompt?.trim() || isExecuting}
+            onClick={startWorkflow}
+          >
+            运行工作流
+          </Button>
+        </div>
+      </header>
+
+      <div
+        className={`${styles.workspaceBody} ${inspectorCollapsed ? styles.inspectorCollapsed : ''}`}
+      >
+        <aside className={styles.resourcePanel} aria-label="工作流资源">
+          <div className={styles.resourceHeader}>
+            <div>
+              <span className={styles.eyebrow}>资源与节点</span>
+              <h2>工作流节点</h2>
+            </div>
+            <Tooltip title="节点库">
+              <AppstoreOutlined aria-label="节点库" />
+            </Tooltip>
+          </div>
+          <div className={styles.resourceSearch} role="search">
+            <span>按执行顺序选择节点</span>
+          </div>
+          <div className={styles.nodeLibrary}>
+            {FLOW_NODES.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                className={`${styles.libraryNode} ${selectedNodeId === node.id ? styles.libraryNodeActive : ''}`}
+                onClick={() => setSelectedNodeId(node.id)}
+              >
+                <span className={styles.libraryStep}>{node.step}</span>
+                <span className={styles.libraryText}>
+                  <strong>{node.title}</strong>
+                  <small>{node.subtitle}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className={styles.resourceLinks}>
+            <button type="button" onClick={() => message.info('模板将在后续版本接入')}>
+              <AppstoreOutlined /> <span>模板</span>
+            </button>
+            <button type="button" onClick={() => message.info('可从主导航进入知识库')}>
+              <DatabaseOutlined /> <span>品牌知识</span>
+            </button>
+            <button type="button" onClick={() => message.info('可从主导航进入品牌资产')}>
+              <FolderOpenOutlined /> <span>素材资产</span>
+            </button>
+            <button type="button" onClick={() => message.info('执行历史将在后续版本接入')}>
+              <ClockCircleOutlined /> <span>执行历史</span>
+            </button>
+          </div>
+        </aside>
+
+        <section className={styles.center} aria-label="工作流画布">
           {viewTabIndex === 0 ? (
             <div className={styles.canvasArea}>
               <ReactFlowProvider>
@@ -774,7 +905,7 @@ const Workspace = () => {
                     onClick={() => setIsLightboxOpen(true)}
                   />
                 ) : (
-                  <span style={{ color: '#b0b7c7', fontSize: 14, fontWeight: 500 }}>
+                  <span className={styles.previewPlaceholder}>
                     {isExecuting ? '正在生成...' : '海报预览区域'}
                   </span>
                 )}
@@ -784,20 +915,38 @@ const Workspace = () => {
 
           {/* 图片放大灯箱 */}
           {isLightboxOpen && baseImageUrl && (
-            <div className={styles.imageLightbox} onClick={() => setIsLightboxOpen(false)}>
-              <button className={styles.lightboxClose} onClick={() => setIsLightboxOpen(false)}>
-                ×
+            <div
+              className={styles.imageLightbox}
+              role="dialog"
+              aria-modal="true"
+              aria-label="生成结果预览"
+              onClick={() => setIsLightboxOpen(false)}
+            >
+              <button
+                type="button"
+                aria-label="关闭预览"
+                className={styles.lightboxClose}
+                onClick={() => setIsLightboxOpen(false)}
+              >
+                <CloseOutlined />
               </button>
               <img src={baseImageUrl} alt="生成海报" onClick={(e) => e.stopPropagation()} />
             </div>
           )}
         </section>
 
-        <aside className={styles.right}>
+        <aside className={styles.right} aria-label="节点检查器">
           <div className={styles.rightHeader}>
-            <span className={styles.panelTitle}>
-              {selectedNodeLabel ? `节点属性：${selectedNodeLabel}` : '节点属性'}
-            </span>
+            <div>
+              <span className={styles.eyebrow}>Inspector</span>
+              <span className={styles.panelTitle}>{selectedNodeLabel || '节点属性'}</span>
+            </div>
+            <IconButton
+              label="收起检查器"
+              icon={<DoubleRightOutlined />}
+              onClick={() => setInspectorCollapsed(true)}
+              size="small"
+            />
           </div>
           {renderRightContent()}
           {selectedNodeId && NODE_ORDER.indexOf(selectedNodeId) < NODE_ORDER.length - 1 && (
@@ -808,7 +957,42 @@ const Workspace = () => {
             </div>
           )}
         </aside>
+
+        {inspectorCollapsed && (
+          <button
+            type="button"
+            className={styles.openInspectorButton}
+            aria-label="展开节点检查器"
+            onClick={() => setInspectorCollapsed(false)}
+          >
+            <DoubleLeftOutlined />
+            <span>检查器</span>
+          </button>
+        )}
       </div>
+
+      <footer className={styles.executionBar} aria-live="polite">
+        <div className={styles.executionStatus}>
+          <StatusBadge status={workflowSemanticStatus} label={statusLabel} />
+          <span className={styles.executionStage}>
+            {workflowError ||
+              (selectedNodeLabel ? `当前查看：${selectedNodeLabel}` : '等待选择节点')}
+          </span>
+        </div>
+        <div className={styles.executionProgress}>
+          <span>整体进度</span>
+          <Progress percent={progressPercent} size="small" showInfo={false} />
+          <strong>{progressPercent}%</strong>
+        </div>
+        <div className={styles.executionMeta}>
+          <span>模型：Flux</span>
+          <span>耗时：--</span>
+          <span>费用：待计算</span>
+          <Button type="text" size="small" icon={<HistoryOutlined />} disabled>
+            详细日志
+          </Button>
+        </div>
+      </footer>
 
       <SaveKnowledgeModal
         visible={isSaveModalVisible}

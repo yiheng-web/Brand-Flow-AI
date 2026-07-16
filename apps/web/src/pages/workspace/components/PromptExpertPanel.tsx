@@ -28,24 +28,22 @@ const PromptExpertPanel = ({ promptResult, onReRun, onSave }: PromptExpertPanelP
   // 有后端数据时自动填充
   useEffect(() => {
     if (promptResult) {
-      setPositivePrompt(promptResult.finalPrompt || promptResult.systemPrompt || '')
-      setNegativePrompt(promptResult.negativePrompt || '')
+      queueMicrotask(() => {
+        setPositivePrompt(promptResult.finalPrompt || promptResult.systemPrompt || '')
+        setNegativePrompt(promptResult.negativePrompt || '')
+      })
     }
   }, [promptResult])
 
   return (
     <div className={styles.rightContent}>
       {/* ===== 说明文字 ===== */}
-      <p className={styles.promptDesc}>
-        综合上游信息生成正负向 Prompt
-      </p>
+      <p className={styles.promptDesc}>综合上游信息生成正负向 Prompt</p>
 
       {/* ===== 目标说明 ===== */}
       <div className={styles.promptGoalRow}>
         <span className={styles.promptGoalTag}>目标</span>
-        <span className={styles.promptGoalText}>
-          写出给绘图引擎（SD/Flux）看的高级指令
-        </span>
+        <span className={styles.promptGoalText}>写出给绘图引擎（SD/Flux）看的高级指令</span>
       </div>
 
       {/* ===== 上游信息汇总 ===== */}
@@ -54,9 +52,7 @@ const PromptExpertPanel = ({ promptResult, onReRun, onSave }: PromptExpertPanelP
         {promptResult && promptResult.purpose && (
           <div className={styles.promptUpstreamRow}>
             <span className={styles.promptUpstreamLabel}>目的：</span>
-            <span className={styles.promptUpstreamValue}>
-              {promptResult.purpose}
-            </span>
+            <span className={styles.promptUpstreamValue}>{promptResult.purpose}</span>
           </div>
         )}
       </div>
@@ -103,7 +99,7 @@ const PromptExpertPanel = ({ promptResult, onReRun, onSave }: PromptExpertPanelP
                 userPrompt: promptResult?.userPrompt || '',
                 finalPrompt: positivePrompt,
                 negativePrompt: negativePrompt,
-                purpose: promptResult?.purpose || ''
+                purpose: promptResult?.purpose || '',
               })
             }
             if (onReRun) onReRun()

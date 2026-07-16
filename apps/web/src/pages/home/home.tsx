@@ -10,12 +10,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { Input, Button, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { DownOutlined, PlusOutlined } from '@ant-design/icons'
+import { DownOutlined, LogoutOutlined, PlusOutlined } from '@ant-design/icons'
 import { submitPrompt } from '@/api/workflow'
 import { getMySpaces, switchEnterprise } from '@/api/org'
 import type { SpaceData } from '@/api/org'
 import { useUserStore, type SpaceItem, type SpaceType } from '@/store/useUserStore'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import styles from './home.module.css'
 
 /** 空间类型对应的标签文案和描述 */
@@ -87,6 +88,12 @@ function SpaceDropdown({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  useEffect(() => {
+    const handleOpen = () => setOpen(true)
+    window.addEventListener('open-space-dropdown', handleOpen)
+    return () => window.removeEventListener('open-space-dropdown', handleOpen)
+  }, [])
+
   const currentSpace = spaces.find((s) => s.id === currentSpaceId)
 
   return (
@@ -102,7 +109,8 @@ function SpaceDropdown({
             const meta = SPACE_META[space.type]
             const isActive = space.id === currentSpaceId
             return (
-              <div
+              <button
+                type="button"
                 key={space.id}
                 className={`${styles.spaceOption} ${isActive ? styles.spaceOptionActive : ''}`}
                 onClick={() => {
@@ -117,7 +125,7 @@ function SpaceDropdown({
                   </span>
                 </div>
                 <div className={styles.optionDesc}>{space.description}</div>
-              </div>
+              </button>
             )
           })}
         </div>
@@ -137,11 +145,11 @@ const Home = () => {
   const setSpaces = useUserStore((s) => s.setSpaces)
   const setCurrentSpace = useUserStore((s) => s.setCurrentSpace)
   const setWorkflowId = useWorkflowStore((s) => s.setWorkflowId)
+  const logout = useAuthStore((s) => s.logout)
 
   // ---- 本地状态 ----
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [loadingSpaces, setLoadingSpaces] = useState(true)
 
   // ---- 加载空间列表 ----
   useEffect(() => {
@@ -154,8 +162,6 @@ const Home = () => {
       } catch {
         // 后端接口不可用时，使用默认个人空间
         setSpaces(buildSpaceList([]))
-      } finally {
-        setLoadingSpaces(false)
       }
     }
     loadSpaces()
@@ -211,9 +217,9 @@ const Home = () => {
     }
   }
 
-  /** 直接跳转工作台（不提交创意） */
-  const handleGoWorkspace = () => {
-    navigate('/workspace')
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
   }
 
   return (
@@ -237,7 +243,7 @@ const Home = () => {
           <Button type="text" size="small">
             导出
           </Button>
-          <Button type="text" size="small" danger>
+          <Button type="text" size="small" danger icon={<LogoutOutlined />} onClick={handleLogout}>
             退出
           </Button>
         </div>

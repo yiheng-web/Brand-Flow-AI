@@ -13,13 +13,10 @@ type EventCallback = (event: StreamEvent) => void
 
 interface SSEOptions {
   onMessage?: EventCallback
-  onError?: (error: Event) => void
+  onError?: (error: unknown) => void
 }
 
-export function createAuthEventSource(
-  url: string,
-  options?: SSEOptions,
-): { close: () => void } {
+export function createAuthEventSource(url: string, options?: SSEOptions): { close: () => void } {
   const controller = new AbortController()
   let closed = false
 
@@ -40,7 +37,7 @@ export function createAuthEventSource(
       })
 
       if (!response.ok) {
-        options?.onError?.(new Error(`SSE connection failed: ${response.status}`) as any)
+        options?.onError?.(new Error(`SSE connection failed: ${response.status}`))
         return
       }
 
@@ -85,8 +82,8 @@ export function createAuthEventSource(
           }
         }
       }
-    } catch (err: any) {
-      if (!closed && err.name !== 'AbortError') {
+    } catch (err: unknown) {
+      if (!closed && (!(err instanceof Error) || err.name !== 'AbortError')) {
         options?.onError?.(err)
       }
     }

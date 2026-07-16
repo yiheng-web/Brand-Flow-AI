@@ -1,107 +1,121 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
+  ApartmentOutlined,
+  DatabaseOutlined,
+  FolderOpenOutlined,
   HomeOutlined,
-  ToolOutlined,
-  FolderOutlined,
-  UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
+import { Tooltip } from 'antd'
+
 import styles from './AppLayout.module.css'
 
-type NavKey = 'home' | 'workspace' | 'brand' | 'profile'
-
-const iconMap: Record<NavKey, React.ReactNode> = {
-  home: <HomeOutlined />,
-  workspace: <ToolOutlined />,
-  brand: <FolderOutlined />,
-  profile: <UserOutlined />,
+interface NavigationItem {
+  key: string
+  label: string
+  path: string
+  icon: React.ReactNode
 }
 
-const navItems: Array<{ key: NavKey; label: string; path: string }> = [
-  { key: 'home', label: '首页', path: '/home' },
-  { key: 'workspace', label: '工作台', path: '/workspace' },
-  { key: 'brand', label: '品牌档案', path: '/brand' },
+const NAVIGATION_ITEMS: NavigationItem[] = [
+  { key: 'home', label: '首页', path: '/home', icon: <HomeOutlined /> },
+  { key: 'workspace', label: '工作台', path: '/workspace', icon: <ApartmentOutlined /> },
+  { key: 'knowledge', label: '知识库', path: '/knowledge', icon: <DatabaseOutlined /> },
+  { key: 'brand', label: '品牌资产', path: '/brand', icon: <FolderOpenOutlined /> },
 ]
 
 const AppLayout = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
-  const initialKey: NavKey = location.pathname.includes('workspace')
-    ? 'workspace'
-    : location.pathname.includes('brand')
-      ? 'brand'
-      : location.pathname.includes('profile')
-        ? 'profile'
-        : 'home'
-  const [activeKey, setActiveKey] = useState<NavKey>(initialKey)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1100px)')
+    const handleViewportChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setSidebarCollapsed(event.matches)
+    }
 
-  const handleNavClick = (item: (typeof navItems)[number]) => {
-    setActiveKey(item.key)
-    navigate(item.path)
+    handleViewportChange(media)
+    media.addEventListener('change', handleViewportChange)
+    return () => media.removeEventListener('change', handleViewportChange)
+  }, [])
+
+  const renderNavigationItem = (item: NavigationItem) => {
+    const isActive =
+      location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+    const button = (
+      <button
+        key={item.key}
+        type="button"
+        aria-current={isActive ? 'page' : undefined}
+        aria-label={sidebarCollapsed ? item.label : undefined}
+        className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
+        onClick={() => navigate(item.path)}
+      >
+        <span className={styles.navIcon} aria-hidden="true">
+          {item.icon}
+        </span>
+        {!sidebarCollapsed && <span className={styles.navLabel}>{item.label}</span>}
+      </button>
+    )
+
+    return sidebarCollapsed ? (
+      <Tooltip key={item.key} title={item.label} placement="right">
+        {button}
+      </Tooltip>
+    ) : (
+      button
+    )
   }
-
-  const handleProfileClick = () => {
-    setActiveKey('profile')
-    navigate('/profile')
-  }
-
-  const toggleCollapse = () => {
-    setSidebarCollapsed((prev) => !prev)
-  }
-
-  const renderNavItem = (
-    item: (typeof navItems)[number] | { key: 'profile'; label: string; onClick: () => void },
-    isActive: boolean
-  ) => (
-    <button
-      key={item.key}
-      type="button"
-      onClick={'onClick' in item ? item.onClick : () => handleNavClick(item as (typeof navItems)[number])}
-      title={item.label}
-      className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
-    >
-      <span className={styles.navIcon}>{iconMap[item.key as NavKey]}</span>
-      {!sidebarCollapsed && <span className={styles.navLabel}>{item.label}</span>}
-    </button>
-  )
 
   return (
-    <div className={styles.window}>
+    <div className={styles.appShell}>
       <aside
-        className={`${styles.sidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : styles.sidebarExpanded}`}
+        className={`${styles.sidebar} ${sidebarCollapsed ? styles.sidebarCollapsed : ''}`}
+        aria-label="主导航"
       >
-        <div className={styles.navTop}>
+        <div className={styles.brandRow}>
           <button
             type="button"
-            className={styles.collapseBtn}
-            onClick={toggleCollapse}
-            title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+            className={styles.brandButton}
+            aria-label="返回首页"
+            onClick={() => navigate('/home')}
           >
-            <span className={styles.navIcon}>
-              {sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            </span>
-            {!sidebarCollapsed && <span className={styles.navLabel}>收起</span>}
+            <span className={styles.brandMark}>BF</span>
+            {!sidebarCollapsed && <span className={styles.brandName}>Brand-Flow AI</span>}
           </button>
-
-          {navItems.map((item) =>
-            renderNavItem(item, item.key === activeKey)
-          )}
         </div>
 
-        <div className={styles.navBottom}>
-          {renderNavItem(
-            { key: 'profile', label: '个人中心', onClick: handleProfileClick },
-            activeKey === 'profile'
-          )}
+        <nav className={styles.navigation}>{NAVIGATION_ITEMS.map(renderNavigationItem)}</nav>
+
+        <div className={styles.sidebarFooter}>
+          {renderNavigationItem({
+            key: 'profile',
+            label: '个人中心',
+            path: '/profile',
+            icon: <UserOutlined />,
+          })}
+          <Tooltip title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'} placement="right">
+            <button
+              type="button"
+              className={styles.collapseButton}
+              aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            >
+              <span className={styles.navIcon} aria-hidden="true">
+                {sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              </span>
+              {!sidebarCollapsed && <span>收起侧栏</span>}
+            </button>
+          </Tooltip>
         </div>
       </aside>
 
       <main className={styles.mainContent}>
-        <Outlet context={{ activeKey }} />
+        <Outlet />
       </main>
     </div>
   )

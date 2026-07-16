@@ -8,14 +8,14 @@
  * - 底部退出登录
  */
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button, Select, Tag, Card, message, Modal, Input as AntInput } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { LogoutOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
 import { getMyEnterprises, switchEnterprise, getTeams, createTeam } from '@/api/org'
-import type { EnterpriseData, TeamData } from '@/api/org'
+import type { TeamData } from '@/api/org'
 import styles from './profile.module.css'
 
 /** 角色标签映射 */
@@ -71,7 +71,7 @@ const Profile = () => {
   /* ============================
       加载团队列表
    ============================ */
-  const loadTeams = async () => {
+  const loadTeams = useCallback(async () => {
     if (!currentEnterpriseId) return
     setLoadingTeams(true)
     try {
@@ -84,11 +84,11 @@ const Profile = () => {
     } finally {
       setLoadingTeams(false)
     }
-  }
+  }, [currentEnterpriseId])
 
   useEffect(() => {
-    loadTeams()
-  }, [currentEnterpriseId])
+    queueMicrotask(() => void loadTeams())
+  }, [loadTeams])
 
   /* ============================
       切换企业

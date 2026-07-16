@@ -10,11 +10,23 @@
  *   合成完成后通过「跳转到画板预览」按钮切换到 CanvasPreview 查看最终效果。
  */
 
+import type { ReactNode } from 'react'
+import {
+  CheckCircleFilled,
+  ClockCircleOutlined,
+  FontSizeOutlined,
+  LoadingOutlined,
+  PictureOutlined,
+  TagsOutlined,
+  BgColorsOutlined,
+  EyeOutlined,
+} from '@ant-design/icons'
+
 import styles from '../workspace.module.css'
 
 interface LayerStatus {
   name: string
-  icon: string
+  icon: ReactNode
   done: boolean
 }
 
@@ -34,17 +46,16 @@ export interface ComposePanelProps {
 }
 
 const DEFAULT_LAYERS: LayerStatus[] = [
-  { name: '底图层', icon: '🖼️', done: true },
-  { name: '标题层', icon: '📝', done: false },
-  { name: 'Logo 层', icon: '🏷️', done: false },
-  { name: '装饰层', icon: '✨', done: false },
+  { name: '底图层', icon: <PictureOutlined />, done: true },
+  { name: '标题层', icon: <FontSizeOutlined />, done: false },
+  { name: 'Logo 层', icon: <TagsOutlined />, done: false },
+  { name: '装饰层', icon: <BgColorsOutlined />, done: false },
 ]
 
 const ComposePanel = ({
   layers = DEFAULT_LAYERS,
   isComposing = false,
   finalImageUrl = null,
-  layerDataJson = null,
   onSwitchToPreview,
   onReRun,
 }: ComposePanelProps) => {
@@ -54,9 +65,7 @@ const ComposePanel = ({
       <p className={styles.composeDesc}>
         图文分离叠加处理中…
         <br />
-        <span className={styles.composeDescSub}>
-          底图 + 标题层 + Logo 层 + 装饰层
-        </span>
+        <span className={styles.composeDescSub}>底图 + 标题层 + Logo 层 + 装饰层</span>
       </p>
 
       {/* ===== 图层叠加进度 ===== */}
@@ -67,15 +76,19 @@ const ComposePanel = ({
             <div
               key={layer.name}
               className={`${styles.composeLayerItem} ${
-                layer.done
-                  ? styles.composeLayerDone
-                  : styles.composeLayerPending
+                layer.done ? styles.composeLayerDone : styles.composeLayerPending
               }`}
             >
               <span className={styles.composeLayerIcon}>{layer.icon}</span>
               <span className={styles.composeLayerName}>{layer.name}</span>
               <span className={styles.composeLayerStatus}>
-                {layer.done ? '✅' : isComposing ? '⏳' : '⬜'}
+                {layer.done ? (
+                  <CheckCircleFilled aria-label="已完成" />
+                ) : isComposing ? (
+                  <LoadingOutlined aria-label="处理中" />
+                ) : (
+                  <ClockCircleOutlined aria-label="等待中" />
+                )}
               </span>
             </div>
           ))}
@@ -91,7 +104,7 @@ const ComposePanel = ({
           </div>
         ) : finalImageUrl ? (
           <div className={styles.composeStatusDone}>
-            <span className={styles.composeDoneIcon}>✅</span>
+            <CheckCircleFilled className={styles.composeDoneIcon} aria-hidden="true" />
             <span>合成完成</span>
           </div>
         ) : (
@@ -102,12 +115,8 @@ const ComposePanel = ({
       {/* ===== 底部操作按钮 ===== */}
       <div className={styles.rightFooter}>
         {finalImageUrl && (
-          <button
-            type="button"
-            className={styles.composePreviewBtn}
-            onClick={onSwitchToPreview}
-          >
-            🎯 跳转到画板预览
+          <button type="button" className={styles.composePreviewBtn} onClick={onSwitchToPreview}>
+            <EyeOutlined /> 跳转到画板预览
           </button>
         )}
         <button

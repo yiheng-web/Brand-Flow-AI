@@ -1,21 +1,69 @@
 :root {
-  --primary: #2f6cf6;
-  --primary-hover: #1f5be5;
-  --bg-body: #f5f6f8;
-  --bg-app: #eef3fb;
-  --bg-panel: #ffffff;
-  --text-main: #202124;
-  --text-secondary: #6b7280;
-  --border-color: #d7dce5;
-  --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
-  --radius-xl: 28px;
-  --radius-lg: 20px;
-  --radius-md: 12px;
-  --radius-sm: 10px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: var(--text-main);
-  background: var(--bg-body);
+  --color-bg-page: #f7f8fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-container: #f0f4f9;
+  --color-bg-container-high: #e9eef6;
+  --color-primary: #0b57d0;
+  --color-primary-hover: #0842a0;
+  --color-primary-container: #d3e3fd;
+  --color-text-primary: #1f1f1f;
+  --color-text-secondary: #5f6368;
+  --color-text-tertiary: #80868b;
+  --color-border: #dadce0;
+  --color-success: #137333;
+  --color-success-container: #c4eed0;
+  --color-warning: #b06000;
+  --color-warning-container: #ffe1b3;
+  --color-error: #b3261e;
+  --color-error-container: #f9dedc;
+  --color-info: #0b57d0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-node: 18px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
+  --shadow-float: 0 8px 24px rgba(31, 31, 31, 0.12);
+  --shadow-selected: 0 0 0 3px rgba(11, 87, 208, 0.18);
+  --motion-fast: 140ms;
+  --motion-normal: 200ms;
+  --motion-slow: 280ms;
+
+  /* 兼容现有页面，迁移完成后删除。 */
+  --primary: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --bg-body: var(--color-bg-page);
+  --bg-app: var(--color-bg-container);
+  --bg-panel: var(--color-bg-surface);
+  --text-main: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --border-color: var(--color-border);
+  --shadow-sm: var(--shadow-float);
+  --shadow-md: var(--shadow-float);
+  --radius-xl: var(--radius-panel);
+  --radius-lg: var(--radius-card);
+  --radius-md: var(--radius-control);
+  --radius-sm: 8px;
+
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -29,12 +77,15 @@
 html,
 body,
 #root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
   margin: 0;
-  min-height: 100vh;
 }
 
 body {
-  background: var(--bg-body);
+  min-height: 100vh;
+  background: var(--color-bg-page);
 }
 
 button,
@@ -49,113 +100,18 @@ a {
   text-decoration: none;
 }
 
-/* ===== React Flow 自定义节点样式 ===== */
-.flow-view-wrapper {
-  width: 100%;
-  height: 100%;
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
-.flow-node {
-  width: 200px;
-  background: #fff;
-  border: 1.5px solid #d7dce5;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-  overflow: hidden;
-  cursor: grab;
-  user-select: none;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.flow-node:active {
-  cursor: grabbing;
-}
-
-.flow-node:hover {
-  border-color: #4f6ff7 !important;
-  box-shadow: 0 8px 30px rgba(79, 111, 247, 0.25) !important;
-  transform: translateY(-4px);
-}
-
-.flow-node-body {
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.flow-node-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #202124;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.flow-node-emoji {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.flow-node-sub {
-  font-size: 11px;
-  font-weight: 500;
-  color: #6b7280;
-  text-align: center;
-}
-
-.flow-node-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-left: 6px;
-  flex-shrink: 0;
-}
-
-.flow-node-handle {
-  width: 10px !important;
-  height: 10px !important;
-  background: #4f6ff7 !important;
-  border: 2px solid #fff !important;
-  border-radius: 50%;
-}
-
-.flow-node-handle-target {
-  top: -5px !important;
-  left: 50% !important;
-  transform: translateX(-50%);
-}
-
-.flow-node-handle-source {
-  bottom: -5px !important;
-  left: 50% !important;
-  transform: translateX(-50%);
-}
-
-/* 覆盖 React Flow 默认背景 */
-.react-flow__background {
-  background-image: radial-gradient(#d7dadc 1px, transparent 1px) !important;
-  background-size: 24px 24px !important;
-}
-
-.react-flow__controls {
-  border-radius: 12px !important;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08) !important;
-  overflow: hidden;
-}
-
-.react-flow__controls-button {
-  border-bottom: 1px solid #e4e7ee !important;
-  fill: #555b66 !important;
-}
-
-.react-flow__minimap {
-  border-radius: 12px !important;
-  overflow: hidden;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

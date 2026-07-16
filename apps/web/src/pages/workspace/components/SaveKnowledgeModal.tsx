@@ -46,7 +46,7 @@ const SaveKnowledgeModal = ({
   /* 弹窗打开时，基于外部传入的 selectedGroupKey 重新初始化内部状态 */
   useEffect(() => {
     if (visible) {
-      setLocalGroupKey(selectedGroupKey)
+      queueMicrotask(() => setLocalGroupKey(selectedGroupKey))
     }
   }, [visible, selectedGroupKey])
 

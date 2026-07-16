@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Input, Modal, Form, Select, Tag, message, Spin } from 'antd'
 import {
   ArrowLeftOutlined,
   PlusOutlined,
   DeleteOutlined,
-  EditOutlined,
   FileTextOutlined,
 } from '@ant-design/icons'
 import {
@@ -38,7 +37,7 @@ const KnowledgeDetailPage = () => {
   const [ingesting, setIngesting] = useState(false)
   const [ingestContent, setIngestContent] = useState('')
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!id) return
     setLoading(true)
     try {
@@ -53,11 +52,11 @@ const KnowledgeDetailPage = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
-    fetchData()
-  }, [id])
+    queueMicrotask(() => void fetchData())
+  }, [fetchData])
 
   const handleCreateItem = async () => {
     if (!id) return
@@ -69,8 +68,8 @@ const KnowledgeDetailPage = () => {
       setCreateOpen(false)
       createForm.resetFields()
       fetchData()
-    } catch (err: any) {
-      if (err?.errorFields) return
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'errorFields' in err) return
       message.error('创建失败，请稍后重试')
     } finally {
       setCreating(false)
@@ -101,7 +100,7 @@ const KnowledgeDetailPage = () => {
     if (!id || !ingestContent.trim()) return
     setIngesting(true)
     try {
-      const res = (await ingestKnowledge(id, { content: ingestContent.trim() })) as any
+      const res = await ingestKnowledge(id, { content: ingestContent.trim() })
       message.success(`向量化成功，共 ${res.chunks || 0} 个文本块`)
       setIngestOpen(false)
       setIngestContent('')

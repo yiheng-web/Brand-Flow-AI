@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Modal, Input, Form, message } from 'antd'
 import {
@@ -20,7 +20,7 @@ const KnowledgeListPage = () => {
   const [creating, setCreating] = useState(false)
   const [form] = Form.useForm()
 
-  const fetchList = async () => {
+  const fetchList = useCallback(async () => {
     setLoading(true)
     try {
       const res = (await getKnowledgeList()) as unknown as KnowledgeData[]
@@ -30,11 +30,11 @@ const KnowledgeListPage = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchList()
-  }, [])
+    queueMicrotask(() => void fetchList())
+  }, [fetchList])
 
   const handleCreate = async () => {
     try {
@@ -45,8 +45,8 @@ const KnowledgeListPage = () => {
       setCreateOpen(false)
       form.resetFields()
       fetchList()
-    } catch (err: any) {
-      if (err?.errorFields) return // validation error, antd shows inline
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'errorFields' in err) return
       message.error('创建失败，请稍后重试')
     } finally {
       setCreating(false)

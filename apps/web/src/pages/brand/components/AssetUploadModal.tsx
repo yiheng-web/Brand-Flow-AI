@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Modal, Upload, message } from 'antd'
+import type { UploadFile, UploadProps } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 
 const { Dragger } = Upload
@@ -10,7 +11,7 @@ interface AssetUploadModalProps {
 }
 
 const AssetUploadModal = ({ open, onClose }: AssetUploadModalProps) => {
-  const [fileList, setFileList] = useState<any[]>([])
+  const [fileList, setFileList] = useState<UploadFile[]>([])
   const [uploading, setUploading] = useState(false)
 
   const handleUpload = async () => {
@@ -23,7 +24,9 @@ const AssetUploadModal = ({ open, onClose }: AssetUploadModalProps) => {
 
     const formData = new FormData()
     fileList.forEach((file) => {
-      formData.append('files', file.originFileObj || file)
+      if (file.originFileObj) {
+        formData.append('files', file.originFileObj)
+      }
     })
 
     // TODO: POST /api/assets/upload
@@ -39,7 +42,7 @@ const AssetUploadModal = ({ open, onClose }: AssetUploadModalProps) => {
     onClose()
   }
 
-  const uploadProps = {
+  const uploadProps: UploadProps = {
     name: 'file',
     multiple: true,
     accept: 'image/*',
@@ -53,10 +56,10 @@ const AssetUploadModal = ({ open, onClose }: AssetUploadModalProps) => {
       }
       return false // 阻止自动上传
     },
-    onChange: (info: any) => {
+    onChange: (info) => {
       setFileList(info.fileList)
     },
-    onRemove: (file: any) => {
+    onRemove: (file) => {
       setFileList((prev) => prev.filter((f) => f.uid !== file.uid))
     },
   }

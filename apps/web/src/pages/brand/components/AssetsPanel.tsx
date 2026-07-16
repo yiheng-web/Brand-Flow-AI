@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, Empty, Space, Tag, Image, message, Spin } from 'antd'
 import {
   PlusOutlined,
@@ -51,7 +51,7 @@ const AssetsPanel = () => {
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null)
 
   /** 加载资产列表 */
-  const fetchAssets = async () => {
+  const fetchAssets = useCallback(async () => {
     setLoading(true)
     try {
       // TODO: GET /api/assets
@@ -69,11 +69,11 @@ const AssetsPanel = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    fetchAssets()
-  }, [])
+    queueMicrotask(() => void fetchAssets())
+  }, [fetchAssets])
 
   /** 删除资产 */
   const handleDelete = (asset: AssetItem) => {

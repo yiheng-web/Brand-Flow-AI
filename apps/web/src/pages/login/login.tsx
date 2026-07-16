@@ -38,7 +38,7 @@ const LoginPage = () => {
         message.success('登录成功')
         navigate('/home')
       }
-    } catch (err: unknown) {
+    } catch {
       // 错误提示已在 apiClient 响应拦截器中统一处理
     } finally {
       setSubmitting(false)
