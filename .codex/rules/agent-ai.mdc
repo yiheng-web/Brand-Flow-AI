@@ -1,0 +1,18 @@
+---
+description: packages/agent Prompt、LangChain、LangGraph、检索和公共导出规范
+globs: packages/agent/src/**/*.ts
+alwaysApply: false
+---
+
+# Agent 与 AI 逻辑规则
+
+- `packages/agent` 是被 API 消费的库，不启动 HTTP 服务、不读取 Web 状态、不耦合 Nest Controller。
+- Prompt 放在 `ai-logic/prompts`，Chain/Graph 放在对应目录；数据库、鉴权、队列和 HTTP 编排留在 API。
+- Prompt 修改前检查模板变量、输出语言、结构化协议、parser、fallback、评估链和所有调用方，不能只改提示文本。
+- 模型输出是不可信输入：JSON/结构化结果必须解析、校验和安全降级，不能用 `any` 或非空断言假定字段存在。
+- LangGraph 节点、顺序、跳过规则、状态、重试或终态变化时，同步检查 API processor、节点快照、SSE 事件和 Web 状态映射。
+- 复用现有状态语义，避免新增同义状态；模型、temperature、阈值、重试次数和检索 topK 的变化必须显式、可追踪并有验证依据。
+- 密钥、endpoint 和环境相关配置不得写进 Prompt 或源码；通过现有环境/调用方配置，并在缺失时给出明确错误。
+- 日志只记录节点、耗时、业务 ID 和必要错误上下文；不输出 Token、API Key、完整 Prompt、完整用户敏感内容或模型私密响应。
+- 公共函数、类型和常量从稳定聚合入口导出，避免命名冲突；新增导出后运行 Agent build 并验证 API build，不手改 `dist`。
+- AI 行为变化应提供可重复的小样例或测试，覆盖正常输出、格式异常、模型失败、重试上限及降级路径。
