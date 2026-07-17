@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document, Types } from 'mongoose'
 import { OwnerType, Visibility } from '@/common/enums'
+import type { SpaceType } from '@brand-flow/contracts'
 
 export type WorkDocument = Work &
   Document & {
@@ -25,6 +26,15 @@ export class Work {
   @Prop({ type: Types.ObjectId, ref: 'Workflow', index: true })
   workflowId?: Types.ObjectId
 
+  @Prop({ required: true, index: true })
+  spaceId!: string
+
+  @Prop({ type: String, enum: ['personal', 'team', 'enterprise'], required: true })
+  spaceType!: SpaceType
+
+  @Prop()
+  selectedCandidateId?: string
+
   @Prop({ type: Object })
   qualityReport?: Record<string, any>
 
@@ -43,8 +53,8 @@ export class Work {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   creatorId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId
+  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  enterpriseId?: Types.ObjectId
 
   @Prop({ type: Object })
   metadata!: Record<string, any>

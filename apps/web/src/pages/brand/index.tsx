@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import styles from './brand.module.css'
+import AssetsPanel from './components/AssetsPanel'
 
 const SIDEBAR_ITEMS = [
   '全部',
@@ -35,7 +36,7 @@ const BrandPage = () => {
 
       <main className={styles.main}>
         <h2 className={styles.pageTitle}>{activeCategory}</h2>
-        <p className={styles.pagePlaceholder}>此区域内容待配置</p>
+        <AssetsPanel />
       </main>
     </div>
   )

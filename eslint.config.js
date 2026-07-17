@@ -27,7 +27,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['apps/api/**/*.ts', 'packages/agent/**/*.ts'],
+    files: ['apps/api/**/*.ts', 'packages/agent/**/*.ts', 'packages/contracts/**/*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       globals: globals.node,

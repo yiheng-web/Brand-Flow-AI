@@ -67,7 +67,7 @@ export async function switchEnterprise(enterpriseId: string) {
 }
 
 // 获取当前用户可访问的空间列表
-export async function getMySpaces() {
+export async function getMySpaces(): Promise<SpaceData[]> {
   return apiClient.get('/org/spaces')
 }
 

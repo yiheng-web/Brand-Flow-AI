@@ -39,7 +39,7 @@ export async function createAsset(params: CreateAssetParams) {
   return apiClient.post('/assets', params)
 }
 
-export async function getAssets() {
+export async function getAssets(): Promise<AssetData[]> {
   return apiClient.get('/assets')
 }
 

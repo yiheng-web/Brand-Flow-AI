@@ -4,6 +4,7 @@ import {
   ApartmentOutlined,
   DatabaseOutlined,
   FolderOpenOutlined,
+  PictureOutlined,
   HomeOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -25,6 +26,7 @@ const NAVIGATION_ITEMS: NavigationItem[] = [
   { key: 'workspace', label: '工作台', path: '/workspace', icon: <ApartmentOutlined /> },
   { key: 'knowledge', label: '知识库', path: '/knowledge', icon: <DatabaseOutlined /> },
   { key: 'brand', label: '品牌资产', path: '/brand', icon: <FolderOpenOutlined /> },
+  { key: 'works', label: '作品中心', path: '/works', icon: <PictureOutlined /> },
 ]
 
 const AppLayout = () => {

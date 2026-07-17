@@ -2,6 +2,7 @@ import { memo } from 'react'
 import {
   AuditOutlined,
   BulbOutlined,
+  CompassOutlined,
   DatabaseOutlined,
   FileImageOutlined,
   FontSizeOutlined,
@@ -17,12 +18,13 @@ import styles from './FlowNode.module.css'
 type FlowNodeData = FlowNodeDefinition & { label?: string; layoutDir?: LayoutDir }
 
 const NODE_ICONS: Record<FlowNodeId, React.ReactNode> = {
-  intent: <BulbOutlined />,
-  'brand-kb': <DatabaseOutlined />,
+  brief: <BulbOutlined />,
+  brandConstraint: <DatabaseOutlined />,
+  creativeDirection: <CompassOutlined />,
   prompt: <FontSizeOutlined />,
-  'image-gen': <PictureOutlined />,
+  generate: <PictureOutlined />,
   compose: <FileImageOutlined />,
-  eval: <AuditOutlined />,
+  finalEvaluation: <AuditOutlined />,
 }
 
 const STATUS_MAP: Record<NodeExecStatus, SemanticStatus> = {
@@ -35,6 +37,7 @@ const STATUS_MAP: Record<NodeExecStatus, SemanticStatus> = {
   warning: 'warning',
   failed: 'failed',
   skipped: 'skipped',
+  stale: 'warning',
 }
 
 const FlowNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {

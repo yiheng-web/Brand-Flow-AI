@@ -13,6 +13,7 @@ import {
 import CreateAssetModal from './CreateAssetModal'
 import AssetUploadModal from './AssetUploadModal'
 import SaveToKnowledgeModal from './SaveToKnowledgeModal'
+import { deleteAsset, getAssets, type AssetData } from '@/api/assets'
 
 /** 资产对象结构（与后端约定） */
 interface AssetItem {
@@ -54,14 +55,20 @@ const AssetsPanel = () => {
   const fetchAssets = useCallback(async () => {
     setLoading(true)
     try {
-      // TODO: GET /api/assets
-      console.log('获取资产列表')
-      // const res = await api.getAssets()
-      // setAssets(res.data || [])
-
-      // 模拟空数据
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      setAssets([])
+      const data = await getAssets()
+      setAssets(
+        data.map((asset) => ({
+          id: asset._id,
+          name: asset.name,
+          type: asset.type === 'image' ? 'image' : 'other',
+          description:
+            typeof asset.metadata?.description === 'string'
+              ? asset.metadata.description
+              : undefined,
+          url: (asset as AssetData & { signedUrl?: string }).signedUrl || asset.url,
+          createdAt: asset.createdAt || '',
+        })),
+      )
     } catch (err) {
       if (err instanceof Error) {
         message.error(err.message)
@@ -76,12 +83,14 @@ const AssetsPanel = () => {
   }, [fetchAssets])
 
   /** 删除资产 */
-  const handleDelete = (asset: AssetItem) => {
-    // TODO: DELETE /api/assets/{id}
-    console.log('删除资产:', asset.id)
-    // const res = await api.deleteAsset(asset.id)
-    message.success(`已删除「${asset.name}」`)
-    setAssets((prev) => prev.filter((a) => a.id !== asset.id))
+  const handleDelete = async (asset: AssetItem) => {
+    try {
+      await deleteAsset(asset.id)
+      message.success(`已删除「${asset.name}」`)
+      setAssets((prev) => prev.filter((a) => a.id !== asset.id))
+    } catch {
+      message.error('删除素材失败')
+    }
   }
 
   /** 保存到知识库 */

@@ -17,9 +17,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "pnpm build && node --test dist/v1-workflow.test.js"
   },
   "dependencies": {
+    "@brand-flow/contracts": "workspace:*",
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "^1.3.2",
     "@langchain/openai": "^1.4.7",

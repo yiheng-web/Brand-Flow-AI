@@ -8,6 +8,7 @@
 
 import { useAuthStore } from '../store/useAuthStore'
 import type { StreamEvent } from '../api/workflow'
+import { parseWorkflowSseEvent } from '@brand-flow/contracts'
 
 type EventCallback = (event: StreamEvent) => void
 
@@ -69,11 +70,8 @@ export function createAuthEventSource(url: string, options?: SSEOptions): { clos
             // 空行表示一个事件结束
             try {
               const parsed = JSON.parse(eventData)
-              const event: StreamEvent = {
-                type: (eventType || parsed.type) as StreamEvent['type'],
-                ...parsed,
-              }
-              options?.onMessage?.(event)
+              const event = parseWorkflowSseEvent({ ...parsed, type: eventType || parsed.type })
+              if (event) options?.onMessage?.(event as StreamEvent)
             } catch {
               // 忽略解析失败
             }

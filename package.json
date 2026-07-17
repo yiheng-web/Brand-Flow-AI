@@ -12,6 +12,7 @@
     "dev:deps:down": "node scripts/dev-deps.mjs down",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "test": "turbo run test",
     "prepare": "husky"
   },
   "pnpm": {

@@ -12,6 +12,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@brand-flow/contracts": "workspace:*",
     "@aws-sdk/client-s3": "^3.1058.0",
     "@aws-sdk/s3-request-presigner": "^3.1057.0",
     "@brand-flow/agent": "workspace:*",

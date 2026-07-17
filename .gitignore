@@ -10,8 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 .turbo
+.pnpm-store
 dist-ssr
 *.local
+.env
+**/.env
 
 # Editor directories and files
 .vscode/*

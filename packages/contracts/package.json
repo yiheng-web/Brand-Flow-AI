@@ -1,0 +1,27 @@
+{
+  "name": "@brand-flow/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "pnpm build && node --test dist/contracts.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "eslint": "^10.2.1",
+    "typescript": "~6.0.2"
+  }
+}

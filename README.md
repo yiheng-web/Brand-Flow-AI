@@ -51,10 +51,10 @@ Brand-Flow-AI/
 └── Coding.md                   # 更细的编码约定（必读）
 ```
 
-| 目录 | 谁该关心 | 一句话 |
-|------|----------|--------|
-| **`apps/web`** | 前端 | 用户看得见的一切：工作流画布、精修区、Ant Design 界面、与 API 的对话。 |
-| **`apps/api`** | 后端 | HTTP、鉴权、MongoDB、Redis、BullMQ 队列、对接 Pinecone；**通过依赖引用** Agent 包，不在此写 Prompt 细节。 |
+| 目录                 | 谁该关心         | 一句话                                                                                                                                                                              |
+| -------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`apps/web`**       | 前端             | 用户看得见的一切：工作流画布、精修区、Ant Design 界面、与 API 的对话。                                                                                                              |
+| **`apps/api`**       | 后端             | HTTP、鉴权、MongoDB、Redis、BullMQ 队列、对接 Pinecone；**通过依赖引用** Agent 包，不在此写 Prompt 细节。                                                                           |
 | **`packages/agent`** | AI 逻辑 / Prompt | **LangChain.js** 编排、（演进中的 **LangGraph.js** 多步状态机）、对接 GPT-4o 做解析与评估、生图模型侧（如 SDXL / Flux）的调用封装；**此包被 `apps/api` 引用，不单独起 HTTP 服务。** |
 
 > 💡 **协作心法**：数据进出的「门」在 **API**；「脑子」里怎么推理、怎么拼 Chain，在 **Agent**。前端只信 **REST/约定好的接口**，不要直接 import `@brand-flow/agent`。
@@ -65,10 +65,10 @@ Brand-Flow-AI/
 
 ### 环境要求
 
-| 工具 | 版本 |
-|------|------|
-| **Node.js** | `>= 20`（建议使用 LTS） |
-| **pnpm** | `>= 9`（仓库根 `packageManager` 已锁定推荐版本，建议开启 Corepack） |
+| 工具        | 版本                                                                |
+| ----------- | ------------------------------------------------------------------- |
+| **Node.js** | `>= 20`（建议使用 LTS）                                             |
+| **pnpm**    | `>= 9`（仓库根 `packageManager` 已锁定推荐版本，建议开启 Corepack） |
 
 ### 安装依赖
 
@@ -113,6 +113,17 @@ pnpm dev:code
 pnpm dev:deps
 pnpm dev:deps:down
 ```
+
+### V1 演示模式
+
+默认逻辑调用真实模型与图片 Provider。仅在本地演示且缺少模型凭据时，可显式设置：
+
+```text
+apps/api/.env: BRAND_FLOW_DEMO_MODE=true
+apps/web/.env: VITE_BRAND_FLOW_DEMO_MODE=true
+```
+
+演示模式返回与真实接口一致的七节点、四候选图和质检类型，页面会明确显示“演示模式”。环境变量清单见各应用的 `.env.example`。
 
 **只想跑某一个包？** 用 filter，互不打扰：
 

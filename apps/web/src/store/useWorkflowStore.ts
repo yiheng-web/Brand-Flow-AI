@@ -1,43 +1,40 @@
+import type { WorkflowResult } from '@brand-flow/contracts'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AgentState } from '@/api/workflow'
+
 import type { FlowNodeId, NodeExecStatus } from '../pages/workspace/workspace.const'
 
 type WorkflowStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'
-type Updater<T> = T | ((prev: T) => T)
+type Updater<T> = T | ((previous: T) => T)
+
+export const INITIAL_NODE_EXEC_STATUSES: Record<FlowNodeId, NodeExecStatus> = {
+  brief: 'pending',
+  brandConstraint: 'pending',
+  creativeDirection: 'pending',
+  prompt: 'pending',
+  generate: 'pending',
+  compose: 'pending',
+  finalEvaluation: 'pending',
+}
 
 interface WorkflowState {
   workflowId: string | null
   status: WorkflowStatus
   prompt: string
   imageUrl: string | null
-  imagePrompt: string | null
   error: string | null
-  agentState: AgentState | null
-  // 节点执行状态
+  result: WorkflowResult | null
   nodeExecStatuses: Record<FlowNodeId, NodeExecStatus>
-  // 节点流数据
   nodeStreamData: Record<string, Record<string, unknown>>
-  // 操作函数
   setWorkflowId: (id: string) => void
   setStatus: (status: WorkflowStatus) => void
   setPrompt: (prompt: string) => void
   setImageUrl: (url: string | null) => void
-  setAgentState: (state: AgentState | null) => void
+  setResult: (result: WorkflowResult | null) => void
   setError: (error: string | null) => void
   setNodeExecStatuses: (statuses: Updater<Record<FlowNodeId, NodeExecStatus>>) => void
   setNodeStreamData: (data: Updater<Record<string, Record<string, unknown>>>) => void
   reset: () => void
-}
-
-// 初始节点执行状态
-const INITIAL_NODE_EXEC_STATUSES: Record<FlowNodeId, NodeExecStatus> = {
-  intent: 'pending',
-  'brand-kb': 'pending',
-  prompt: 'pending',
-  'image-gen': 'pending',
-  compose: 'pending',
-  eval: 'pending',
 }
 
 export const useWorkflowStore = create<WorkflowState>()(
@@ -47,24 +44,15 @@ export const useWorkflowStore = create<WorkflowState>()(
       status: 'idle',
       prompt: '',
       imageUrl: null,
-      imagePrompt: null,
       error: null,
-      agentState: null,
+      result: null,
       nodeExecStatuses: INITIAL_NODE_EXEC_STATUSES,
       nodeStreamData: {},
-
-      setWorkflowId: (id) => set({ workflowId: id }),
+      setWorkflowId: (workflowId) => set({ workflowId }),
       setStatus: (status) => set({ status }),
       setPrompt: (prompt) => set({ prompt }),
-      setImageUrl: (url) => set({ imageUrl: url }),
-      setAgentState: (agentState) => {
-        const content = agentState?.generateResult?.content
-        const imageUrl = typeof content === 'string' && content.startsWith('http') ? content : null
-        const imagePrompt = agentState?.generateResult?.promptUsed ?? null
-        const mappedStatus =
-          agentState?.status === 'success' ? 'completed' : (agentState?.status ?? 'running')
-        set({ agentState, imageUrl, imagePrompt, status: mappedStatus as WorkflowStatus })
-      },
+      setImageUrl: (imageUrl) => set({ imageUrl }),
+      setResult: (result) => set({ result, imageUrl: result?.finalImageUrl ?? null }),
       setError: (error) => set({ error }),
       setNodeExecStatuses: (statuses) =>
         set((state) => ({
@@ -81,9 +69,8 @@ export const useWorkflowStore = create<WorkflowState>()(
           status: 'idle',
           prompt: '',
           imageUrl: null,
-          imagePrompt: null,
           error: null,
-          agentState: null,
+          result: null,
           nodeExecStatuses: INITIAL_NODE_EXEC_STATUSES,
           nodeStreamData: {},
         }),

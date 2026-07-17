@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * 应用路由配置
  *
@@ -12,18 +13,24 @@
  *     - /profile   → 个人中心
  */
 
+import { lazy, Suspense, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import AuthGuard from '@/router/AuthGuard'
 import AppLayout from '@/layouts/AppLayout'
 import AuthLayout from '@/layouts/AuthLayout'
-import Workspace from '@/pages/workspace/workspace'
-import BrandPage from '@/pages/brand'
 import Home from '@/pages/home/home'
 import LoginPage from '@/pages/login/login'
 import RegisterPage from '@/pages/login/register'
-import ProfilePage from '@/pages/profile/profile'
-import KnowledgeListPage from '@/pages/knowledge'
-import KnowledgeDetailPage from '@/pages/knowledge/detail'
+import { LoadingState } from '@/design-system/components'
+
+const Workspace = lazy(() => import('@/pages/workspace/workspace'))
+const BrandPage = lazy(() => import('@/pages/brand'))
+const ProfilePage = lazy(() => import('@/pages/profile/profile'))
+const KnowledgeListPage = lazy(() => import('@/pages/knowledge'))
+const KnowledgeDetailPage = lazy(() => import('@/pages/knowledge/detail'))
+const WorksPage = lazy(() => import('@/pages/works'))
+const WorkDetailPage = lazy(() => import('@/pages/works/detail'))
+const deferred = (node: ReactNode) => <Suspense fallback={<LoadingState />}>{node}</Suspense>
 
 export const router = createBrowserRouter([
   /* 公开路由：无需登录即可访问 */
@@ -48,11 +55,13 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/home" replace /> },
           { path: 'home', element: <Home /> },
-          { path: 'workspace', element: <Workspace /> },
-          { path: 'brand', element: <BrandPage /> },
-          { path: 'knowledge', element: <KnowledgeListPage /> },
-          { path: 'knowledge/:id', element: <KnowledgeDetailPage /> },
-          { path: 'profile', element: <ProfilePage /> },
+          { path: 'workspace', element: deferred(<Workspace />) },
+          { path: 'brand', element: deferred(<BrandPage />) },
+          { path: 'knowledge', element: deferred(<KnowledgeListPage />) },
+          { path: 'knowledge/:id', element: deferred(<KnowledgeDetailPage />) },
+          { path: 'works', element: deferred(<WorksPage />) },
+          { path: 'works/:id', element: deferred(<WorkDetailPage />) },
+          { path: 'profile', element: deferred(<ProfilePage />) },
         ],
       },
     ],

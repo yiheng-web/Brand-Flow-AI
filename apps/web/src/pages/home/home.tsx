@@ -8,15 +8,16 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Input, Button, message } from 'antd'
+import { Input, Button, Select, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { DownOutlined, LogoutOutlined, PlusOutlined } from '@ant-design/icons'
+import { DownOutlined, LogoutOutlined } from '@ant-design/icons'
 import { submitPrompt } from '@/api/workflow'
 import { getMySpaces, switchEnterprise } from '@/api/org'
 import type { SpaceData } from '@/api/org'
 import { useUserStore, type SpaceItem, type SpaceType } from '@/store/useUserStore'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
 import { useAuthStore } from '@/store/useAuthStore'
+import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
 import styles from './home.module.css'
 
 /** 空间类型对应的标签文案和描述 */
@@ -150,13 +151,14 @@ const Home = () => {
   // ---- 本地状态 ----
   const [prompt, setPrompt] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeData[]>([])
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([])
 
   // ---- 加载空间列表 ----
   useEffect(() => {
     const loadSpaces = async () => {
       try {
-        const res = await getMySpaces()
-        const apiSpaces: SpaceData[] = res.data || []
+        const apiSpaces = await getMySpaces()
         const list = buildSpaceList(apiSpaces)
         setSpaces(list)
       } catch {
@@ -167,9 +169,16 @@ const Home = () => {
     loadSpaces()
   }, [setSpaces])
 
+  useEffect(() => {
+    getKnowledgeList()
+      .then(setKnowledgeBases)
+      .catch(() => setKnowledgeBases([]))
+  }, [currentSpaceId])
+
   // ---- 切换空间 ----
   const handleSwitchSpace = async (space: SpaceItem) => {
     setCurrentSpace(space.id)
+    setSelectedKnowledgeBaseIds([])
     // 如果是企业/团队空间，同步调用后端切换企业接口
     if (space.enterpriseId && space.type !== 'personal') {
       try {
@@ -195,6 +204,7 @@ const Home = () => {
         prompt: trimmed,
         spaceId: currentSpaceId || 'personal',
         spaceType: currentSpaceType,
+        selectedKnowledgeBaseIds,
       })
       const workflowId = workflowData?.id
       if (workflowId) {
@@ -202,7 +212,7 @@ const Home = () => {
       }
       message.success('创意已提交，正在为你生成...')
       setPrompt('')
-      navigate('/workspace', { state: { prompt: trimmed, workflowId } })
+      navigate('/workspace', { state: { prompt: trimmed, workflowId, selectedKnowledgeBaseIds } })
     } catch {
       // 错误已由 api/index.ts 拦截器统一提示，此处无需重复提示
     } finally {
@@ -259,6 +269,19 @@ const Home = () => {
 
           {/* 创意输入区 */}
           <div className={styles.inputCard}>
+            <Select
+              mode="multiple"
+              maxCount={3}
+              value={selectedKnowledgeBaseIds}
+              onChange={setSelectedKnowledgeBaseIds}
+              options={knowledgeBases.map((item) => ({
+                value: item._id || item.id,
+                label: item.name,
+              }))}
+              placeholder="选择 0～3 个知识库（可不选）"
+              style={{ width: '100%', marginBottom: 16 }}
+              disabled={submitting}
+            />
             <Input.TextArea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -277,17 +300,9 @@ const Home = () => {
                   {currentSpaceType !== 'personal' && <>：将启用团队AI知识库和企业品牌规则。</>}
                 </span>
                 <div className={styles.tagRow}>
-                  {currentSpaceType !== 'personal' ? (
-                    <>
-                      <span className={styles.tag}>企业品牌规范</span>
-                      <span className={styles.tag}>瑞幸视觉文件作</span>
-                      <button type="button" className={styles.addTagBtn}>
-                        <PlusOutlined /> 添加
-                      </button>
-                    </>
-                  ) : (
-                    <span className={styles.tagHint}>个人空间无绑定知识库</span>
-                  )}
+                  <span className={styles.tagHint}>
+                    已选择 {selectedKnowledgeBaseIds.length}/3 个知识库
+                  </span>
                 </div>
               </div>
 

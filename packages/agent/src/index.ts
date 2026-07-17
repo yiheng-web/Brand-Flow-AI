@@ -3,4 +3,5 @@ export * from './brand'
 export * from './generate'
 export * from './common'
 export * from './retrieval'
-export const AGENT_VERSION = '0.0.1';
+export * from './v1-workflow'
+export const AGENT_VERSION = '0.0.1'

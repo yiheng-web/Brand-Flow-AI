@@ -1,11 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Enterprise, EnterpriseDocument } from './schemas/enterprise.schema';
-import { User, UserDocument } from './schemas/user.schema';
-import { Team, TeamDocument } from './schemas/team.schema';
-import { Role } from '@/common/enums';
-import { CreateEnterpriseDto, CreateTeamDto, InviteSpaceMemberDto } from './dto/org.dto';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
+import { InjectModel } from '@nestjs/mongoose'
+import { Model, Types } from 'mongoose'
+import { Enterprise, EnterpriseDocument } from './schemas/enterprise.schema'
+import { User, UserDocument } from './schemas/user.schema'
+import { Team, TeamDocument } from './schemas/team.schema'
+import { Role } from '@/common/enums'
+import { CreateEnterpriseDto, CreateTeamDto, InviteSpaceMemberDto } from './dto/org.dto'
 
 @Injectable()
 export class OrgService {
@@ -16,11 +16,11 @@ export class OrgService {
   ) {}
 
   async createEnterprise(userId: string, createDto: CreateEnterpriseDto) {
-    const { name, logo } = createDto;
+    const { name, logo } = createDto
 
-    const exists = await this.enterpriseModel.findOne({ name });
+    const exists = await this.enterpriseModel.findOne({ name })
     if (exists) {
-      throw new BadRequestException('该企业名称已被使用');
+      throw new BadRequestException('该企业名称已被使用')
     }
 
     // TODO: 后续若加入企业注册审核流，此处 status 可改为 'pending'
@@ -28,7 +28,7 @@ export class OrgService {
       name,
       logo,
       status: 'active',
-    });
+    })
 
     await this.userModel.findByIdAndUpdate(userId, {
       $push: {
@@ -38,19 +38,19 @@ export class OrgService {
         },
       },
       currentEnterpriseId: enterprise._id,
-    });
+    })
 
-    return enterprise;
+    return enterprise
   }
 
   async getMyEnterprises(userId: string) {
     const user = await this.userModel.findById(userId).populate({
       path: 'memberships.enterpriseId',
       model: Enterprise.name,
-    });
+    })
 
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException('用户不存在')
     }
 
     return user.memberships.map((m: any) => ({
@@ -59,55 +59,53 @@ export class OrgService {
       name: m.enterpriseId.name,
       logo: m.enterpriseId.logo,
       status: m.enterpriseId.status,
-    }));
+    }))
   }
 
   async switchEnterprise(userId: string, enterpriseId: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId)
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException('用户不存在')
     }
 
-    const isMember = user.memberships.some(
-      (m) => m.enterpriseId.toString() === enterpriseId,
-    );
+    const isMember = user.memberships.some((m) => m.enterpriseId.toString() === enterpriseId)
 
     if (!isMember) {
-      throw new BadRequestException('您不属于该企业，无法切换');
+      throw new BadRequestException('您不属于该企业，无法切换')
     }
 
-    user.currentEnterpriseId = enterpriseId as any;
-    await user.save();
+    user.currentEnterpriseId = enterpriseId as any
+    await user.save()
 
-    return { success: true, currentEnterpriseId: enterpriseId };
+    return { success: true, currentEnterpriseId: enterpriseId }
   }
 
   async createTeam(userId: string, enterpriseId: string, createDto: CreateTeamDto) {
-    const { name, description } = createDto;
+    const { name, description } = createDto
 
     if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业再创建团队');
+      throw new BadRequestException('请先选择或切换到一家企业再创建团队')
     }
 
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId)
     const membership = user?.memberships.find(
-      (m) => m.enterpriseId.toString() === enterpriseId && !m.teamId
-    );
+      (m) => m.enterpriseId.toString() === enterpriseId && !m.teamId,
+    )
 
     if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-      throw new BadRequestException('您在该企业中不是管理员，无权创建团队');
+      throw new BadRequestException('您在该企业中不是管理员，无权创建团队')
     }
 
-    const exists = await this.teamModel.findOne({ enterpriseId, name });
+    const exists = await this.teamModel.findOne({ enterpriseId, name })
     if (exists) {
-      throw new BadRequestException('该企业下已存在同名团队');
+      throw new BadRequestException('该企业下已存在同名团队')
     }
 
     const team = await this.teamModel.create({
       enterpriseId,
       name,
       description,
-    });
+    })
 
     await this.userModel.findByIdAndUpdate(userId, {
       $push: {
@@ -117,27 +115,27 @@ export class OrgService {
           role: membership.role,
         },
       },
-    });
+    })
 
-    return team;
+    return team
   }
 
   async getTeams(enterpriseId: string) {
     if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业');
+      throw new BadRequestException('请先选择或切换到一家企业')
     }
 
-    return this.teamModel.find({ enterpriseId });
+    return this.teamModel.find({ enterpriseId })
   }
 
   async getMySpaces(userId: string) {
     const user = await this.userModel
       .findById(userId)
       .populate({ path: 'memberships.enterpriseId', model: Enterprise.name })
-      .populate({ path: 'memberships.teamId', model: Team.name });
+      .populate({ path: 'memberships.teamId', model: Team.name })
 
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException('用户不存在')
     }
 
     const spaces = [
@@ -148,51 +146,66 @@ export class OrgService {
         name: '个人空间',
         role: Role.OWNER,
       },
-    ];
+    ]
 
-    const seen = new Set<string>(['personal']);
+    const seen = new Set<string>(['personal'])
 
     for (const membership of user.memberships as any[]) {
-      const enterprise = membership.enterpriseId;
-      const team = membership.teamId;
+      const enterprise = membership.enterpriseId
+      const team = membership.teamId
 
       if (enterprise?._id) {
-        const enterpriseSpaceId = enterprise._id.toString();
+        const enterpriseSpaceId = enterprise._id.toString()
         if (!seen.has(enterpriseSpaceId)) {
-          seen.add(enterpriseSpaceId);
+          seen.add(enterpriseSpaceId)
           spaces.push({
             id: enterpriseSpaceId,
             spaceId: enterpriseSpaceId,
             type: 'enterprise',
             name: enterprise.name,
             role: membership.role,
-          });
+          })
         }
       }
 
       if (team?._id) {
-        const teamSpaceId = team._id.toString();
+        const teamSpaceId = team._id.toString()
         if (!seen.has(teamSpaceId)) {
-          seen.add(teamSpaceId);
+          seen.add(teamSpaceId)
           spaces.push({
             id: teamSpaceId,
             spaceId: teamSpaceId,
             type: 'team',
             name: team.name,
             role: membership.role,
-          });
+          })
         }
       }
     }
 
-    return spaces;
+    return spaces
+  }
+
+  async getAccessibleSpace(userId: string, spaceId: string) {
+    if (spaceId === 'personal') {
+      const user = await this.userModel.findById(userId)
+      if (!user) throw new NotFoundException('用户不存在')
+      return { spaceId, spaceType: 'personal' as const }
+    }
+    const space = await this.resolveSpace(spaceId)
+    await this.assertSpaceMember(userId, space)
+    return {
+      spaceId,
+      spaceType: space.type,
+      enterpriseId: space.enterprise._id.toString(),
+    }
   }
 
   async getSpaceMembers(userId: string, spaceId: string) {
     if (spaceId === 'personal') {
-      const user = await this.userModel.findById(userId);
+      const user = await this.userModel.findById(userId)
       if (!user) {
-        throw new NotFoundException('用户不存在');
+        throw new NotFoundException('用户不存在')
       }
 
       return [
@@ -203,19 +216,19 @@ export class OrgService {
           avatar: user.profile?.avatar,
           role: Role.OWNER,
         },
-      ];
+      ]
     }
 
-    const space = await this.resolveSpace(spaceId);
-    await this.assertSpaceMember(userId, space);
+    const space = await this.resolveSpace(spaceId)
+    await this.assertSpaceMember(userId, space)
 
     const users =
       space.type === 'team'
         ? await this.userModel.find({ 'memberships.teamId': space.team._id })
-        : await this.userModel.find({ 'memberships.enterpriseId': space.enterprise._id });
+        : await this.userModel.find({ 'memberships.enterpriseId': space.enterprise._id })
 
     return users.map((user) => {
-      const membership = this.findSpaceMembership(user as UserDocument, space);
+      const membership = this.findSpaceMembership(user as UserDocument, space)
 
       return {
         userId: user._id,
@@ -223,35 +236,35 @@ export class OrgService {
         nickname: user.profile?.nickname,
         avatar: user.profile?.avatar,
         role: membership?.role ?? Role.MEMBER,
-      };
-    });
+      }
+    })
   }
 
   async inviteSpaceMember(userId: string, spaceId: string, inviteDto: InviteSpaceMemberDto) {
     if (spaceId === 'personal') {
-      throw new BadRequestException('个人空间不支持邀请成员');
+      throw new BadRequestException('个人空间不支持邀请成员')
     }
 
-    const space = await this.resolveSpace(spaceId);
-    await this.assertSpaceManager(userId, space);
+    const space = await this.resolveSpace(spaceId)
+    await this.assertSpaceManager(userId, space)
 
-    const targetUser = await this.userModel.findOne({ email: inviteDto.email });
+    const targetUser = await this.userModel.findOne({ email: inviteDto.email })
     if (!targetUser) {
-      throw new NotFoundException('被邀请用户不存在，请先注册账号');
+      throw new NotFoundException('被邀请用户不存在，请先注册账号')
     }
 
-    const exists = this.findSpaceMembership(targetUser, space);
+    const exists = this.findSpaceMembership(targetUser, space)
     if (exists) {
-      throw new BadRequestException('该用户已经在空间中');
+      throw new BadRequestException('该用户已经在空间中')
     }
 
     targetUser.memberships.push({
       enterpriseId: space.enterprise._id as Types.ObjectId,
       teamId: space.type === 'team' ? (space.team._id as Types.ObjectId) : undefined,
       role: inviteDto.role ?? Role.MEMBER,
-    } as any);
+    } as any)
 
-    await targetUser.save();
+    await targetUser.save()
 
     return {
       success: true,
@@ -259,30 +272,30 @@ export class OrgService {
       userId: targetUser._id,
       email: targetUser.email,
       role: inviteDto.role ?? Role.MEMBER,
-    };
+    }
   }
 
   private async resolveSpace(spaceId: string) {
     if (!Types.ObjectId.isValid(spaceId)) {
-      throw new NotFoundException('空间不存在');
+      throw new NotFoundException('空间不存在')
     }
 
-    const team = await this.teamModel.findById(spaceId);
+    const team = await this.teamModel.findById(spaceId)
     if (team) {
-      const enterprise = await this.enterpriseModel.findById(team.enterpriseId);
+      const enterprise = await this.enterpriseModel.findById(team.enterpriseId)
       if (!enterprise) {
-        throw new NotFoundException('团队所属企业不存在');
+        throw new NotFoundException('团队所属企业不存在')
       }
 
-      return { type: 'team' as const, team, enterprise };
+      return { type: 'team' as const, team, enterprise }
     }
 
-    const enterprise = await this.enterpriseModel.findById(spaceId);
+    const enterprise = await this.enterpriseModel.findById(spaceId)
     if (!enterprise) {
-      throw new NotFoundException('空间不存在');
+      throw new NotFoundException('空间不存在')
     }
 
-    return { type: 'enterprise' as const, enterprise };
+    return { type: 'enterprise' as const, enterprise }
   }
 
   private findSpaceMembership(
@@ -296,12 +309,12 @@ export class OrgService {
         (m) =>
           m.teamId?.toString() === space.team._id.toString() ||
           (!m.teamId && m.enterpriseId.toString() === space.enterprise._id.toString()),
-      );
+      )
     }
 
     return user.memberships.find(
       (m) => m.enterpriseId.toString() === space.enterprise._id.toString(),
-    );
+    )
   }
 
   private async assertSpaceMember(
@@ -310,9 +323,9 @@ export class OrgService {
       | { type: 'team'; team: TeamDocument; enterprise: EnterpriseDocument }
       | { type: 'enterprise'; enterprise: EnterpriseDocument },
   ) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(userId)
     if (!user || !this.findSpaceMembership(user, space)) {
-      throw new BadRequestException('您不属于该空间');
+      throw new BadRequestException('您不属于该空间')
     }
   }
 
@@ -322,11 +335,11 @@ export class OrgService {
       | { type: 'team'; team: TeamDocument; enterprise: EnterpriseDocument }
       | { type: 'enterprise'; enterprise: EnterpriseDocument },
   ) {
-    const user = await this.userModel.findById(userId);
-    const membership = user ? this.findSpaceMembership(user, space) : undefined;
+    const user = await this.userModel.findById(userId)
+    const membership = user ? this.findSpaceMembership(user, space) : undefined
 
     if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-      throw new BadRequestException('您在该空间中不是管理员，无权邀请成员');
+      throw new BadRequestException('您在该空间中不是管理员，无权邀请成员')
     }
   }
 }

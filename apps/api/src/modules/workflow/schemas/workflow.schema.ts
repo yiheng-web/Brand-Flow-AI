@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document } from 'mongoose'
+import type { SpaceType } from '@brand-flow/contracts'
 
 export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed'
 export type WorkflowDocument = Workflow &
@@ -16,11 +17,20 @@ export class Workflow {
   @Prop({ required: true, index: true })
   spaceId!: string
 
+  @Prop({ type: String, enum: ['personal', 'team', 'enterprise'], required: true, index: true })
+  spaceType!: SpaceType
+
   @Prop({ required: true, index: true })
   userId!: string
 
   @Prop({ index: true })
   entId?: string
+
+  @Prop({ type: [String], default: [] })
+  selectedKnowledgeBaseIds!: string[]
+
+  @Prop({ type: Number, default: 0 })
+  retryCount!: number
 
   @Prop({
     type: String,
