@@ -8,8 +8,30 @@ import {
   createArtTextPlacementPlan,
   ensureThreeDirections,
   generateArtTextCandidates,
+  normalizePlacementContrastStrength,
   parseCreativeBrief,
+  validateArtTextVectorSpec,
 } from './v1-workflow'
+import { safeJsonParse } from './common'
+import { buildCandidateEvaluationPrompt } from './ai-logic/evaluate/candidate-evaluate.chain'
+
+test('结构化解析兼容 JSON 前后的模型说明文字', () => {
+  assert.deepEqual(safeJsonParse('分析完成。\n```json\n{"directions":[1,2,3]}\n```\n以上。'), {
+    directions: [1, 2, 3],
+  })
+})
+
+test('候选质检提示包含四个真实候选 ID', () => {
+  const candidates = [1, 2, 3, 4].map((index) => ({
+    id: `candidate-${index}`,
+    url: `https://example.com/${index}.png`,
+    index,
+    promptUsed: '测试',
+  }))
+  const prompt = buildCandidateEvaluationPrompt(candidates, '{}')
+  for (const candidate of candidates) assert.match(prompt, new RegExp(candidate.id))
+  assert.doesNotMatch(prompt, /\{candidate[1-4]Id\}/)
+})
 
 test('CreativeBrief JSON 失败时返回结构化 fallback', () => {
   const result = parseCreativeBrief('not-json', '生成一张山水图')
@@ -79,6 +101,30 @@ test('放置方案严格保留用户框选区域', async () => {
     if (previous === undefined) delete process.env.BRAND_FLOW_DEMO_MODE
     else process.env.BRAND_FLOW_DEMO_MODE = previous
   }
+})
+
+test('放置方案兼容模型返回的十分制对比增强强度', () => {
+  assert.equal(normalizePlacementContrastStrength(8), 0.8)
+  assert.equal(normalizePlacementContrastStrength(0.65), 0.65)
+  assert.equal(normalizePlacementContrastStrength(11), 11)
+})
+
+test('艺术字渐变拒绝 colors 数组等非契约参数', () => {
+  assert.throws(
+    () =>
+      validateArtTextVectorSpec({
+        fontFamily: 'Noto Sans SC',
+        fontWeight: 700,
+        textAlign: 'center',
+        fill: '#FFFFFF',
+        gradient: {
+          type: 'linear',
+          colors: ['#FFFFFF', '#000000'],
+          angle: 90,
+        },
+      } as never),
+    /渐变参数不符合受控契约/,
+  )
 })
 
 test('创意方向始终返回三个差异方案', () => {

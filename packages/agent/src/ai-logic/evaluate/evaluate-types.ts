@@ -71,4 +71,10 @@ export interface FinalEvaluationResult {
   /** 回溯建议，每条写清应该回溯到哪个节点 */
   suggestions: string[]
   canExport: boolean
+  compositionVerification?: {
+    detectedText: string
+    textMatchesExpected: boolean
+    insideAllowedRegion: boolean
+    noClipping: boolean
+  }
 }

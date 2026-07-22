@@ -18,6 +18,7 @@ import { Modal, Input, Select, Tag, Button, message } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import { saveToKnowledgeBase, getKnowledgeBases } from '@/api/knowledge'
 import type { KnowledgeBaseOption } from '@/api/knowledge'
+import { useUserStore } from '@/store/useUserStore'
 import styles from './SaveToKbModal.module.css'
 
 interface SaveToKbModalProps {
@@ -32,17 +33,18 @@ const SaveToKbModal = ({ open, onCancel }: SaveToKbModalProps) => {
   const [targetKbId, setTargetKbId] = useState('personal')
   const [kbOptions, setKbOptions] = useState<KnowledgeBaseOption[]>([])
   const [saving, setSaving] = useState(false)
+  const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
 
   /** 打开弹窗时加载知识库选项列表 */
   useEffect(() => {
     if (open) {
-      getKnowledgeBases().then((res) => {
+      getKnowledgeBases(spaceId).then((res) => {
         if (res.success) {
           setKbOptions(res.data)
         }
       })
     }
-  }, [open])
+  }, [open, spaceId])
 
   /** 确认保存 */
   const handleSave = async () => {

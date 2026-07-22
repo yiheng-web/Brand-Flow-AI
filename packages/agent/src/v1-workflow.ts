@@ -23,11 +23,16 @@ import {
   createSiliconFlowChatModel,
   extractChatText,
   prepareSiliconFlowVisionImage,
+  SILICONFLOW_JSON_CALL_OPTIONS,
 } from './common/siliconflow-chat'
 import { getSiliconFlowImageSettings } from './common/siliconflow-image-client'
 
 export function isDemoMode(): boolean {
   return process.env.BRAND_FLOW_DEMO_MODE === 'true'
+}
+
+export function normalizePlacementContrastStrength(value: number): number {
+  return Number.isFinite(value) && value > 1 && value <= 10 ? value / 10 : value
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -84,9 +89,10 @@ export function parseCreativeBrief(raw: string, originalRequest: string): Creati
 
 async function invokeJson<T>(instruction: string, payload: unknown): Promise<T | null> {
   const llm = createSiliconFlowChatModel()
-  const response = await llm.invoke([
-    new HumanMessage(`${instruction}\n\n输入：\n${JSON.stringify(payload)}\n\n只输出 JSON。`),
-  ])
+  const response = await llm.invoke(
+    [new HumanMessage(`${instruction}\n\n输入：\n${JSON.stringify(payload)}\n\n只输出 JSON。`)],
+    SILICONFLOW_JSON_CALL_OPTIONS,
+  )
   const raw = extractChatText(response.content)
   return safeJsonParse<T>(raw)
 }
@@ -98,17 +104,20 @@ async function invokeImageJson<T>(
 ): Promise<T | null> {
   const llm = createSiliconFlowChatModel()
   const preparedImageUrl = await prepareSiliconFlowVisionImage(imageUrl)
-  const response = await llm.invoke([
-    new HumanMessage({
-      content: [
-        {
-          type: 'text',
-          text: `${instruction}\n\n输入：\n${JSON.stringify(payload)}\n\n只输出 JSON。`,
-        },
-        { type: 'image_url' as const, image_url: { url: preparedImageUrl } },
-      ],
-    }),
-  ])
+  const response = await llm.invoke(
+    [
+      new HumanMessage({
+        content: [
+          {
+            type: 'text',
+            text: `${instruction}\n\n输入：\n${JSON.stringify(payload)}\n\n只输出 JSON。`,
+          },
+          { type: 'image_url' as const, image_url: { url: preparedImageUrl } },
+        ],
+      }),
+    ],
+    SILICONFLOW_JSON_CALL_OPTIONS,
+  )
   const raw = extractChatText(response.content)
   return safeJsonParse<T>(raw)
 }
@@ -190,12 +199,39 @@ export async function createCreativeDirections(
   constraints: BrandConstraintPackage,
 ): Promise<CreativeDirection[]> {
   if (isDemoMode()) return createDirectionFallbacks(brief)
-  const result = await invokeJson<{ directions: CreativeDirection[] }>(
-    '生成恰好 3 个明显不同的 CreativeDirection。每个方案必须包含 id、title、summary、visualStyle、composition、colorStrategy、visualFocus、mood、copyStyle、channels；三个方案在视觉风格、构图和色彩策略上都要不同。',
+  const result = await invokeJson<{ directions: CreativeDirection[] } | CreativeDirection[]>(
+    '生成恰好 3 个明显不同的 CreativeDirection。返回格式必须是 {"directions":[...]}；每个方案必须包含字符串字段 id、title、summary、visualStyle、composition、colorStrategy、visualFocus、mood、copyStyle，以及字符串数组 channels。三个方案的 visualStyle、composition、colorStrategy 必须分别互不相同，不要添加其他顶层字段。',
     { brief, constraints },
   )
-  const valid = result?.directions
-  if (!valid || valid.length !== 3 || new Set(valid.map((item) => item.visualStyle)).size !== 3) {
+  const directions = Array.isArray(result) ? result : result?.directions
+  const requiredStringFields: Array<keyof CreativeDirection> = [
+    'id',
+    'title',
+    'summary',
+    'visualStyle',
+    'composition',
+    'colorStrategy',
+    'visualFocus',
+    'mood',
+    'copyStyle',
+  ]
+  const valid = directions?.filter(
+    (item) =>
+      item &&
+      requiredStringFields.every(
+        (field) => typeof item[field] === 'string' && (item[field] as string).trim().length > 0,
+      ) &&
+      Array.isArray(item.channels) &&
+      item.channels.length > 0 &&
+      item.channels.every((channel) => typeof channel === 'string' && channel.trim().length > 0),
+  )
+  if (
+    valid?.length !== 3 ||
+    new Set(valid.map((item) => item.id)).size !== 3 ||
+    new Set(valid.map((item) => item.visualStyle)).size !== 3 ||
+    new Set(valid.map((item) => item.composition)).size !== 3 ||
+    new Set(valid.map((item) => item.colorStrategy)).size !== 3
+  ) {
     throw new Error('创意方向 Provider 未返回三个明显不同的有效方案')
   }
   return valid
@@ -440,9 +476,61 @@ export async function evaluateCandidateImages(
 const SAFE_FONT_FAMILIES = ['Arial', 'Microsoft YaHei', 'Noto Sans SC', 'sans-serif'] as const
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i
 
-function assertVectorSpec(spec: ArtTextVectorSpec): ArtTextVectorSpec {
+function hasOnlyKeys(value: object, allowedKeys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowedKeys.includes(key))
+}
+
+export function validateArtTextVectorSpec(spec: ArtTextVectorSpec): ArtTextVectorSpec {
+  if (
+    !spec ||
+    typeof spec !== 'object' ||
+    !hasOnlyKeys(spec, [
+      'fontFamily',
+      'fontWeight',
+      'textAlign',
+      'fill',
+      'stroke',
+      'strokeWidth',
+      'shadow',
+      'gradient',
+      'decorations',
+    ])
+  ) {
+    throw new Error('艺术字样式包含未受控参数')
+  }
   if (!SAFE_FONT_FAMILIES.includes(spec.fontFamily as (typeof SAFE_FONT_FAMILIES)[number])) {
     throw new Error(`艺术字字体不在允许列表中: ${spec.fontFamily}`)
+  }
+  if (typeof spec.fill !== 'string') throw new Error('艺术字填充色缺失')
+  if (
+    spec.gradient &&
+    (!hasOnlyKeys(spec.gradient, ['from', 'to', 'angle']) ||
+      typeof spec.gradient.from !== 'string' ||
+      typeof spec.gradient.to !== 'string' ||
+      !Number.isFinite(spec.gradient.angle))
+  ) {
+    throw new Error('艺术字渐变参数不符合受控契约')
+  }
+  if (
+    spec.shadow &&
+    (!hasOnlyKeys(spec.shadow, ['color', 'blur', 'offsetX', 'offsetY']) ||
+      typeof spec.shadow.color !== 'string' ||
+      ![spec.shadow.blur, spec.shadow.offsetX, spec.shadow.offsetY].every(Number.isFinite))
+  ) {
+    throw new Error('艺术字阴影参数不符合受控契约')
+  }
+  if (
+    spec.decorations &&
+    (!Array.isArray(spec.decorations) ||
+      spec.decorations.some(
+        (item) =>
+          !item ||
+          typeof item !== 'object' ||
+          !hasOnlyKeys(item, ['type', 'color']) ||
+          typeof item.color !== 'string',
+      ))
+  ) {
+    throw new Error('艺术字装饰参数不符合受控契约')
   }
   const colors = [
     spec.fill,
@@ -455,7 +543,12 @@ function assertVectorSpec(spec: ArtTextVectorSpec): ArtTextVectorSpec {
   if (colors.some((color) => !HEX_COLOR_PATTERN.test(color))) {
     throw new Error('艺术字颜色必须使用六位 HEX 格式')
   }
-  if (spec.fontWeight < 100 || spec.fontWeight > 900 || spec.fontWeight % 100 !== 0) {
+  if (
+    !Number.isFinite(spec.fontWeight) ||
+    spec.fontWeight < 100 ||
+    spec.fontWeight > 900 ||
+    spec.fontWeight % 100 !== 0
+  ) {
     throw new Error('艺术字字重超出允许范围')
   }
   if ((spec.strokeWidth ?? 0) < 0 || (spec.strokeWidth ?? 0) > 12) {
@@ -560,7 +653,7 @@ function createDemoArtTextCandidates(
     id: `art-text-${input.baseCandidateId}-${index + 1}`,
     textContent: input.textContent,
     previewUrl: '',
-    vectorSpec: assertVectorSpec(item.spec),
+    vectorSpec: validateArtTextVectorSpec(item.spec),
     styleSummary: `${item.summary}；底图分析：${baseStyleSummary || '平衡商业视觉'}；用户风格要求：${input.stylePrompt}`,
     dominantColors: item.colors,
     source: 'demo',
@@ -576,15 +669,28 @@ export async function generateArtTextCandidates(
   if (!input.stylePrompt.trim()) throw new Error('艺术字风格提示词不能为空')
   if (isDemoMode()) return createDemoArtTextCandidates(input, baseCandidate)
 
-  const result = await invokeImageJson<{ candidates: ArtTextCandidate[] }>(
-    '分析底图色彩、明暗、冷暖、质感和繁简程度，生成恰好四套明显不同的受控艺术字样式。不得修改 textContent，不得返回 SVG/HTML/脚本。fontFamily 只能是 Arial、Microsoft YaHei、Noto Sans SC、sans-serif；颜色只能是六位 HEX；fontWeight 为 100 到 900 的整百数。',
+  const result = await invokeImageJson<{ candidates: ArtTextCandidate[] } | ArtTextCandidate[]>(
+    `分析底图色彩、明暗、冷暖、质感和繁简程度，生成恰好四套明显不同的受控艺术字样式。只返回 {"candidates":[...]}。每项必须包含与输入逐字一致的 textContent、styleSummary、dominantColors，以及 vectorSpec。vectorSpec 的精确结构为：
+{
+  "fontFamily": "Arial" | "Microsoft YaHei" | "Noto Sans SC" | "sans-serif",
+  "fontWeight": 100 到 900 的整百数,
+  "textAlign": "left" | "center" | "right",
+  "fill": "#RRGGBB",
+  "stroke"?: "#RRGGBB",
+  "strokeWidth"?: 0 到 12,
+  "shadow"?: { "color": "#RRGGBB", "blur": 0 到 50, "offsetX": -30 到 30, "offsetY": -30 到 30 },
+  "gradient"?: { "from": "#RRGGBB", "to": "#RRGGBB", "angle": 0 到 360 },
+  "decorations"?: [{ "type": "line" | "shape" | "highlight", "color": "#RRGGBB" }]
+}
+不得使用 colors 数组代替 gradient.from/to，不得增加其他字段，不得返回 SVG、HTML 或脚本。所有颜色只能是六位 HEX。`,
     { input, baseImageMetadata: baseCandidate.metadata },
     baseCandidate.imageUrl,
   )
-  if (!result || !Array.isArray(result.candidates) || result.candidates.length !== 4) {
+  const rawCandidates = Array.isArray(result) ? result : result?.candidates
+  if (!Array.isArray(rawCandidates) || rawCandidates.length !== 4) {
     throw new Error('艺术字 Provider 未返回严格四个候选')
   }
-  return result.candidates.map((candidate, index) => {
+  const candidates = rawCandidates.map((candidate, index) => {
     if (candidate.textContent !== input.textContent)
       throw new Error('艺术字 Provider 修改了用户文本')
     if (
@@ -596,12 +702,16 @@ export async function generateArtTextCandidates(
     }
     return {
       ...candidate,
-      id: candidate.id || `art-text-${input.baseCandidateId}-${index + 1}`,
+      id: `art-text-${input.baseCandidateId}-${index + 1}`,
       previewUrl: '',
-      vectorSpec: assertVectorSpec(candidate.vectorSpec),
+      vectorSpec: validateArtTextVectorSpec(candidate.vectorSpec),
       source: 'model' as const,
     }
   })
+  if (new Set(candidates.map((item) => JSON.stringify(item.vectorSpec))).size !== 4) {
+    throw new Error('艺术字 Provider 未返回四套明显不同的样式')
+  }
+  return candidates
 }
 
 export async function createArtTextPlacementPlan(
@@ -637,22 +747,58 @@ export async function createArtTextPlacementPlan(
     }
   }
   const plan = await invokeJson<ArtTextPlacementPlan>(
-    '只返回区域内的艺术字放置参数。region 必须逐值原样返回；scale 0.1~1；rotation -8~8；opacity 0.4~1；不得移动到区域外。',
+    `只返回一个艺术字放置方案 JSON 对象，结构必须为：
+{
+  "region": { "x": number, "y": number, "width": number, "height": number },
+  "scale": number,
+  "rotation": number,
+  "horizontalAlign": "left" | "center" | "right",
+  "verticalAlign": "top" | "middle" | "bottom",
+  "opacity": number,
+  "blendMode": "normal" | "multiply" | "screen",
+  "contrastEnhancement"?: {
+    "type": "shadow" | "stroke" | "backplate",
+    "color": "#RRGGBB",
+    "strength": number
+  }
+}
+region 的四个数值必须逐值原样返回，不得改变用户框选区域；scale 范围 0.1～1；rotation 范围 -8～8；opacity 范围 0.4～1；contrastEnhancement.strength 范围 0～1；艺术字及所有增强效果不得移动到区域外。`,
     { candidate, region },
   )
-  if (!plan || JSON.stringify(plan.region) !== JSON.stringify(region)) {
+  if (
+    !plan ||
+    !plan.region ||
+    plan.region.x !== region.x ||
+    plan.region.y !== region.y ||
+    plan.region.width !== region.width ||
+    plan.region.height !== region.height
+  ) {
     throw new Error('放置方案擅自修改了用户框选区域')
   }
+  const strength = plan.contrastEnhancement?.strength
+  if (plan.contrastEnhancement && typeof strength === 'number') {
+    // 兼容部分模型按质检分制返回 0～10，同时保持内部契约统一为 0～1。
+    plan.contrastEnhancement.strength = normalizePlacementContrastStrength(strength)
+  }
   if (
+    !Number.isFinite(plan.scale) ||
     plan.scale < 0.1 ||
     plan.scale > 1 ||
+    !Number.isFinite(plan.rotation) ||
     plan.rotation < -8 ||
     plan.rotation > 8 ||
+    !Number.isFinite(plan.opacity) ||
     plan.opacity < 0.4 ||
     plan.opacity > 1 ||
     !['left', 'center', 'right'].includes(plan.horizontalAlign) ||
     !['top', 'middle', 'bottom'].includes(plan.verticalAlign) ||
-    !['normal', 'multiply', 'screen'].includes(plan.blendMode)
+    !['normal', 'multiply', 'screen'].includes(plan.blendMode) ||
+    (plan.contrastEnhancement &&
+      (!['shadow', 'stroke', 'backplate'].includes(plan.contrastEnhancement.type) ||
+        !HEX_COLOR_PATTERN.test(plan.contrastEnhancement.color) ||
+        !Number.isFinite(plan.contrastEnhancement.strength) ||
+        plan.contrastEnhancement.strength < 0 ||
+        plan.contrastEnhancement.strength > 1))
   )
     throw new Error('放置方案参数超出允许范围')
   return plan
@@ -661,9 +807,15 @@ export async function createArtTextPlacementPlan(
 export function composeFinalImage(
   candidate: CandidateImage,
   brief: CreativeBrief,
-): { finalImageUrl: string; sourceCandidateId: string; mode: 'skipped' } {
+): { finalImageUrl: string; sourceCandidateId: string; objectKey?: string; mode: 'skipped' } {
   if (brief.needsComposition) throw new Error('需要图文合成的工作流必须等待用户完成艺术字流程')
-  return { finalImageUrl: candidate.imageUrl, sourceCandidateId: candidate.id, mode: 'skipped' }
+  return {
+    finalImageUrl: candidate.imageUrl,
+    sourceCandidateId: candidate.id,
+    objectKey:
+      typeof candidate.metadata?.objectKey === 'string' ? candidate.metadata.objectKey : undefined,
+    mode: 'skipped',
+  }
 }
 
 export async function evaluateFinalImage(
@@ -706,9 +858,21 @@ export async function evaluateFinalImage(
       const normalizeScore = (value: number) =>
         Math.max(0, Math.min(10, value > 10 ? value / 10 : value))
       const totalScore = normalizeScore(result.overallScore)
+      const compositionPassed = composition
+        ? Boolean(
+            result.compositionVerification &&
+            result.compositionVerification.detectedText === composition.textContent &&
+            result.compositionVerification.textMatchesExpected &&
+            result.compositionVerification.insideAllowedRegion &&
+            result.compositionVerification.noClipping,
+          )
+        : true
+      const compositionSuggestions = compositionPassed
+        ? []
+        : ['艺术字逐字识别、框选区域或裁切校验未通过，建议回溯到「图文合成」节点']
       return {
         totalScore,
-        passed: result.passed && totalScore >= 7,
+        passed: result.passed && totalScore >= 7 && compositionPassed,
         scores: {
           brandConsistency: normalizeScore(result.dimensionScores.brandCompliance),
           requirementAlignment: normalizeScore(result.dimensionScores.technicalQuality),
@@ -721,7 +885,7 @@ export async function evaluateFinalImage(
           reason: item.reason,
         })),
         strengths: result.passed ? ['最终成片满足基础品牌与画面要求'] : [],
-        suggestions: result.suggestions,
+        suggestions: [...result.suggestions, ...compositionSuggestions],
       }
     }
   }

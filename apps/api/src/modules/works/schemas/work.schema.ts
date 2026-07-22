@@ -23,7 +23,7 @@ export class Work {
   @Prop()
   objectKey?: string
 
-  @Prop({ type: Types.ObjectId, ref: 'Workflow', index: true })
+  @Prop({ type: Types.ObjectId, ref: 'Workflow' })
   workflowId?: Types.ObjectId
 
   @Prop({ required: true, index: true })
@@ -36,10 +36,10 @@ export class Work {
   selectedCandidateId?: string
 
   @Prop({ type: Object })
-  qualityReport?: Record<string, any>
+  qualityReport?: Record<string, unknown>
 
   @Prop({ type: Object })
-  nodesSnapshot?: Record<string, any>
+  nodesSnapshot?: Record<string, unknown>
 
   @Prop({ type: Types.ObjectId, required: true, index: true })
   ownerId!: Types.ObjectId
@@ -57,7 +57,8 @@ export class Work {
   enterpriseId?: Types.ObjectId
 
   @Prop({ type: Object })
-  metadata!: Record<string, any>
+  metadata!: Record<string, unknown>
 }
 
 export const WorkSchema = SchemaFactory.createForClass(Work)
+WorkSchema.index({ workflowId: 1 }, { unique: true, sparse: true })

@@ -147,6 +147,7 @@ const Home = () => {
   const setCurrentSpace = useUserStore((s) => s.setCurrentSpace)
   const setWorkflowId = useWorkflowStore((s) => s.setWorkflowId)
   const logout = useAuthStore((s) => s.logout)
+  const setToken = useAuthStore((s) => s.setToken)
 
   // ---- 本地状态 ----
   const [prompt, setPrompt] = useState('')
@@ -170,23 +171,24 @@ const Home = () => {
   }, [setSpaces])
 
   useEffect(() => {
-    getKnowledgeList()
+    getKnowledgeList(currentSpaceId || 'personal')
       .then(setKnowledgeBases)
       .catch(() => setKnowledgeBases([]))
   }, [currentSpaceId])
 
   // ---- 切换空间 ----
   const handleSwitchSpace = async (space: SpaceItem) => {
-    setCurrentSpace(space.id)
-    setSelectedKnowledgeBaseIds([])
-    // 如果是企业/团队空间，同步调用后端切换企业接口
     if (space.enterpriseId && space.type !== 'personal') {
       try {
-        await switchEnterprise(space.enterpriseId)
+        const result = await switchEnterprise(space.enterpriseId)
+        setToken(result.access_token)
       } catch {
-        // 静默处理
+        message.error('切换企业身份失败，当前 Space 未改变')
+        return
       }
     }
+    setCurrentSpace(space.id)
+    setSelectedKnowledgeBaseIds([])
   }
 
   // ---- 提交创意 → 跳转工作台 ----
@@ -249,8 +251,8 @@ const Home = () => {
           />
         </div>
         <div className={styles.topBarRight}>
-          <Button type="text" size="small">
-            导出
+          <Button type="text" size="small" onClick={() => navigate('/works')}>
+            作品中心
           </Button>
           <Button type="text" size="small" danger icon={<LogoutOutlined />} onClick={handleLogout}>
             退出

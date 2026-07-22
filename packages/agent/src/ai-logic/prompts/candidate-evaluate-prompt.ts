@@ -11,17 +11,19 @@ export const CANDIDATE_EVALUATE_PROMPT = `
 4. **创意度**：是否有新颖的表达方式
 
 ## 4 张候选图
-- 图1: {image1Url}
-- 图2: {image2Url}
-- 图3: {image3Url}
-- 图4: {image4Url}
+- 图1（candidateId: {candidate1Id}）: {image1Url}
+- 图2（candidateId: {candidate2Id}）: {image2Url}
+- 图3（candidateId: {candidate3Id}）: {image3Url}
+- 图4（candidateId: {candidate4Id}）: {image4Url}
+
+返回 candidateId 时必须逐字复制以上四个 ID，不得使用“图1”“candidate-1”等别名。
 
 请严格按以下 JSON 格式输出（不要输出任何其他内容）：
 
 {
   "evaluations": [
     {
-      "candidateId": "图1的ID",
+      "candidateId": "{candidate1Id}",
       "overallScore": 8,
       "dimensionScores": { "brandCompliance": 8, "aestheticQuality": 7, "compositionFit": 8, "creativity": 6 },
       "comment": "简短评语",

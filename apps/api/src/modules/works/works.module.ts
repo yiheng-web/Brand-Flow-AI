@@ -7,6 +7,8 @@ import { WorkVersion, WorkVersionSchema } from './schemas/work-version.schema'
 import { ExportLog, ExportLogSchema } from './schemas/export-log.schema'
 import { WorksController } from './works.controller'
 import { WorksService } from './works.service'
+import { Workflow, WorkflowSchema } from '../workflow/schemas/workflow.schema'
+import { WorkflowNode, WorkflowNodeSchema } from '../workflow/schemas/workflow-node.schema'
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { WorksService } from './works.service'
       { name: Work.name, schema: WorkSchema },
       { name: WorkVersion.name, schema: WorkVersionSchema },
       { name: ExportLog.name, schema: ExportLogSchema },
+      { name: Workflow.name, schema: WorkflowSchema },
+      { name: WorkflowNode.name, schema: WorkflowNodeSchema },
     ]),
     OrgModule,
     StorageModule,

@@ -156,7 +156,15 @@ export class OrgService {
       throw new NotFoundException('用户不存在')
     }
 
-    const spaces = [
+    const spaces: Array<{
+      id: string
+      spaceId: string
+      type: 'personal' | 'team' | 'enterprise'
+      name: string
+      role: Role
+      enterpriseId?: string
+      teamId?: string
+    }> = [
       {
         id: 'personal',
         spaceId: 'personal',
@@ -180,6 +188,7 @@ export class OrgService {
             id: enterpriseSpaceId,
             spaceId: enterpriseSpaceId,
             type: 'enterprise',
+            enterpriseId: enterpriseSpaceId,
             name: enterprise.name,
             role: membership.role,
           })
@@ -194,6 +203,8 @@ export class OrgService {
             id: teamSpaceId,
             spaceId: teamSpaceId,
             type: 'team',
+            enterpriseId: enterprise._id.toString(),
+            teamId: teamSpaceId,
             name: team.name,
             role: membership.role,
           })
@@ -208,14 +219,15 @@ export class OrgService {
     if (spaceId === 'personal') {
       const user = await this.userModel.findById(userId)
       if (!user) throw new NotFoundException('用户不存在')
-      return { spaceId, spaceType: 'personal' as const }
+      return { spaceId, spaceType: 'personal' as const, role: Role.OWNER }
     }
     const space = await this.resolveSpace(spaceId)
-    await this.assertSpaceMember(userId, space)
+    const membership = await this.assertSpaceMember(userId, space)
     return {
       spaceId,
       spaceType: space.type,
       enterpriseId: space.enterprise._id.toString(),
+      role: space.type === 'enterprise' && membership.teamId ? Role.MEMBER : membership.role,
     }
   }
 
@@ -343,9 +355,11 @@ export class OrgService {
       | { type: 'enterprise'; enterprise: EnterpriseDocument },
   ) {
     const user = await this.userModel.findById(userId)
-    if (!user || !this.findSpaceMembership(user, space)) {
+    const membership = user ? this.findSpaceMembership(user, space) : undefined
+    if (!membership) {
       throw new BadRequestException('您不属于该空间')
     }
+    return membership
   }
 
   private async assertSpaceManager(

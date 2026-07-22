@@ -19,7 +19,8 @@ export interface IngestResult {
 }
 
 function isVectorRetrievalEnabled(): boolean {
-  return process.env.KNOWLEDGE_VECTOR_MODE?.trim().toLowerCase() !== 'disabled'
+  // 当前 V1 供应商不提供 Embeddings；只有显式开启时才连接 Pinecone，避免旧环境误发请求。
+  return process.env.KNOWLEDGE_VECTOR_MODE?.trim().toLowerCase() === 'enabled'
 }
 
 /**

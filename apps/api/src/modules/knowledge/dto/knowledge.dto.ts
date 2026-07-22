@@ -1,7 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsArray, IsIn, IsObject, IsString, IsOptional, IsNotEmpty } from 'class-validator'
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsObject,
+  IsString,
+  IsOptional,
+  IsNotEmpty,
+} from 'class-validator'
 
 export class CreateKnowledgeDto {
+  @ApiProperty({ description: '知识库所属 Space ID；个人空间固定为 personal' })
+  @IsString()
+  @IsNotEmpty()
+  spaceId!: string
+
   @ApiProperty({ description: '知识库名称', example: '瑞幸咖啡品牌规范库' })
   @IsString()
   @IsNotEmpty()
@@ -19,6 +32,11 @@ export class CreateKnowledgeDto {
   @IsString()
   @IsOptional()
   pineconeNamespace?: string
+
+  @ApiPropertyOptional({ description: '企业强制知识库；只允许企业空间管理员设置' })
+  @IsBoolean()
+  @IsOptional()
+  isRequired?: boolean
 }
 
 export class UpdateKnowledgeDto {
@@ -36,6 +54,11 @@ export class UpdateKnowledgeDto {
   @IsString()
   @IsOptional()
   pineconeNamespace?: string
+
+  @ApiPropertyOptional({ description: '是否作为企业强制知识库' })
+  @IsBoolean()
+  @IsOptional()
+  isRequired?: boolean
 }
 
 export class IngestKnowledgeDto {

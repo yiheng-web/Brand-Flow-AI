@@ -1,88 +1,91 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
+import { ingestDocument } from '@brand-flow/agent'
+import type { SpaceType } from '@brand-flow/contracts'
 import { Model, Types } from 'mongoose'
-import { Knowledge, KnowledgeDocument } from './schemas/knowledge.schema'
-import { KnowledgeItem, KnowledgeItemDocument } from './schemas/knowledge-item.schema'
+
+import { Role } from '@/common/enums'
+import { OrgService } from '@/modules/org/org.service'
+
 import {
   CreateKnowledgeDto,
   CreateKnowledgeItemDto,
   UpdateKnowledgeDto,
   UpdateKnowledgeItemDto,
 } from './dto/knowledge.dto'
-import { User, UserDocument } from '@/modules/org/schemas/user.schema'
-import { Role } from '@/common/enums'
-import { ingestDocument } from '@brand-flow/agent'
+import { Knowledge, KnowledgeDocument } from './schemas/knowledge.schema'
+import { KnowledgeItem, KnowledgeItemDocument } from './schemas/knowledge-item.schema'
+
+interface KnowledgeScope {
+  spaceId: string
+  spaceType: SpaceType
+  enterpriseId?: string
+  role: Role
+}
 
 @Injectable()
 export class KnowledgeService {
   constructor(
-    @InjectModel(Knowledge.name) private knowledgeModel: Model<KnowledgeDocument>,
+    @InjectModel(Knowledge.name) private readonly knowledgeModel: Model<KnowledgeDocument>,
     @InjectModel(KnowledgeItem.name)
-    private knowledgeItemModel: Model<KnowledgeItemDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly knowledgeItemModel: Model<KnowledgeItemDocument>,
+    private readonly orgService: OrgService,
   ) {}
 
-  async create(userId: string, enterpriseId: string, dto: CreateKnowledgeDto) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
+  async create(userId: string, dto: CreateKnowledgeDto) {
+    const scope = await this.resolveScope(userId, dto.spaceId)
+    this.assertCanCreate(scope)
+    if (dto.isRequired && scope.spaceType !== 'enterprise') {
+      throw new BadRequestException('只有企业空间可以设置强制知识库')
     }
 
-    const knowledge = await this.knowledgeModel.create({
-      ...dto,
+    return this.knowledgeModel.create({
+      name: dto.name,
+      description: dto.description,
+      pineconeNamespace: dto.pineconeNamespace,
+      isRequired: dto.isRequired ?? false,
+      spaceId: scope.spaceId,
+      spaceType: scope.spaceType,
+      enterpriseId: scope.enterpriseId ? new Types.ObjectId(scope.enterpriseId) : undefined,
       creatorId: new Types.ObjectId(userId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
     })
-
-    return knowledge
   }
 
-  async findAll(enterpriseId: string) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
-    }
-
+  async findAll(userId: string, spaceId: string) {
+    const scope = await this.resolveScope(userId, spaceId)
     return this.knowledgeModel
-      .find({ enterpriseId: new Types.ObjectId(enterpriseId) })
+      .find(this.buildListFilter(scope))
       .populate('creatorId', 'email profile')
-      .sort({ createdAt: -1 })
+      .sort({ isRequired: -1, createdAt: -1 })
   }
 
-  async findOne(enterpriseId: string, id: string) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
+  async findOne(userId: string, id: string) {
+    const knowledge = await this.findKnowledgeById(id)
+    await this.assertKnowledgeAccess(userId, knowledge)
+    return knowledge.populate('creatorId', 'email profile')
+  }
+
+  async update(userId: string, id: string, dto: UpdateKnowledgeDto) {
+    const knowledge = await this.findKnowledgeById(id)
+    const scope = await this.assertCanManage(userId, knowledge)
+    if (dto.isRequired !== undefined && scope.spaceType !== 'enterprise') {
+      throw new BadRequestException('只有企业空间可以设置强制知识库')
     }
-
-    const knowledge = await this.knowledgeModel
-      .findOne({
-        _id: id,
-        enterpriseId: new Types.ObjectId(enterpriseId),
-      })
-      .populate('creatorId', 'email profile')
-
-    if (!knowledge) {
-      throw new NotFoundException('知识库不存在或无权访问')
-    }
-
-    return knowledge
+    return this.knowledgeModel.findByIdAndUpdate(id, dto, { new: true, runValidators: true })
   }
 
-  async update(userId: string, enterpriseId: string, id: string, dto: UpdateKnowledgeDto) {
-    await this.checkPermission(userId, enterpriseId, id)
-
-    const knowledge = await this.knowledgeModel.findByIdAndUpdate(id, dto, { new: true })
-    return knowledge
-  }
-
-  async ingestText(userId: string, enterpriseId: string, knowledgeId: string, content: string) {
-    // 1. 权限校验
-    await this.checkPermission(userId, enterpriseId, knowledgeId)
-
-    // 2. 调用 agent 层的能力进行切片和向量化入库
+  async ingestText(userId: string, knowledgeId: string, content: string) {
+    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const scope = await this.assertCanManage(userId, knowledge)
     const result = await ingestDocument(content, {
-      enterpriseId,
+      enterpriseId: scope.enterpriseId ?? `personal:${userId}`,
       knowledgeId,
     })
-
     return {
       message: result.vectorized
         ? `成功入库，共生成 ${result.chunks} 个向量切片`
@@ -91,38 +94,19 @@ export class KnowledgeService {
     }
   }
 
-  async createItem(
-    userId: string,
-    enterpriseId: string,
-    knowledgeId: string,
-    dto: CreateKnowledgeItemDto,
-  ) {
-    await this.checkPermission(userId, enterpriseId, knowledgeId)
-
-    const item = await this.knowledgeItemModel.create({
-      knowledgeId: new Types.ObjectId(knowledgeId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
-      title: dto.title,
-      content: dto.content,
-      tags: dto.tags || [],
+  async createItem(userId: string, knowledgeId: string, dto: CreateKnowledgeItemDto) {
+    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const scope = await this.assertCanManage(userId, knowledge)
+    const item = await this.createScopedItem(userId, knowledge, scope, {
+      ...dto,
       sourceType: 'manual',
-      status: 'active',
-      constraintLevel: dto.constraintLevel ?? 'recommended',
-      creatorId: new Types.ObjectId(userId),
-      metadata: dto.metadata || {},
     })
-
-    const ingest = await this.ingestText(userId, enterpriseId, knowledgeId, dto.content)
-
-    return {
-      item,
-      ingest,
-    }
+    const ingest = await this.ingestText(userId, knowledgeId, dto.content)
+    return { item, ingest }
   }
 
   async createItemFromAsset(
     userId: string,
-    enterpriseId: string,
     knowledgeId: string,
     payload: {
       title: string
@@ -132,146 +116,161 @@ export class KnowledgeService {
       metadata?: Record<string, unknown>
     },
   ) {
-    await this.checkPermission(userId, enterpriseId, knowledgeId)
-
-    const item = await this.knowledgeItemModel.create({
-      knowledgeId: new Types.ObjectId(knowledgeId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
-      title: payload.title,
-      content: payload.content,
-      tags: payload.tags || [],
+    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const scope = await this.assertCanManage(userId, knowledge)
+    const constraintLevel =
+      payload.metadata?.constraintLevel === 'required' ||
+      payload.metadata?.constraintLevel === 'optional'
+        ? payload.metadata.constraintLevel
+        : 'recommended'
+    const item = await this.createScopedItem(userId, knowledge, scope, {
+      ...payload,
       sourceType: 'asset',
-      assetId: new Types.ObjectId(payload.assetId),
-      status: 'active',
-      constraintLevel:
-        payload.metadata?.constraintLevel === 'required' ||
-        payload.metadata?.constraintLevel === 'optional'
-          ? payload.metadata.constraintLevel
-          : 'recommended',
-      creatorId: new Types.ObjectId(userId),
-      metadata: payload.metadata || {},
+      constraintLevel,
     })
-
-    const ingest = await this.ingestText(userId, enterpriseId, knowledgeId, payload.content)
-
-    return {
-      item,
-      ingest,
-    }
+    const ingest = await this.ingestText(userId, knowledgeId, payload.content)
+    return { item, ingest }
   }
 
-  async findItems(enterpriseId: string, knowledgeId: string) {
-    await this.findOne(enterpriseId, knowledgeId)
-
+  async findItems(userId: string, knowledgeId: string) {
+    const knowledge = await this.findKnowledgeById(knowledgeId)
+    await this.assertKnowledgeAccess(userId, knowledge)
     return this.knowledgeItemModel
-      .find({
-        enterpriseId: new Types.ObjectId(enterpriseId),
-        knowledgeId: new Types.ObjectId(knowledgeId),
-      })
+      .find({ knowledgeId: new Types.ObjectId(knowledgeId) })
       .populate('creatorId', 'email profile')
       .sort({ createdAt: -1 })
   }
 
-  async findItem(enterpriseId: string, knowledgeId: string, itemId: string) {
-    await this.findOne(enterpriseId, knowledgeId)
-
+  async findItem(userId: string, knowledgeId: string, itemId: string) {
+    await this.findOne(userId, knowledgeId)
     const item = await this.knowledgeItemModel
-      .findOne({
-        _id: itemId,
-        enterpriseId: new Types.ObjectId(enterpriseId),
-        knowledgeId: new Types.ObjectId(knowledgeId),
-      })
+      .findOne({ _id: itemId, knowledgeId: new Types.ObjectId(knowledgeId) })
       .populate('creatorId', 'email profile')
-
-    if (!item) {
-      throw new NotFoundException('知识项不存在或无权访问')
-    }
-
+    if (!item) throw new NotFoundException('知识项不存在或无权访问')
     return item
   }
 
   async updateItem(
     userId: string,
-    enterpriseId: string,
     knowledgeId: string,
     itemId: string,
     dto: UpdateKnowledgeItemDto,
   ) {
-    await this.checkPermission(userId, enterpriseId, knowledgeId)
-    await this.findItem(enterpriseId, knowledgeId, itemId)
-
-    const item = await this.knowledgeItemModel.findByIdAndUpdate(
-      itemId,
-      {
-        ...dto,
-        metadata: dto.metadata,
-      },
-      { new: true },
-    )
-
-    if (dto.content) {
-      await this.ingestText(userId, enterpriseId, knowledgeId, dto.content)
-    }
-
+    const knowledge = await this.findKnowledgeById(knowledgeId)
+    await this.assertCanManage(userId, knowledge)
+    await this.findItem(userId, knowledgeId, itemId)
+    const item = await this.knowledgeItemModel.findByIdAndUpdate(itemId, dto, {
+      new: true,
+      runValidators: true,
+    })
+    if (dto.content) await this.ingestText(userId, knowledgeId, dto.content)
     return item
   }
 
-  async removeItem(userId: string, enterpriseId: string, knowledgeId: string, itemId: string) {
-    await this.checkPermission(userId, enterpriseId, knowledgeId)
-    const item = await this.findItem(enterpriseId, knowledgeId, itemId)
-
+  async removeItem(userId: string, knowledgeId: string, itemId: string) {
+    const knowledge = await this.findKnowledgeById(knowledgeId)
+    await this.assertCanManage(userId, knowledge)
+    const item = await this.findItem(userId, knowledgeId, itemId)
     await this.knowledgeItemModel.findByIdAndDelete(item._id)
-
     return { success: true }
   }
 
-  async remove(userId: string, enterpriseId: string, id: string) {
-    const knowledge = await this.findOne(enterpriseId, id)
-
-    // TODO: 未来可以在此处同步删除 Pinecone 中的 namespace 以防孤儿数据
-    // 目前仅删除 MongoDB 中的引用记录
+  async remove(userId: string, id: string) {
+    const knowledge = await this.findKnowledgeById(id)
+    await this.assertCanManage(userId, knowledge)
     await this.knowledgeItemModel.deleteMany({ knowledgeId: knowledge._id })
     await this.knowledgeModel.findByIdAndDelete(knowledge._id)
-
     return { success: true }
   }
 
-  async getRecords(enterpriseId: string, knowledgeId: string): Promise<unknown[]> {
-    // 首先校验归属权限
-    await this.findOne(enterpriseId, knowledgeId)
-
-    // 调用底层库暴露的方法
+  async getRecords(userId: string, knowledgeId: string): Promise<unknown[]> {
+    await this.findOne(userId, knowledgeId)
     const { listKnowledgeRecords } = await import('@brand-flow/agent')
-    const records = await listKnowledgeRecords(knowledgeId)
-    return records
+    return listKnowledgeRecords(knowledgeId)
   }
 
-  private async checkPermission(userId: string, enterpriseId: string, knowledgeId: string) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
-    }
-
-    const knowledge = await this.knowledgeModel.findOne({
-      _id: knowledgeId,
-      enterpriseId: new Types.ObjectId(enterpriseId),
+  private async createScopedItem(
+    userId: string,
+    knowledge: KnowledgeDocument,
+    scope: KnowledgeScope,
+    payload: CreateKnowledgeItemDto & {
+      sourceType: 'manual' | 'asset'
+      assetId?: string
+    },
+  ) {
+    return this.knowledgeItemModel.create({
+      knowledgeId: knowledge._id,
+      spaceId: scope.spaceId,
+      spaceType: scope.spaceType,
+      enterpriseId: scope.enterpriseId ? new Types.ObjectId(scope.enterpriseId) : undefined,
+      title: payload.title,
+      content: payload.content,
+      tags: payload.tags ?? [],
+      sourceType: payload.sourceType,
+      assetId: payload.assetId ? new Types.ObjectId(payload.assetId) : undefined,
+      status: 'active',
+      constraintLevel: payload.constraintLevel ?? 'recommended',
+      creatorId: new Types.ObjectId(userId),
+      metadata: payload.metadata ?? {},
     })
+  }
 
-    if (!knowledge) {
-      throw new NotFoundException('知识库不存在或无权访问')
-    }
-
-    // 判断权限: 如果不是本人创建的，需要具有当前企业的 OWNER/ADMIN 权限
-    if (knowledge.creatorId.toString() !== userId) {
-      const user = await this.userModel.findById(userId)
-      const membership = user?.memberships.find(
-        (m) => m.enterpriseId.toString() === enterpriseId && !m.teamId,
-      )
-
-      if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-        throw new BadRequestException('您无权操作此知识库')
-      }
-    }
-
+  private async findKnowledgeById(id: string) {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('知识库不存在或无权访问')
+    const knowledge = await this.knowledgeModel.findById(id)
+    if (!knowledge) throw new NotFoundException('知识库不存在或无权访问')
     return knowledge
+  }
+
+  private async assertKnowledgeAccess(userId: string, knowledge: KnowledgeDocument) {
+    const spaceId = knowledge.spaceId || knowledge.enterpriseId?.toString()
+    if (!spaceId) throw new NotFoundException('知识库缺少有效空间归属')
+    return this.resolveScope(userId, spaceId)
+  }
+
+  private async assertCanManage(userId: string, knowledge: KnowledgeDocument) {
+    const scope = await this.assertKnowledgeAccess(userId, knowledge)
+    if (knowledge.creatorId.toString() === userId) return scope
+    if (scope.role !== Role.OWNER && scope.role !== Role.ADMIN) {
+      throw new ForbiddenException('您无权管理此知识库')
+    }
+    return scope
+  }
+
+  private assertCanCreate(scope: KnowledgeScope) {
+    if (scope.spaceType !== 'personal' && scope.role !== Role.OWNER && scope.role !== Role.ADMIN) {
+      throw new ForbiddenException('只有空间管理员可以创建团队或企业知识库')
+    }
+  }
+
+  private async resolveScope(userId: string, spaceId: string): Promise<KnowledgeScope> {
+    const space = await this.orgService.getAccessibleSpace(userId, spaceId)
+    return {
+      spaceId,
+      spaceType: space.spaceType,
+      enterpriseId: space.enterpriseId,
+      role: space.role,
+    }
+  }
+
+  private buildListFilter(scope: KnowledgeScope) {
+    const exactScope = { spaceId: scope.spaceId }
+    if (scope.spaceType === 'personal' || !scope.enterpriseId) return exactScope
+    const legacyEnterprise = {
+      spaceId: { $exists: false },
+      enterpriseId: new Types.ObjectId(scope.enterpriseId),
+    }
+    if (scope.spaceType === 'enterprise') return { $or: [exactScope, legacyEnterprise] }
+    return {
+      $or: [
+        exactScope,
+        {
+          spaceId: scope.enterpriseId,
+          spaceType: 'enterprise',
+          enterpriseId: new Types.ObjectId(scope.enterpriseId),
+          isRequired: true,
+        },
+      ],
+    }
   }
 }

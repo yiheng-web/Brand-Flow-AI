@@ -11,6 +11,10 @@ export interface SiliconFlowChatSettings {
   embeddingModel: string
 }
 
+export const SILICONFLOW_JSON_CALL_OPTIONS = {
+  response_format: { type: 'json_object' as const },
+}
+
 export function getSiliconFlowChatSettings(): SiliconFlowChatSettings {
   const apiKey = process.env.SILICONFLOW_API_KEY?.trim()
   if (!apiKey) throw new Error('SILICONFLOW_API_KEY 未配置')
@@ -34,6 +38,8 @@ export function createSiliconFlowChatModel(): ChatOpenAI {
     model: settings.chatModel,
     configuration: { baseURL: settings.baseUrl },
     useResponsesApi: false,
+    temperature: 0.2,
+    maxTokens: 4096,
     maxRetries: 2,
   })
 }

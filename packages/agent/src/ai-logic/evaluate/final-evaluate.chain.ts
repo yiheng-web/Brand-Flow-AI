@@ -4,6 +4,7 @@ import {
   createSiliconFlowChatModel,
   extractChatText,
   prepareSiliconFlowVisionImage,
+  SILICONFLOW_JSON_CALL_OPTIONS,
 } from '../../common/siliconflow-chat'
 import { FINAL_EVALUATE_PROMPT } from '../prompts/final-evaluate-prompt'
 import type { FinalEvaluationResult } from './evaluate-types'
@@ -28,7 +29,7 @@ export async function runFinalEvaluation(
     ],
   })
 
-  const response = await llm.invoke([message])
+  const response = await llm.invoke([message], SILICONFLOW_JSON_CALL_OPTIONS)
   const raw = extractChatText(response.content)
 
   const parsed = safeJsonParse<FinalEvaluationResult>(raw)

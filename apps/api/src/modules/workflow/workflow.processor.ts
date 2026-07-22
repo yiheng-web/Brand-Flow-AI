@@ -24,6 +24,7 @@ import { KnowledgeItem, KnowledgeItemDocument } from '../knowledge/schemas/knowl
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
 import { WorkflowNode, WorkflowNodeDocument } from './schemas/workflow-node.schema'
 import { Workflow, WorkflowDocument } from './schemas/workflow.schema'
+import { StorageService } from '../storage/storage.service'
 
 interface RunWorkflowJobData {
   workflowId: string
@@ -39,6 +40,7 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
     @InjectModel(KnowledgeItem.name)
     private readonly knowledgeItemModel: Model<KnowledgeItemDocument>,
+    private readonly storageService: StorageService,
   ) {
     super()
   }
@@ -256,10 +258,36 @@ export class WorkflowProcessor extends WorkerHost {
 
     if (nodeType === 'generate') {
       const startedAt = Date.now()
-      const candidates = await generateCandidates(result.prompt)
+      const reusableCandidates = result.generate?.candidates
+      const canReusePersistedCandidates =
+        reusableCandidates?.length === 4 &&
+        reusableCandidates.every((candidate) => typeof candidate.metadata?.objectKey === 'string')
+      const candidates = canReusePersistedCandidates
+        ? await Promise.all(
+            reusableCandidates.map(async (candidate) => ({
+              ...candidate,
+              imageUrl: await this.storageService.getSignedUrl(
+                candidate.metadata?.objectKey as string,
+              ),
+            })),
+          )
+        : await this.persistGeneratedCandidates(workflow, await generateCandidates(result.prompt))
       if (!candidates.some((candidate) => candidate.imageUrl)) {
         throw new Error('四张候选图均生成失败，请检查生图 Provider 配置或显式开启演示模式')
       }
+      const checkpoint = {
+        candidates,
+        evaluations: [],
+        selectedCandidateId: '',
+        durationMs: Date.now() - startedAt,
+      }
+      // 生图已付费且已落 MinIO 后立即检查点，质检失败时可只重跑质检，避免重复生图。
+      const checkpointResult = { ...result, generate: checkpoint }
+      await this.persistProgress(workflow._id.toString(), checkpointResult)
+      await this.workflowNodeModel.findOneAndUpdate(
+        { workflowId: workflow._id.toString(), type: 'generate' },
+        { output: checkpoint },
+      )
       const evaluations = sortCandidateEvaluations(
         await evaluateCandidateImages(candidates, result.brandConstraint),
       )
@@ -343,5 +371,39 @@ export class WorkflowProcessor extends WorkerHost {
 
   private async persistProgress(workflowId: string, result: WorkflowResult) {
     await this.workflowModel.findByIdAndUpdate(workflowId, { result })
+  }
+
+  private async persistGeneratedCandidates(
+    workflow: WorkflowDocument,
+    candidates: Awaited<ReturnType<typeof generateCandidates>>,
+  ) {
+    const uploadedKeys: string[] = []
+    try {
+      return await Promise.all(
+        candidates.map(async (candidate, index) => {
+          if (!candidate.imageUrl) return candidate
+          const objectKey = `workflows/${workflow.userId}/${workflow._id.toString()}/candidates/${index + 1}.png`
+          await this.storageService.importRemotePng(candidate.imageUrl, {
+            key: objectKey,
+            metadata: {
+              workflowId: workflow._id.toString(),
+              candidateId: candidate.id,
+              provider: 'siliconflow',
+            },
+          })
+          uploadedKeys.push(objectKey)
+          return {
+            ...candidate,
+            imageUrl: await this.storageService.getSignedUrl(objectKey),
+            metadata: { ...candidate.metadata, objectKey, persisted: true },
+          }
+        }),
+      )
+    } catch (error) {
+      await Promise.all(
+        uploadedKeys.map((key) => this.storageService.deleteObject(key).catch(() => undefined)),
+      )
+      throw error
+    }
   }
 }

@@ -3,8 +3,10 @@ import apiClient from './index'
 
 // 创建知识库请求参数
 export interface CreateKnowledgeParams {
+  spaceId: string
   name: string
   description?: string
+  isRequired?: boolean
 }
 
 // 更新知识库请求参数
@@ -24,6 +26,10 @@ export interface KnowledgeData {
   id?: string
   name: string
   description?: string
+  spaceId: string
+  spaceType: 'personal' | 'team' | 'enterprise'
+  enterpriseId?: string
+  isRequired: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -68,8 +74,8 @@ export async function createKnowledge(params: CreateKnowledgeParams): Promise<Kn
 }
 
 // 获取知识库列表
-export async function getKnowledgeList(): Promise<KnowledgeData[]> {
-  return apiClient.get<unknown, KnowledgeData[]>('/knowledge')
+export async function getKnowledgeList(spaceId = 'personal'): Promise<KnowledgeData[]> {
+  return apiClient.get<unknown, KnowledgeData[]>('/knowledge', { params: { spaceId } })
 }
 
 // 获取单个知识库
@@ -119,11 +125,11 @@ export async function deleteKnowledgeItem(
 }
 
 /** 兼容旧弹窗的知识库选择器，返回值保持旧组件约定。 */
-export async function getKnowledgeBases(): Promise<{
+export async function getKnowledgeBases(spaceId = 'personal'): Promise<{
   success: true
   data: KnowledgeBaseOption[]
 }> {
-  const list = await getKnowledgeList()
+  const list = await getKnowledgeList(spaceId)
   return {
     success: true,
     data: list.map((item) => ({ id: item._id || item.id || '', name: item.name })),

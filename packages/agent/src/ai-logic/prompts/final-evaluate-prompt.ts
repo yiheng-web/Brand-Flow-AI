@@ -12,6 +12,7 @@ export const FINAL_EVALUATE_PROMPT = `
 2. **美学质量**：整体视觉效果
 3. **技术质量**：分辨率、清晰度、是否模糊/变形
 4. **构图质量**：元素布局是否合理
+5. 如果品牌约束 JSON 中存在 compositionChecks，必须逐字识别成片文字，并核对文字、框选区域和裁切状态
 
 ## 扣分规则
 - 每项不达标扣 0.5-2 分
@@ -37,7 +38,14 @@ export const FINAL_EVALUATE_PROMPT = `
     "右上角留白过多，建议回溯到「图文合成」调整布局"
   ],
   "canExport": true
+  ,"compositionVerification": {
+    "detectedText": "逐字识别出的成片文字；没有文字时为空字符串",
+    "textMatchesExpected": true,
+    "insideAllowedRegion": true,
+    "noClipping": true
+  }
 }
 
 suggestions 每条必须明确指出应回溯到哪个节点（品牌约束/创意方案/底图生成/图文合成）
+存在 compositionChecks 时 compositionVerification 必须返回；detectedText 必须保留换行和原字符，不得自行纠错。
 `.trim()

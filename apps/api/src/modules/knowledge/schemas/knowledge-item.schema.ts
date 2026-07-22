@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document, Types } from 'mongoose'
+import type { SpaceType } from '@brand-flow/contracts'
 
 export type KnowledgeItemSourceType = 'manual' | 'asset'
 export type KnowledgeItemStatus = 'active' | 'archived'
@@ -16,8 +17,14 @@ export class KnowledgeItem {
   @Prop({ type: Types.ObjectId, ref: 'Knowledge', required: true, index: true })
   knowledgeId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId
+  @Prop({ required: true, index: true })
+  spaceId!: string
+
+  @Prop({ type: String, enum: ['personal', 'team', 'enterprise'], required: true, index: true })
+  spaceType!: SpaceType
+
+  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  enterpriseId?: Types.ObjectId
 
   @Prop({ required: true })
   title!: string

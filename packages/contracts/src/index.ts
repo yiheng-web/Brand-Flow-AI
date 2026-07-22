@@ -259,6 +259,12 @@ export interface CompositionOutput {
   layers: CompositionLayer[]
   finalImageUrl: string
   objectKey: string
+  integrity: {
+    sha256: string
+    renderer: 'fabric-v1'
+    baseObjectKey: string
+    pixelRegionVerified: boolean
+  }
   exportSettings: {
     width: number
     height: number
@@ -337,6 +343,7 @@ export interface WorkflowResult {
     | {
         finalImageUrl: string
         sourceCandidateId: string
+        objectKey?: string
         mode: 'skipped'
       }
   finalEvaluation?: FinalEvaluationResult

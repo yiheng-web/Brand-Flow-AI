@@ -230,10 +230,6 @@ export class AssetsService {
     assetId: string,
     dto: SaveAssetToKnowledgeDto,
   ) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
-    }
-
     const asset = await this.findAccessibleAsset(userId, enterpriseId, assetId)
     const tags = Array.isArray(asset.metadata?.tags)
       ? asset.metadata.tags.filter((tag): tag is string => typeof tag === 'string')
@@ -250,23 +246,18 @@ export class AssetsService {
       .filter(Boolean)
       .join('\n')
 
-    const result = await this.knowledgeService.createItemFromAsset(
-      userId,
-      enterpriseId,
-      dto.knowledgeId,
-      {
-        title: asset.name,
-        content,
-        assetId: asset._id.toString(),
-        tags,
-        metadata: {
-          assetType: asset.type,
-          assetUrl: asset.url,
-          objectKey: asset.objectKey,
-          description: dto.description || asset.metadata?.description,
-        },
+    const result = await this.knowledgeService.createItemFromAsset(userId, dto.knowledgeId, {
+      title: asset.name,
+      content,
+      assetId: asset._id.toString(),
+      tags,
+      metadata: {
+        assetType: asset.type,
+        assetUrl: asset.url,
+        objectKey: asset.objectKey,
+        description: dto.description || asset.metadata?.description,
       },
-    )
+    })
 
     asset.metadata = {
       ...(asset.metadata || {}),
@@ -316,11 +307,21 @@ export class AssetsService {
     }
   }
 
-  private async findAccessibleAsset(userId: string, enterpriseId: string, assetId: string) {
-    const asset = await this.assetModel.findOne({
-      _id: assetId,
-      enterpriseId: new Types.ObjectId(enterpriseId),
-    })
+  private async findAccessibleAsset(
+    userId: string,
+    enterpriseId: string | undefined,
+    assetId: string,
+  ) {
+    const asset = await this.assetModel.findOne(
+      enterpriseId
+        ? { _id: assetId, enterpriseId: new Types.ObjectId(enterpriseId) }
+        : {
+            _id: assetId,
+            ownerType: OwnerType.USER,
+            ownerId: new Types.ObjectId(userId),
+            creatorId: new Types.ObjectId(userId),
+          },
+    )
 
     if (!asset) {
       throw new NotFoundException('资产不存在或无权访问')
@@ -329,6 +330,8 @@ export class AssetsService {
     if (asset.creatorId.toString() === userId || asset.visibility === Visibility.PUBLIC) {
       return asset
     }
+
+    if (!enterpriseId) throw new NotFoundException('资产不存在或无权访问')
 
     const user = await this.userModel.findById(userId)
 

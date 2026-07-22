@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
+import type { WorkflowResult } from '@brand-flow/contracts'
 import { OwnerType, Role, Visibility } from '@/common/enums'
 import { User, UserDocument } from '@/modules/org/schemas/user.schema'
 import { OrgService } from '@/modules/org/org.service'
@@ -9,6 +10,8 @@ import { CreateWorkDto, CreateWorkVersionDto, ExportWorkDto } from './dto/works.
 import { Work, WorkDocument } from './schemas/work.schema'
 import { WorkVersion, WorkVersionDocument } from './schemas/work-version.schema'
 import { ExportLog, ExportLogDocument } from './schemas/export-log.schema'
+import { Workflow, WorkflowDocument } from '../workflow/schemas/workflow.schema'
+import { WorkflowNode, WorkflowNodeDocument } from '../workflow/schemas/workflow-node.schema'
 
 @Injectable()
 export class WorksService {
@@ -19,19 +22,61 @@ export class WorksService {
     @InjectModel(ExportLog.name)
     private readonly exportLogModel: Model<ExportLogDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Workflow.name) private readonly workflowModel: Model<WorkflowDocument>,
+    @InjectModel(WorkflowNode.name)
+    private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
     private readonly storageService: StorageService,
     private readonly orgService: OrgService,
   ) {}
 
   async create(userId: string, dto: CreateWorkDto) {
-    const space = await this.orgService.getAccessibleSpace(userId, dto.spaceId)
-    if (dto.workflowId && Types.ObjectId.isValid(dto.workflowId)) {
-      const existing = await this.workModel.findOne({
-        workflowId: new Types.ObjectId(dto.workflowId),
-        creatorId: new Types.ObjectId(userId),
-      })
-      if (existing) return this.findOne(userId, existing._id.toString())
+    if (!Types.ObjectId.isValid(dto.workflowId)) {
+      throw new BadRequestException('来源工作流 ID 格式不正确')
     }
+    const workflow = await this.workflowModel.findOne({ _id: dto.workflowId, userId })
+    const result = workflow?.result as WorkflowResult | undefined
+    if (
+      !workflow ||
+      workflow.spaceId !== dto.spaceId ||
+      workflow.status !== 'completed' ||
+      !result?.finalEvaluation?.passed ||
+      !result.compose
+    ) {
+      throw new BadRequestException('只能保存本人当前 Space 中已完成且质检通过的工作流')
+    }
+    const trustedObjectKey = 'objectKey' in result.compose ? result.compose.objectKey : undefined
+    if (
+      !trustedObjectKey ||
+      !trustedObjectKey.startsWith(`workflows/${userId}/${dto.workflowId}/`)
+    ) {
+      throw new BadRequestException('工作流成片缺少可信对象存储来源')
+    }
+    if (dto.objectKey && dto.objectKey !== trustedObjectKey) {
+      throw new BadRequestException('作品对象与工作流成片不一致')
+    }
+    const space = await this.orgService.getAccessibleSpace(userId, dto.spaceId)
+    const existing = await this.workModel.findOne({ workflowId: workflow._id })
+    if (existing) return this.findOne(userId, existing._id.toString())
+    const nodes = await this.workflowNodeModel
+      .find({ workflowId: workflow._id })
+      .sort({ createdAt: 1 })
+    const nodesSnapshot = Object.fromEntries(
+      nodes.map((node) => [node.type, { status: node.status, output: node.output }]),
+    )
+    const workId = new Types.ObjectId()
+    const workObjectKey = `works/${userId}/${workId.toString()}/versions/1.png`
+    const sourceObject = await this.storageService.getObject(trustedObjectKey)
+    if (sourceObject.contentType !== 'image/png') {
+      throw new BadRequestException('工作流成片不是有效 PNG')
+    }
+    await this.storageService.uploadObject({
+      key: workObjectKey,
+      body: Buffer.from(sourceObject.bytes),
+      size: sourceObject.bytes.length,
+      contentType: 'image/png',
+      metadata: { workflowId: dto.workflowId, sourceObjectKey: trustedObjectKey },
+    })
+    const trustedImageUrl = await this.storageService.getSignedUrl(workObjectKey)
     const ownerType =
       space.spaceType === 'personal'
         ? OwnerType.USER
@@ -46,38 +91,64 @@ export class WorksService {
           ? Visibility.TEAM
           : Visibility.ENTERPRISE
 
-    const work = await this.workModel.create({
-      title: dto.title,
-      description: dto.description,
-      finalImageUrl: dto.finalImageUrl,
-      objectKey: dto.objectKey,
-      workflowId: dto.workflowId ? new Types.ObjectId(dto.workflowId) : undefined,
-      spaceId: dto.spaceId,
-      spaceType: space.spaceType,
-      selectedCandidateId:
-        typeof dto.metadata?.selectedCandidateId === 'string'
-          ? dto.metadata.selectedCandidateId
-          : undefined,
-      qualityReport: dto.qualityReport || {},
-      nodesSnapshot: dto.nodesSnapshot || {},
-      ownerId: new Types.ObjectId(ownerId),
-      ownerType,
-      visibility,
-      creatorId: new Types.ObjectId(userId),
-      enterpriseId: space.enterpriseId ? new Types.ObjectId(space.enterpriseId) : undefined,
-      metadata: dto.metadata || {},
-    })
+    let work: WorkDocument
+    try {
+      work = await this.workModel.create({
+        _id: workId,
+        title: dto.title,
+        description: dto.description,
+        finalImageUrl: trustedImageUrl,
+        objectKey: workObjectKey,
+        workflowId: workflow._id,
+        spaceId: dto.spaceId,
+        spaceType: space.spaceType,
+        selectedCandidateId: result.generate?.selectedCandidateId || undefined,
+        qualityReport: result.finalEvaluation,
+        nodesSnapshot,
+        ownerId: new Types.ObjectId(ownerId),
+        ownerType,
+        visibility,
+        creatorId: new Types.ObjectId(userId),
+        enterpriseId: space.enterpriseId ? new Types.ObjectId(space.enterpriseId) : undefined,
+        metadata: {
+          selectedCandidateId: result.generate?.selectedCandidateId,
+          artText: result.compositionDraft,
+          composition: result.compose,
+        },
+      })
+    } catch (error: unknown) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        Reflect.get(error, 'code') === 11000
+      ) {
+        const duplicate = await this.workModel.findOne({ workflowId: workflow._id })
+        if (duplicate) {
+          await this.storageService.deleteObject(workObjectKey).catch(() => undefined)
+          return this.findOne(userId, duplicate._id.toString())
+        }
+      }
+      await this.storageService.deleteObject(workObjectKey).catch(() => undefined)
+      throw error
+    }
 
-    await this.workVersionModel.create({
-      workId: work._id,
-      versionNo: 1,
-      imageUrl: dto.finalImageUrl,
-      objectKey: dto.objectKey,
-      sourceWorkflowId: dto.workflowId ? new Types.ObjectId(dto.workflowId) : undefined,
-      nodesSnapshot: dto.nodesSnapshot || {},
-      qualityReport: dto.qualityReport || {},
-      createdBy: new Types.ObjectId(userId),
-    })
+    try {
+      await this.workVersionModel.create({
+        workId: work._id,
+        versionNo: 1,
+        imageUrl: trustedImageUrl,
+        objectKey: workObjectKey,
+        sourceWorkflowId: workflow._id,
+        nodesSnapshot,
+        qualityReport: result.finalEvaluation,
+        createdBy: new Types.ObjectId(userId),
+      })
+    } catch (error) {
+      await this.workModel.findByIdAndDelete(work._id)
+      await this.storageService.deleteObject(workObjectKey).catch(() => undefined)
+      throw error
+    }
 
     return this.findOne(userId, work._id.toString())
   }
@@ -131,6 +202,13 @@ export class WorksService {
       )
     }
 
+    const versions = await this.workVersionModel.find({ workId: work._id }, { objectKey: 1 })
+    const objectKeys = new Set(
+      [work.objectKey, ...versions.map((version) => version.objectKey)].filter(
+        (key): key is string => Boolean(key),
+      ),
+    )
+    await Promise.all([...objectKeys].map((key) => this.storageService.deleteObject(key)))
     await this.workVersionModel.deleteMany({ workId: work._id })
     await this.workModel.findByIdAndDelete(work._id)
 

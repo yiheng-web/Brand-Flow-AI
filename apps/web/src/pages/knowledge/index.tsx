@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Empty, Modal, Input, Form, message } from 'antd'
+import { Button, Card, Empty, Modal, Input, Form, Select, message } from 'antd'
 import {
   FolderOutlined,
   PlusOutlined,
@@ -15,6 +15,7 @@ import {
   updateKnowledge,
 } from '@/api/knowledge'
 import type { KnowledgeData } from '@/api/knowledge'
+import { useUserStore } from '@/store/useUserStore'
 import styles from './knowledge.module.css'
 
 const KnowledgeListPage = () => {
@@ -27,18 +28,20 @@ const KnowledgeListPage = () => {
   const [renameTarget, setRenameTarget] = useState<KnowledgeData | null>(null)
   const [renameName, setRenameName] = useState('')
   const [form] = Form.useForm()
+  const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
+  const spaceType = useUserStore((state) => state.currentSpaceType)
 
   const fetchList = useCallback(async () => {
     setLoading(true)
     try {
-      const res = (await getKnowledgeList()) as unknown as KnowledgeData[]
+      const res = (await getKnowledgeList(spaceId)) as unknown as KnowledgeData[]
       setList(res)
     } catch {
       message.error('加载知识库列表失败')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [spaceId])
 
   useEffect(() => {
     queueMicrotask(() => void fetchList())
@@ -48,7 +51,7 @@ const KnowledgeListPage = () => {
     try {
       const values = await form.validateFields()
       setCreating(true)
-      await createKnowledge(values)
+      await createKnowledge({ ...values, spaceId })
       message.success('知识库创建成功')
       setCreateOpen(false)
       form.resetFields()
@@ -178,6 +181,16 @@ const KnowledgeListPage = () => {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} placeholder="简要描述知识库的用途和内容范围（选填）" />
           </Form.Item>
+          {spaceType === 'enterprise' && (
+            <Form.Item name="isRequired" label="企业规则" initialValue={false}>
+              <Select
+                options={[
+                  { value: false, label: '普通企业知识库' },
+                  { value: true, label: '强制知识库（团队空间自动启用）' },
+                ]}
+              />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
       <Modal

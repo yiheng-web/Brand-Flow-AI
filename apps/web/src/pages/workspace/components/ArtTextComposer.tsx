@@ -10,7 +10,7 @@ import type {
 import type { TPointerEvent } from 'fabric'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Input, Space, Spin, Tag, message } from 'antd'
-import { Canvas, FabricImage, Gradient, Rect, Shadow, StaticCanvas, Textbox } from 'fabric'
+import { Canvas, FabricImage, Gradient, Group, Rect, Shadow, StaticCanvas, Textbox } from 'fabric'
 
 import {
   createPlacementPlan,
@@ -35,10 +35,18 @@ const MIN_REGION_HEIGHT = 0.05
 
 function createTextObject(candidate: ArtTextCandidate, width: number, height: number): Textbox {
   const spec = candidate.vectorSpec
+  const angle = ((spec.gradient?.angle ?? 90) * Math.PI) / 180
+  const centerX = width / 2
+  const centerY = height / 2
   const fill = spec.gradient
-    ? new Gradient({
+    ? new Gradient<'linear'>({
         type: 'linear',
-        coords: { x1: 0, y1: 0, x2: 0, y2: height },
+        coords: {
+          x1: centerX - (Math.cos(angle) * width) / 2,
+          y1: centerY - (Math.sin(angle) * height) / 2,
+          x2: centerX + (Math.cos(angle) * width) / 2,
+          y2: centerY + (Math.sin(angle) * height) / 2,
+        },
         colorStops: [
           { offset: 0, color: spec.gradient.from },
           { offset: 1, color: spec.gradient.to },
@@ -67,18 +75,78 @@ function createTextObject(candidate: ArtTextCandidate, width: number, height: nu
   })
 }
 
+function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: number) {
+  const text = createTextObject(candidate, width, height)
+  text.set({ left: 0, top: 0 })
+  text.initDimensions()
+  const decorations = (candidate.vectorSpec.decorations ?? []).flatMap((decoration, index) => {
+    const offset = index * Math.max(4, height * 0.035)
+    if (decoration.type === 'highlight') {
+      return [
+        new Rect({
+          left: width * 0.04,
+          top: height * 0.3 + offset,
+          width: width * 0.92,
+          height: height * 0.38,
+          rx: height * 0.08,
+          ry: height * 0.08,
+          fill: decoration.color,
+          opacity: 0.24,
+        }),
+      ]
+    }
+    if (decoration.type === 'line') {
+      return [
+        new Rect({
+          left: width * 0.08,
+          top: Math.max(0, height * 0.88 - offset),
+          width: width * 0.84,
+          height: Math.max(2, height * 0.035),
+          rx: 2,
+          ry: 2,
+          fill: decoration.color,
+        }),
+      ]
+    }
+    const size = Math.max(5, height * 0.1)
+    return [
+      new Rect({
+        left: width * 0.02 + offset,
+        top: height * 0.12,
+        width: size,
+        height: size,
+        angle: 45,
+        fill: decoration.color,
+      }),
+      new Rect({
+        left: width * 0.94 - offset,
+        top: height * 0.72,
+        width: size,
+        height: size,
+        angle: 45,
+        fill: decoration.color,
+      }),
+    ]
+  })
+  const group = new Group([...decorations, text], {
+    selectable: false,
+    evented: false,
+    subTargetCheck: false,
+  })
+  return { group, text }
+}
+
 function ArtTextPreview({ candidate }: { candidate: ArtTextCandidate }) {
   const ref = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     if (!ref.current) return
     const canvas = new StaticCanvas(ref.current, { width: 280, height: 120 })
-    const text = createTextObject(candidate, 244, 90)
-    text.set({ left: 18, top: 15, selectable: false, evented: false })
-    text.initDimensions()
-    const scale = Math.min(1, 244 / Math.max(text.width, 1), 90 / Math.max(text.height, 1))
-    text.scale(scale)
-    canvas.add(text)
+    const { group } = createArtTextGroup(candidate, 244, 90)
+    group.set({ left: 18, top: 15 })
+    const scale = Math.min(1, 244 / Math.max(group.width, 1), 90 / Math.max(group.height, 1))
+    group.scale(scale)
+    canvas.add(group)
     canvas.renderAll()
     return () => {
       void canvas.dispose()
@@ -104,7 +172,7 @@ export default function ArtTextComposer({
   const canvasRef = useRef<Canvas | null>(null)
   const regionObjectRef = useRef<Rect | null>(null)
   const safeMarginObjectRef = useRef<Rect | null>(null)
-  const textObjectRef = useRef<Textbox | null>(null)
+  const artTextObjectRef = useRef<Group | null>(null)
   const backplateObjectRef = useRef<Rect | null>(null)
   const originalSizeRef = useRef({ width: 1024, height: 1024 })
   const drawingRef = useRef<{ startX: number; startY: number } | null>(null)
@@ -192,7 +260,7 @@ export default function ArtTextComposer({
       if (!regionModeRef.current || event.target === regionObjectRef.current) return
       const point = canvas.getScenePoint(event.e)
       if (regionObjectRef.current) canvas.remove(regionObjectRef.current)
-      if (textObjectRef.current) canvas.remove(textObjectRef.current)
+      if (artTextObjectRef.current) canvas.remove(artTextObjectRef.current)
       const rect = new Rect({
         left: point.x,
         top: point.y,
@@ -298,37 +366,50 @@ export default function ArtTextComposer({
   const renderPlacedText = (plan: ArtTextPlacementPlan, candidate: ArtTextCandidate) => {
     const canvas = canvasRef.current
     if (!canvas) return
-    if (textObjectRef.current) canvas.remove(textObjectRef.current)
+    if (artTextObjectRef.current) canvas.remove(artTextObjectRef.current)
     if (backplateObjectRef.current) canvas.remove(backplateObjectRef.current)
     const regionWidth = plan.region.width * canvas.getWidth()
     const regionHeight = plan.region.height * canvas.getHeight()
-    const text = createTextObject(candidate, regionWidth, regionHeight)
-    text.initDimensions()
+    const { group, text } = createArtTextGroup(candidate, regionWidth, regionHeight)
     const radians = (Math.abs(plan.rotation) * Math.PI) / 180
     const rotatedWidth =
-      Math.abs(text.width * Math.cos(radians)) + Math.abs(text.height * Math.sin(radians))
+      Math.abs(group.width * Math.cos(radians)) + Math.abs(group.height * Math.sin(radians))
     const rotatedHeight =
-      Math.abs(text.width * Math.sin(radians)) + Math.abs(text.height * Math.cos(radians))
+      Math.abs(group.width * Math.sin(radians)) + Math.abs(group.height * Math.cos(radians))
     const fitScale =
       Math.min(
         1,
         regionWidth / Math.max(rotatedWidth, 1),
         regionHeight / Math.max(rotatedHeight, 1),
       ) * plan.scale
-    text.set({
-      left: plan.region.x * canvas.getWidth() + regionWidth / 2,
-      top: plan.region.y * canvas.getHeight() + regionHeight / 2,
-      originX: 'center',
-      originY: 'center',
+    const regionLeft = plan.region.x * canvas.getWidth()
+    const regionTop = plan.region.y * canvas.getHeight()
+    const originX = plan.horizontalAlign
+    const originY = plan.verticalAlign === 'middle' ? 'center' : plan.verticalAlign
+    group.set({
+      left:
+        plan.horizontalAlign === 'left'
+          ? regionLeft
+          : plan.horizontalAlign === 'right'
+            ? regionLeft + regionWidth
+            : regionLeft + regionWidth / 2,
+      top:
+        plan.verticalAlign === 'top'
+          ? regionTop
+          : plan.verticalAlign === 'bottom'
+            ? regionTop + regionHeight
+            : regionTop + regionHeight / 2,
+      originX,
+      originY,
       scaleX: fitScale,
       scaleY: fitScale,
       angle: plan.rotation,
       opacity: plan.opacity,
-      textAlign: plan.horizontalAlign,
       globalCompositeOperation: plan.blendMode,
       selectable: false,
       evented: false,
     })
+    text.set({ textAlign: plan.horizontalAlign })
     if (plan.contrastEnhancement?.type === 'shadow' && !candidate.vectorSpec.shadow) {
       text.set({
         shadow: new Shadow({
@@ -365,8 +446,24 @@ export default function ArtTextComposer({
       backplateObjectRef.current = backplate
       canvas.add(backplate)
     }
-    textObjectRef.current = text
-    canvas.add(text)
+    artTextObjectRef.current = group
+    canvas.add(group)
+    group.setCoords()
+    const bounds = group.getBoundingRect()
+    const shiftX =
+      bounds.left < regionLeft
+        ? regionLeft - bounds.left
+        : bounds.left + bounds.width > regionLeft + regionWidth
+          ? regionLeft + regionWidth - (bounds.left + bounds.width)
+          : 0
+    const shiftY =
+      bounds.top < regionTop
+        ? regionTop - bounds.top
+        : bounds.top + bounds.height > regionTop + regionHeight
+          ? regionTop + regionHeight - (bounds.top + bounds.height)
+          : 0
+    group.set({ left: group.left + shiftX, top: group.top + shiftY })
+    group.setCoords()
     if (regionObjectRef.current) canvas.bringObjectToFront(regionObjectRef.current)
     canvas.renderAll()
   }
@@ -426,7 +523,7 @@ export default function ArtTextComposer({
 
   const handleExport = async () => {
     const canvas = canvasRef.current
-    if (!canvas || !selectedCandidate || !placement || !textObjectRef.current) return
+    if (!canvas || !selectedCandidate || !placement || !artTextObjectRef.current) return
     setLoading(true)
     try {
       const regionObject = regionObjectRef.current
@@ -503,10 +600,10 @@ export default function ArtTextComposer({
   const handleDeleteRegion = () => {
     const canvas = canvasRef.current
     if (regionObjectRef.current) canvas?.remove(regionObjectRef.current)
-    if (textObjectRef.current) canvas?.remove(textObjectRef.current)
+    if (artTextObjectRef.current) canvas?.remove(artTextObjectRef.current)
     if (backplateObjectRef.current) canvas?.remove(backplateObjectRef.current)
     regionObjectRef.current = null
-    textObjectRef.current = null
+    artTextObjectRef.current = null
     backplateObjectRef.current = null
     setRegion(null)
     setPlacement(null)

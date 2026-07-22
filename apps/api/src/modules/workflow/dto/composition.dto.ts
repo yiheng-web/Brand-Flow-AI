@@ -72,11 +72,13 @@ export class SaveCompositionDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(8192)
   width!: number
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(8192)
   height!: number
 
   @IsIn(['png'])

@@ -34,10 +34,10 @@ export class CreateWorkDto {
   @IsString()
   objectKey?: string
 
-  @ApiPropertyOptional({ description: '来源工作流 ID，用于作品详情回溯创作过程' })
-  @IsOptional()
+  @ApiProperty({ description: '来源工作流 ID；服务端据此读取可信成片与质检结果' })
+  @IsNotEmpty({ message: '来源工作流 ID 不能为空' })
   @IsString()
-  workflowId?: string
+  workflowId!: string
 
   @ApiProperty({
     description:

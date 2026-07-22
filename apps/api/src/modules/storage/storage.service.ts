@@ -48,6 +48,26 @@ export class StorageService {
     }
   }
 
+  async importRemotePng(
+    sourceUrl: string,
+    input: Omit<UploadObjectInput, 'body' | 'contentType' | 'size'>,
+  ): Promise<StoredObject> {
+    if (sourceUrl.startsWith('data:image/png;base64,')) {
+      const body = Buffer.from(sourceUrl.slice('data:image/png;base64,'.length), 'base64')
+      return this.assertAndUploadPng(body, input)
+    }
+    const url = new URL(sourceUrl)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      throw new Error('远程图片地址协议不受支持')
+    }
+    const response = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+    if (!response.ok) throw new Error(`下载生成图片失败: HTTP ${response.status}`)
+    const declaredSize = Number(response.headers.get('content-length') || 0)
+    const maxBytes = 20 * 1024 * 1024
+    if (declaredSize > maxBytes) throw new Error('生成图片超过 20MB 限制')
+    return this.assertAndUploadPng(Buffer.from(await response.arrayBuffer()), input)
+  }
+
   async deleteObject(key: string): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({
@@ -89,6 +109,14 @@ export class StorageService {
     return { contentType: response.ContentType, bytes }
   }
 
+  async getObject(key: string): Promise<{ contentType?: string; bytes: Uint8Array }> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.config.bucket, Key: key }),
+    )
+    const bytes = response.Body ? await response.Body.transformToByteArray() : new Uint8Array()
+    return { contentType: response.ContentType, bytes }
+  }
+
   getBucket(): string {
     return this.config.bucket
   }
@@ -110,6 +138,18 @@ export class StorageService {
       useSSL: this.getBooleanConfig(configService, 'MINIO_USE_SSL', false),
       signedUrlExpires: this.getNumberConfig(configService, 'MINIO_SIGNED_URL_EXPIRES', 900),
     }
+  }
+
+  private async assertAndUploadPng(
+    body: Buffer,
+    input: Omit<UploadObjectInput, 'body' | 'contentType' | 'size'>,
+  ) {
+    const maxBytes = 20 * 1024 * 1024
+    const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+    if (body.length > maxBytes || !body.subarray(0, 8).equals(pngSignature)) {
+      throw new Error('生成服务未返回有效 PNG 文件')
+    }
+    return this.uploadObject({ ...input, body, size: body.length, contentType: 'image/png' })
   }
 
   private buildEndpoint(): string {

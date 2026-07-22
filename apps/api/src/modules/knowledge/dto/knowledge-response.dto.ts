@@ -16,8 +16,17 @@ export class KnowledgeResponseDto {
   @ApiProperty({ description: '创建者用户 ID' })
   creatorId!: string
 
-  @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  @ApiProperty({ description: '所属 Space ID' })
+  spaceId!: string
+
+  @ApiProperty({ description: '所属 Space 类型', enum: ['personal', 'team', 'enterprise'] })
+  spaceType!: 'personal' | 'team' | 'enterprise'
+
+  @ApiPropertyOptional({ description: '关联企业 ID' })
+  enterpriseId?: string
+
+  @ApiProperty({ description: '是否为企业强制知识库' })
+  isRequired!: boolean
 }
 
 export class KnowledgeIngestResponseDto {
@@ -35,8 +44,14 @@ export class KnowledgeItemResponseDto {
   @ApiProperty({ description: '知识库 ID' })
   knowledgeId!: string
 
-  @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  @ApiProperty({ description: '所属 Space ID' })
+  spaceId!: string
+
+  @ApiProperty({ description: '所属 Space 类型', enum: ['personal', 'team', 'enterprise'] })
+  spaceType!: 'personal' | 'team' | 'enterprise'
+
+  @ApiPropertyOptional({ description: '关联企业 ID' })
+  enterpriseId?: string
 
   @ApiProperty({ description: '知识项标题', example: '品牌色使用规范' })
   title!: string

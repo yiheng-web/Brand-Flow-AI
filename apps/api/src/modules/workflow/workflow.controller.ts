@@ -88,7 +88,7 @@ export class WorkflowController {
   }
 
   @Put(':id/composition')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 25 * 1024 * 1024, files: 1 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: '上传 Fabric.js 确定性渲染的最终 PNG 与图层数据' })
   saveComposition(

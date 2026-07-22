@@ -58,6 +58,7 @@ export default function Workspace() {
   const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId>('brief')
   const [submitting, setSubmitting] = useState(false)
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
+  const [workflowSpaceId, setWorkflowSpaceId] = useState(currentSpaceId)
   const connectionRef = useRef<{ close: () => void } | null>(null)
   const recoverRef = useRef<(workflowId: string) => Promise<void>>(async () => undefined)
   const recoveryTimerRef = useRef<number | null>(null)
@@ -133,6 +134,7 @@ export default function Workspace() {
       try {
         const detail = await getWorkflowDetail(workflowId)
         setStatus(detail.workflow.status)
+        setWorkflowSpaceId(detail.workflow.spaceId)
         setPrompt(detail.workflow.prompt)
         setResult(detail.workflow.result || null)
         const statuses = { ...INITIAL_NODE_EXEC_STATUSES }
@@ -167,6 +169,7 @@ export default function Workspace() {
       })
       initializedWorkflowRef.current = workflow.id
       setWorkflowId(workflow.id)
+      setWorkflowSpaceId(workflow.spaceId)
       setStatus('running')
       connect(workflow.id)
     } catch (reason) {
@@ -284,7 +287,7 @@ export default function Workspace() {
     if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return
     const work = await createWork({
       title: userPrompt.slice(0, 40) || '未命名作品',
-      spaceId: currentSpaceId,
+      spaceId: workflowSpaceId,
       finalImageUrl: result.finalImageUrl,
       objectKey:
         result.compose && 'objectKey' in result.compose ? result.compose.objectKey : undefined,

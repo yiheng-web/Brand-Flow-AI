@@ -4,6 +4,7 @@ import {
   createSiliconFlowChatModel,
   extractChatText,
   prepareSiliconFlowVisionImage,
+  SILICONFLOW_JSON_CALL_OPTIONS,
 } from '../../common/siliconflow-chat'
 import { CANDIDATE_EVALUATE_PROMPT } from '../prompts/candidate-evaluate-prompt'
 import type { CandidateImage } from '../../generate/generate-types'
@@ -23,11 +24,7 @@ export async function evaluateCandidates(
     content: [
       {
         type: 'text',
-        text: CANDIDATE_EVALUATE_PROMPT.replace('{constraintSummary}', constraintSummary)
-          .replace('{image1Url}', candidates[0]?.url || '')
-          .replace('{image2Url}', candidates[1]?.url || '')
-          .replace('{image3Url}', candidates[2]?.url || '')
-          .replace('{image4Url}', candidates[3]?.url || ''),
+        text: buildCandidateEvaluationPrompt(candidates, constraintSummary),
       },
       ...imageUrls.map((url) => ({
         type: 'image_url' as const,
@@ -36,10 +33,24 @@ export async function evaluateCandidates(
     ],
   })
 
-  const response = await llm.invoke([message])
+  const response = await llm.invoke([message], SILICONFLOW_JSON_CALL_OPTIONS)
   const raw = extractChatText(response.content)
 
   const parsed = safeJsonParse<CandidateEvaluationBatch>(raw)
   if (!parsed) throw new Error('候选质检 Provider 返回了无法解析的结果')
   return parsed
+}
+
+export function buildCandidateEvaluationPrompt(
+  candidates: CandidateImage[],
+  constraintSummary: string,
+): string {
+  let prompt = CANDIDATE_EVALUATE_PROMPT.replace('{constraintSummary}', constraintSummary)
+  for (let index = 0; index < 4; index += 1) {
+    const candidate = candidates[index]
+    prompt = prompt
+      .replaceAll(`{candidate${index + 1}Id}`, candidate?.id || '')
+      .replace(`{image${index + 1}Url}`, candidate?.url || '')
+  }
+  return prompt
 }

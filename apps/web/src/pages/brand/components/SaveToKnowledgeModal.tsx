@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { Modal, Select, message } from 'antd'
 import { saveAssetToKnowledge } from '@/api/assets'
 import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
+import { useUserStore } from '@/store/useUserStore'
 
 interface SaveToKnowledgeModalProps {
   open: boolean
@@ -15,13 +16,14 @@ const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowl
   const [loading, setLoading] = useState(false)
   const [knowledgeList, setKnowledgeList] = useState<KnowledgeData[]>([])
   const [knowledgeId, setKnowledgeId] = useState<string>()
+  const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
 
   useEffect(() => {
     if (!open) return
-    void getKnowledgeList()
+    void getKnowledgeList(spaceId)
       .then(setKnowledgeList)
       .catch(() => message.error('知识库列表加载失败'))
-  }, [open])
+  }, [open, spaceId])
 
   const handleSave = async () => {
     if (!assetId || !knowledgeId) return
