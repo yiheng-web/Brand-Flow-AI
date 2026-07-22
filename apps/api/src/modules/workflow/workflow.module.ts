@@ -10,6 +10,7 @@ import { WorkflowNode, WorkflowNodeSchema } from './schemas/workflow-node.schema
 import { OrgModule } from '../org/org.module'
 import { Knowledge, KnowledgeSchema } from '../knowledge/schemas/knowledge.schema'
 import { KnowledgeItem, KnowledgeItemSchema } from '../knowledge/schemas/knowledge-item.schema'
+import { StorageModule } from '../storage/storage.module'
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { KnowledgeItem, KnowledgeItemSchema } from '../knowledge/schemas/knowled
       { name: KnowledgeItem.name, schema: KnowledgeItemSchema },
     ]),
     OrgModule,
+    StorageModule,
     BullModule.registerQueue({
       name: WORKFLOW_QUEUE,
     }),

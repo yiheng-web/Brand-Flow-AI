@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common'
+import { PassportStrategy } from '@nestjs/passport'
+import { ExtractJwt, Strategy } from 'passport-jwt'
+import { ConfigService } from '@nestjs/config'
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -9,17 +9,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') || 'default_secret',
-    });
+      secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
+    })
   }
 
-  async validate(payload: any) {
+  async validate(payload: { sub: string; email?: string; entId?: string; role?: string }) {
     // 返回对象将挂载到 req.user
     return {
       sub: payload.sub,
       email: payload.email,
       entId: payload.entId,
       role: payload.role,
-    };
+    }
   }
 }

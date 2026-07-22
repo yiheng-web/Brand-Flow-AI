@@ -8,7 +8,12 @@ import {
   EditOutlined,
   InboxOutlined,
 } from '@ant-design/icons'
-import { getKnowledgeList, createKnowledge, deleteKnowledge } from '@/api/knowledge'
+import {
+  getKnowledgeList,
+  createKnowledge,
+  deleteKnowledge,
+  updateKnowledge,
+} from '@/api/knowledge'
 import type { KnowledgeData } from '@/api/knowledge'
 import styles from './knowledge.module.css'
 
@@ -18,6 +23,9 @@ const KnowledgeListPage = () => {
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameTarget, setRenameTarget] = useState<KnowledgeData | null>(null)
+  const [renameName, setRenameName] = useState('')
   const [form] = Form.useForm()
 
   const fetchList = useCallback(async () => {
@@ -72,6 +80,22 @@ const KnowledgeListPage = () => {
     })
   }
 
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim()) return
+    setRenaming(true)
+    try {
+      await updateKnowledge(renameTarget._id, { name: renameName.trim() })
+      message.success('知识库已重命名')
+      setRenameTarget(null)
+      setRenameName('')
+      await fetchList()
+    } catch {
+      message.error('重命名失败')
+    } finally {
+      setRenaming(false)
+    }
+  }
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
@@ -106,8 +130,8 @@ const KnowledgeListPage = () => {
                     key="rename"
                     onClick={(e) => {
                       e.stopPropagation()
-                      // TODO: rename modal
-                      message.info('重命名功能待实现')
+                      setRenameTarget(kb)
+                      setRenameName(kb.name)
                     }}
                   />,
                   <DeleteOutlined
@@ -155,6 +179,22 @@ const KnowledgeListPage = () => {
             <Input.TextArea rows={3} placeholder="简要描述知识库的用途和内容范围（选填）" />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        title="重命名知识库"
+        open={Boolean(renameTarget)}
+        onOk={() => void handleRename()}
+        onCancel={() => setRenameTarget(null)}
+        confirmLoading={renaming}
+        okButtonProps={{ disabled: !renameName.trim() }}
+        destroyOnClose
+      >
+        <Input
+          value={renameName}
+          onChange={(event) => setRenameName(event.target.value)}
+          maxLength={80}
+          placeholder="输入新的知识库名称"
+        />
       </Modal>
     </div>
   )

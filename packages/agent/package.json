@@ -18,7 +18,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "lint": "eslint .",
-    "test": "pnpm build && node --test dist/v1-workflow.test.js"
+    "test": "pnpm build && node --test dist/*.test.js dist/common/*.test.js"
   },
   "dependencies": {
     "@brand-flow/contracts": "workspace:*",

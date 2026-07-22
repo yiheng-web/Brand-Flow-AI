@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsArray, IsObject, IsString, IsOptional, IsNotEmpty } from 'class-validator'
+import { IsArray, IsIn, IsObject, IsString, IsOptional, IsNotEmpty } from 'class-validator'
 
 export class CreateKnowledgeDto {
   @ApiProperty({ description: '知识库名称', example: '瑞幸咖啡品牌规范库' })
@@ -49,6 +49,15 @@ export class IngestKnowledgeDto {
 }
 
 export class CreateKnowledgeItemDto {
+  @ApiPropertyOptional({
+    description: '品牌约束级别：强制、推荐或可选',
+    enum: ['required', 'recommended', 'optional'],
+    default: 'recommended',
+  })
+  @IsIn(['required', 'recommended', 'optional'])
+  @IsOptional()
+  constraintLevel?: 'required' | 'recommended' | 'optional'
+
   @ApiProperty({ description: '知识项标题，用于知识库详情页展示', example: '品牌色使用规范' })
   @IsString()
   @IsNotEmpty({ message: '知识项标题不能为空' })
@@ -77,10 +86,18 @@ export class CreateKnowledgeItemDto {
   })
   @IsObject()
   @IsOptional()
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class UpdateKnowledgeItemDto {
+  @ApiPropertyOptional({
+    description: '品牌约束级别',
+    enum: ['required', 'recommended', 'optional'],
+  })
+  @IsIn(['required', 'recommended', 'optional'])
+  @IsOptional()
+  constraintLevel?: 'required' | 'recommended' | 'optional'
+
   @ApiPropertyOptional({ description: '知识项标题' })
   @IsString()
   @IsOptional()
@@ -107,5 +124,5 @@ export class UpdateKnowledgeItemDto {
   @ApiPropertyOptional({ description: '扩展信息' })
   @IsObject()
   @IsOptional()
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }

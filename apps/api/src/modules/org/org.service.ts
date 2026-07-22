@@ -6,6 +6,13 @@ import { User, UserDocument } from './schemas/user.schema'
 import { Team, TeamDocument } from './schemas/team.schema'
 import { Role } from '@/common/enums'
 import { CreateEnterpriseDto, CreateTeamDto, InviteSpaceMemberDto } from './dto/org.dto'
+import { JwtService } from '@nestjs/jwt'
+
+interface PopulatedMembership {
+  role: Role
+  enterpriseId: EnterpriseDocument
+  teamId?: TeamDocument
+}
 
 @Injectable()
 export class OrgService {
@@ -13,6 +20,7 @@ export class OrgService {
     @InjectModel(Enterprise.name) private enterpriseModel: Model<EnterpriseDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Team.name) private teamModel: Model<TeamDocument>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async createEnterprise(userId: string, createDto: CreateEnterpriseDto) {
@@ -53,7 +61,7 @@ export class OrgService {
       throw new NotFoundException('用户不存在')
     }
 
-    return user.memberships.map((m: any) => ({
+    return (user.memberships as unknown as PopulatedMembership[]).map((m) => ({
       role: m.role,
       enterpriseId: m.enterpriseId._id,
       name: m.enterpriseId.name,
@@ -74,10 +82,20 @@ export class OrgService {
       throw new BadRequestException('您不属于该企业，无法切换')
     }
 
-    user.currentEnterpriseId = enterpriseId as any
+    user.currentEnterpriseId = new Types.ObjectId(enterpriseId)
     await user.save()
 
-    return { success: true, currentEnterpriseId: enterpriseId }
+    const membership =
+      user.memberships.find(
+        (item) => item.enterpriseId.toString() === enterpriseId && !item.teamId,
+      ) ?? user.memberships.find((item) => item.enterpriseId.toString() === enterpriseId)
+    const accessToken = this.jwtService.sign({
+      sub: user._id.toString(),
+      email: user.email,
+      entId: enterpriseId,
+      role: membership?.role ?? Role.MEMBER,
+    })
+    return { success: true, currentEnterpriseId: enterpriseId, access_token: accessToken }
   }
 
   async createTeam(userId: string, enterpriseId: string, createDto: CreateTeamDto) {
@@ -150,7 +168,7 @@ export class OrgService {
 
     const seen = new Set<string>(['personal'])
 
-    for (const membership of user.memberships as any[]) {
+    for (const membership of user.memberships as unknown as PopulatedMembership[]) {
       const enterprise = membership.enterpriseId
       const team = membership.teamId
 
@@ -258,11 +276,12 @@ export class OrgService {
       throw new BadRequestException('该用户已经在空间中')
     }
 
-    targetUser.memberships.push({
+    const membership = {
       enterpriseId: space.enterprise._id as Types.ObjectId,
-      teamId: space.type === 'team' ? (space.team._id as Types.ObjectId) : undefined,
+      ...(space.type === 'team' ? { teamId: space.team._id as Types.ObjectId } : {}),
       role: inviteDto.role ?? Role.MEMBER,
-    } as any)
+    } as UserDocument['memberships'][number]
+    targetUser.memberships.push(membership)
 
     await targetUser.save()
 

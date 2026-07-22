@@ -3,6 +3,7 @@ import { Document, Types } from 'mongoose'
 
 export type KnowledgeItemSourceType = 'manual' | 'asset'
 export type KnowledgeItemStatus = 'active' | 'archived'
+export type KnowledgeConstraintLevel = 'required' | 'recommended' | 'optional'
 
 export type KnowledgeItemDocument = KnowledgeItem &
   Document & {
@@ -36,11 +37,19 @@ export class KnowledgeItem {
   @Prop({ type: String, enum: ['active', 'archived'], default: 'active', index: true })
   status!: KnowledgeItemStatus
 
+  @Prop({
+    type: String,
+    enum: ['required', 'recommended', 'optional'],
+    default: 'recommended',
+    index: true,
+  })
+  constraintLevel!: KnowledgeConstraintLevel
+
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   creatorId!: Types.ObjectId
 
   @Prop({ type: Object })
-  metadata!: Record<string, any>
+  metadata!: Record<string, unknown>
 }
 
 export const KnowledgeItemSchema = SchemaFactory.createForClass(KnowledgeItem)

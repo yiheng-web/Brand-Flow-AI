@@ -45,11 +45,11 @@ export class Asset {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   creatorId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true, index: true })
-  enterpriseId!: Types.ObjectId
+  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  enterpriseId?: Types.ObjectId
 
   @Prop({ type: Object })
-  metadata!: Record<string, any>
+  metadata!: Record<string, unknown>
 }
 
 export const AssetSchema = SchemaFactory.createForClass(Asset)

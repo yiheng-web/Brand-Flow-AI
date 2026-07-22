@@ -176,6 +176,24 @@ describe('StorageService', () => {
     })
   })
 
+  it('reads an object prefix together with its MIME type', async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+    sendMock.mockResolvedValueOnce({
+      ContentType: 'image/png',
+      Body: { transformToByteArray: jest.fn().mockResolvedValue(bytes) },
+    })
+    const service = new StorageService(createConfigService())
+
+    const result = await service.getObjectPrefix('works/final.png', 8)
+
+    expect(GetObjectCommand).toHaveBeenCalledWith({
+      Bucket: 'brand-flow-assets',
+      Key: 'works/final.png',
+      Range: 'bytes=0-7',
+    })
+    expect(result).toEqual({ contentType: 'image/png', bytes })
+  })
+
   it('builds a path-style object URL', () => {
     const service = new StorageService(createConfigService())
 

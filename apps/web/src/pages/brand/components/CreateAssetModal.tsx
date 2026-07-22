@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { Modal, Form, Input, Select, message } from 'antd'
+import { createAsset, type OwnerType, type Visibility } from '@/api/assets'
 
 interface CreateAssetModalProps {
   open: boolean
   onClose: () => void
+  ownerId: string
+  ownerType: OwnerType
+  visibility: Visibility
+  onSuccess: () => void
 }
 
 const ASSET_TYPES = [
@@ -13,7 +18,14 @@ const ASSET_TYPES = [
   { label: '其他', value: 'other' },
 ]
 
-const CreateAssetModal = ({ open, onClose }: CreateAssetModalProps) => {
+const CreateAssetModal = ({
+  open,
+  onClose,
+  ownerId,
+  ownerType,
+  visibility,
+  onSuccess,
+}: CreateAssetModalProps) => {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
@@ -21,12 +33,17 @@ const CreateAssetModal = ({ open, onClose }: CreateAssetModalProps) => {
     try {
       const values = await form.validateFields()
       setLoading(true)
-      // TODO: POST /api/assets
-      console.log('创建资产记录:', values)
-      // const res = await api.createAsset(values)
+      await createAsset({
+        ...values,
+        ownerId,
+        ownerType,
+        visibility,
+        metadata: values.description ? { description: values.description } : undefined,
+      })
       message.success('资产记录已创建')
       form.resetFields()
       onClose()
+      onSuccess()
     } catch (err) {
       if (err instanceof Error) {
         message.error(err.message)
@@ -54,6 +71,14 @@ const CreateAssetModal = ({ open, onClose }: CreateAssetModalProps) => {
           rules={[{ required: true, message: '请输入资产名称' }]}
         >
           <Input placeholder="请输入资产名称" maxLength={100} />
+        </Form.Item>
+
+        <Form.Item
+          name="url"
+          label="素材地址"
+          rules={[{ required: true, message: '请输入可访问的素材地址' }]}
+        >
+          <Input placeholder="https://example.com/asset.png" />
         </Form.Item>
 
         <Form.Item

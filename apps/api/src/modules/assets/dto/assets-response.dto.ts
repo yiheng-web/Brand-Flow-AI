@@ -51,7 +51,7 @@ export class AssetResponseDto {
   thumbnailSignedUrl?: string
 
   @ApiPropertyOptional({ description: '扩展信息' })
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class SaveAssetToKnowledgeResponseDto {
@@ -65,8 +65,8 @@ export class SaveAssetToKnowledgeResponseDto {
   knowledgeId!: string
 
   @ApiProperty({ description: '创建出的知识项' })
-  item!: Record<string, any>
+  item!: Record<string, unknown>
 
   @ApiProperty({ description: '向量入库结果' })
-  ingest!: Record<string, any>
+  ingest!: Record<string, unknown>
 }

@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createInitialWorkflowNodes,
   downstreamNodeTypes,
+  isNormalizedArtTextRegion,
   parseWorkflowSseEvent,
   sortCandidateEvaluations,
 } from './index'
@@ -51,8 +52,23 @@ test('候选评分按总分稳定降序排序', () => {
     recommendationReason: '',
   }
   const sorted = sortCandidateEvaluations([
-    { ...base, candidateId: 'b', totalScore: 70 },
-    { ...base, candidateId: 'a', totalScore: 90 },
+    { ...base, candidateId: 'b', totalScore: 7 },
+    { ...base, candidateId: 'a', totalScore: 9 },
   ])
   assert.equal(sorted[0].candidateId, 'a')
+})
+
+test('艺术字区域必须使用画布内的归一化坐标', () => {
+  assert.equal(isNormalizedArtTextRegion({ x: 0.1, y: 0.2, width: 0.5, height: 0.3 }), true)
+  assert.equal(isNormalizedArtTextRegion({ x: 0.8, y: 0.2, width: 0.3, height: 0.3 }), false)
+})
+
+test('SSE 解析支持等待用户的可恢复状态', () => {
+  const event = parseWorkflowSseEvent({
+    type: 'workflow_awaiting_user',
+    workflowId: 'wf-1',
+    action: 'enter_art_text',
+    timestamp: new Date().toISOString(),
+  })
+  assert.equal(event?.type, 'workflow_awaiting_user')
 })

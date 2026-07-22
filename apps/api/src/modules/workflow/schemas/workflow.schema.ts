@@ -1,8 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document } from 'mongoose'
-import type { SpaceType } from '@brand-flow/contracts'
+import type { SpaceType, WorkflowAwaitingAction, WorkflowStatus } from '@brand-flow/contracts'
 
-export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type { WorkflowStatus } from '@brand-flow/contracts'
 export type WorkflowDocument = Workflow &
   Document & {
     createdAt: Date
@@ -34,11 +34,23 @@ export class Workflow {
 
   @Prop({
     type: String,
-    enum: ['pending', 'running', 'completed', 'failed'],
+    enum: ['pending', 'running', 'awaiting_user', 'completed', 'failed'],
     default: 'pending',
     index: true,
   })
   status!: WorkflowStatus
+
+  @Prop({
+    type: String,
+    enum: [
+      'select_direction',
+      'select_candidate',
+      'enter_art_text',
+      'select_art_text',
+      'select_art_text_region',
+    ],
+  })
+  awaitingAction?: WorkflowAwaitingAction
 
   @Prop({ type: Object })
   result?: Record<string, unknown>

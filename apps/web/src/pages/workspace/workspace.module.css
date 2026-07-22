@@ -539,6 +539,15 @@
   background: #f5f6f8;
 }
 
+.composerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  background: #f7f8fb;
+  overflow: auto;
+}
+
 /* ===== 画板预览区域（精修） ===== */
 .previewArea {
   width: 100%;

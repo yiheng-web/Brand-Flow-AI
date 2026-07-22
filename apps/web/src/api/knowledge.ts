@@ -36,6 +36,7 @@ export interface KnowledgeItemData {
   tags: string[]
   sourceType: 'manual' | 'asset'
   status: 'active' | 'archived'
+  constraintLevel?: 'required' | 'recommended' | 'optional'
   metadata?: Record<string, unknown>
 }
 
@@ -43,6 +44,7 @@ export interface CreateKnowledgeItemParams {
   title: string
   content: string
   tags?: string[]
+  constraintLevel?: 'required' | 'recommended' | 'optional'
   metadata?: Record<string, unknown>
 }
 

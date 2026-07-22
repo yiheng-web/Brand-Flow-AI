@@ -170,6 +170,21 @@ const KnowledgeDetailPage = () => {
                 <div className={styles.itemTitle}>{item.title}</div>
                 <div className={styles.itemContent}>{item.content}</div>
                 <div className={styles.itemMeta}>
+                  <Tag
+                    color={
+                      item.constraintLevel === 'required'
+                        ? 'red'
+                        : item.constraintLevel === 'optional'
+                          ? 'default'
+                          : 'blue'
+                    }
+                  >
+                    {item.constraintLevel === 'required'
+                      ? '强制约束'
+                      : item.constraintLevel === 'optional'
+                        ? '可选参考'
+                        : '推荐约束'}
+                  </Tag>
                   {item.tags?.length > 0 &&
                     item.tags.map((tag) => (
                       <Tag key={tag} style={{ fontSize: 11 }}>
@@ -226,6 +241,15 @@ const KnowledgeDetailPage = () => {
           </Form.Item>
           <Form.Item name="tags" label="标签">
             <Select mode="tags" placeholder="输入标签后回车添加" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="constraintLevel" label="约束级别" initialValue="recommended">
+            <Select
+              options={[
+                { value: 'required', label: '强制约束（必须遵守）' },
+                { value: 'recommended', label: '推荐约束' },
+                { value: 'optional', label: '可选参考' },
+              ]}
+            />
           </Form.Item>
         </Form>
       </Modal>

@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { Modal, message } from 'antd'
+import { useEffect } from 'react'
+import { Modal, Select, message } from 'antd'
+import { saveAssetToKnowledge } from '@/api/assets'
+import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
 
 interface SaveToKnowledgeModalProps {
   open: boolean
@@ -10,15 +13,22 @@ interface SaveToKnowledgeModalProps {
 
 const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowledgeModalProps) => {
   const [loading, setLoading] = useState(false)
+  const [knowledgeList, setKnowledgeList] = useState<KnowledgeData[]>([])
+  const [knowledgeId, setKnowledgeId] = useState<string>()
+
+  useEffect(() => {
+    if (!open) return
+    void getKnowledgeList()
+      .then(setKnowledgeList)
+      .catch(() => message.error('知识库列表加载失败'))
+  }, [open])
 
   const handleSave = async () => {
-    if (!assetId) return
+    if (!assetId || !knowledgeId) return
 
     setLoading(true)
     try {
-      // TODO: POST /api/assets/{id}/save-to-knowledge
-      console.log('保存资产到知识库:', { assetId, assetName })
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      await saveAssetToKnowledge(assetId, knowledgeId)
       message.success(`「${assetName}」已保存到知识库`)
       onClose()
     } catch (err) {
@@ -47,6 +57,13 @@ const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowl
       <p style={{ margin: '8px 0 0', fontSize: 13, color: '#999' }}>
         保存后可在知识库中引用该素材。
       </p>
+      <Select
+        style={{ width: '100%', marginTop: 16 }}
+        placeholder="选择目标知识库"
+        value={knowledgeId}
+        onChange={setKnowledgeId}
+        options={knowledgeList.map((item) => ({ value: item._id, label: item.name }))}
+      />
     </Modal>
   )
 }

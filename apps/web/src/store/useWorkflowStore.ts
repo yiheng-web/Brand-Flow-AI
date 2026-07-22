@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware'
 
 import type { FlowNodeId, NodeExecStatus } from '../pages/workspace/workspace.const'
 
-type WorkflowStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'
+type WorkflowStatus = 'idle' | 'pending' | 'running' | 'awaiting_user' | 'completed' | 'failed'
 type Updater<T> = T | ((previous: T) => T)
 
 export const INITIAL_NODE_EXEC_STATUSES: Record<FlowNodeId, NodeExecStatus> = {

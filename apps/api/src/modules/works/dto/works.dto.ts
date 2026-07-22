@@ -58,21 +58,21 @@ export class CreateWorkDto {
 
   @ApiPropertyOptional({
     description: '最终品牌质检报告，作品详情页展示',
-    example: { totalScore: 86, issues: [] },
+    example: { totalScore: 8.6, issues: [] },
   })
   @IsOptional()
   @IsObject()
-  qualityReport?: Record<string, any>
+  qualityReport?: Record<string, unknown>
 
   @ApiPropertyOptional({ description: '保存作品时的工作流节点快照，用于作品详情回看生成过程' })
   @IsOptional()
   @IsObject()
-  nodesSnapshot?: Record<string, any>
+  nodesSnapshot?: Record<string, unknown>
 
   @ApiPropertyOptional({ description: '作品扩展信息，如画布尺寸、选择的候选图 ID、导出配置等' })
   @IsOptional()
   @IsObject()
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class ExportWorkDto {
@@ -110,7 +110,7 @@ export class CreateWorkVersionDto {
   @ApiPropertyOptional({ description: '该版本对应的节点快照' })
   @IsOptional()
   @IsObject()
-  nodesSnapshot?: Record<string, any>
+  nodesSnapshot?: Record<string, unknown>
 
   @ApiPropertyOptional({
     description: '该版本对应的品牌质检报告',
@@ -118,5 +118,5 @@ export class CreateWorkVersionDto {
   })
   @IsOptional()
   @IsObject()
-  qualityReport?: Record<string, any>
+  qualityReport?: Record<string, unknown>
 }

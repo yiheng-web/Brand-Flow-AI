@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExportOutlined, PlayCircleFilled, SaveOutlined } from '@ant-design/icons'
-import type { CandidateImage, WorkflowNodeStatus, WorkflowResult } from '@brand-flow/contracts'
+import type {
+  CandidateImage,
+  CreativeDirection,
+  WorkflowNodeStatus,
+  WorkflowResult,
+} from '@brand-flow/contracts'
 import { Button, Card, Image, Progress, Radio, Space, Tag, Tooltip, message } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ReactFlowProvider } from 'reactflow'
@@ -13,6 +18,7 @@ import { INITIAL_NODE_EXEC_STATUSES, useWorkflowStore } from '@/store/useWorkflo
 import { createAuthEventSource } from '@/utils/sse'
 
 import FlowView from './components/FlowView'
+import ArtTextComposer from './components/ArtTextComposer'
 import { FLOW_NODES, type FlowNodeId, type NodeExecStatus } from './workspace.const'
 import styles from './workspace.module.css'
 
@@ -35,12 +41,29 @@ export default function Workspace() {
   const navState = location.state as { prompt?: string; workflowId?: string } | null
   const currentSpaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
   const currentSpaceType = useUserStore((state) => state.currentSpaceType)
-  const store = useWorkflowStore()
+  const workflowId = useWorkflowStore((state) => state.workflowId)
+  const workflowStatus = useWorkflowStore((state) => state.status)
+  const workflowPrompt = useWorkflowStore((state) => state.prompt)
+  const workflowError = useWorkflowStore((state) => state.error)
+  const result = useWorkflowStore((state) => state.result)
+  const nodeExecStatuses = useWorkflowStore((state) => state.nodeExecStatuses)
+  const nodeStreamData = useWorkflowStore((state) => state.nodeStreamData)
+  const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
+  const setStatus = useWorkflowStore((state) => state.setStatus)
+  const setPrompt = useWorkflowStore((state) => state.setPrompt)
+  const setResult = useWorkflowStore((state) => state.setResult)
+  const setError = useWorkflowStore((state) => state.setError)
+  const setNodeExecStatuses = useWorkflowStore((state) => state.setNodeExecStatuses)
+  const setNodeStreamData = useWorkflowStore((state) => state.setNodeStreamData)
   const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId>('brief')
   const [submitting, setSubmitting] = useState(false)
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
   const connectionRef = useRef<{ close: () => void } | null>(null)
-  const userPrompt = navState?.prompt || store.prompt
+  const recoverRef = useRef<(workflowId: string) => Promise<void>>(async () => undefined)
+  const recoveryTimerRef = useRef<number | null>(null)
+  const initializedWorkflowRef = useRef<string | null>(null)
+  const autoStartedRef = useRef(false)
+  const userPrompt = navState?.prompt || workflowPrompt
 
   const connect = useCallback(
     (workflowId: string) => {
@@ -50,141 +73,229 @@ export default function Workspace() {
           if ('nodeType' in event) {
             const nodeType = event.nodeType as FlowNodeId
             if (event.type === 'node_queued')
-              store.setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'queued' }))
+              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'queued' }))
             if (event.type === 'node_started')
-              store.setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'running' }))
+              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'running' }))
             if (event.type === 'node_failed') {
-              store.setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'failed' }))
-              store.setError(event.error.message)
+              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'failed' }))
+              setError(event.error.message)
             }
             if (event.type === 'node_skipped')
-              store.setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'skipped' }))
+              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'skipped' }))
             if (event.type === 'node_completed') {
-              store.setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'done' }))
+              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'done' }))
               if (isRecord(event.output))
-                store.setNodeStreamData((old) => ({
+                setNodeStreamData((old) => ({
                   ...old,
                   [nodeType]: event.output as Record<string, unknown>,
                 }))
             }
           }
+          if (event.type === 'workflow_awaiting_user') {
+            setStatus('awaiting_user')
+            if (event.result) setResult(event.result)
+            setSelectedNodeId(
+              event.action === 'select_direction'
+                ? 'creativeDirection'
+                : event.action === 'select_candidate'
+                  ? 'generate'
+                  : 'compose',
+            )
+            connectionRef.current?.close()
+            connectionRef.current = null
+          }
           if (event.type === 'workflow_completed') {
-            store.setStatus('completed')
-            store.setResult(event.result as WorkflowResult)
+            setStatus('completed')
+            setResult(event.result as WorkflowResult)
             connectionRef.current?.close()
             connectionRef.current = null
           }
           if (event.type === 'workflow_failed') {
-            store.setStatus('failed')
-            store.setError(event.error.message)
+            setStatus('failed')
+            setError(event.error.message)
           }
         },
-        onError: () => message.warning('实时连接已断开，正在通过状态恢复保持数据一致'),
+        onError: () => {
+          message.warning('实时连接已断开，正在通过状态恢复保持数据一致')
+          if (recoveryTimerRef.current !== null) return
+          recoveryTimerRef.current = window.setTimeout(() => {
+            recoveryTimerRef.current = null
+            void recoverRef.current(workflowId)
+          }, 1200)
+        },
       })
     },
-    [store],
+    [setError, setNodeExecStatuses, setNodeStreamData, setResult, setStatus],
   )
 
   const recover = useCallback(
     async (workflowId: string) => {
       try {
         const detail = await getWorkflowDetail(workflowId)
-        store.setStatus(detail.workflow.status)
-        store.setPrompt(detail.workflow.prompt)
-        store.setResult(detail.workflow.result || null)
+        setStatus(detail.workflow.status)
+        setPrompt(detail.workflow.prompt)
+        setResult(detail.workflow.result || null)
         const statuses = { ...INITIAL_NODE_EXEC_STATUSES }
         const outputs: Record<string, Record<string, unknown>> = {}
         detail.nodes.forEach((node) => {
           statuses[node.type as FlowNodeId] = STATUS_MAP[node.status]
           if (node.output) outputs[node.type] = node.output
         })
-        store.setNodeExecStatuses(statuses)
-        store.setNodeStreamData(outputs)
+        setNodeExecStatuses(statuses)
+        setNodeStreamData(outputs)
         if (detail.workflow.status === 'pending' || detail.workflow.status === 'running')
           connect(workflowId)
       } catch (reason) {
-        store.setStatus('failed')
-        store.setError(reason instanceof Error ? reason.message : '无法恢复工作流')
+        setStatus('failed')
+        setError(reason instanceof Error ? reason.message : '无法恢复工作流')
       }
     },
-    [connect, store],
+    [connect, setError, setNodeExecStatuses, setNodeStreamData, setPrompt, setResult, setStatus],
   )
 
   const start = useCallback(async () => {
     if (!userPrompt.trim() || submitting) return
     setSubmitting(true)
-    store.setError(null)
-    store.setNodeExecStatuses({ ...INITIAL_NODE_EXEC_STATUSES })
-    store.setPrompt(userPrompt)
+    setError(null)
+    setNodeExecStatuses({ ...INITIAL_NODE_EXEC_STATUSES })
+    setPrompt(userPrompt)
     try {
       const workflow = await submitPrompt({
         prompt: userPrompt,
         spaceId: currentSpaceId,
         spaceType: currentSpaceType,
       })
-      store.setWorkflowId(workflow.id)
-      store.setStatus('running')
+      initializedWorkflowRef.current = workflow.id
+      setWorkflowId(workflow.id)
+      setStatus('running')
       connect(workflow.id)
     } catch (reason) {
-      store.setStatus('failed')
-      store.setError(reason instanceof Error ? reason.message : '创建工作流失败')
+      setStatus('failed')
+      setError(reason instanceof Error ? reason.message : '创建工作流失败')
     } finally {
       setSubmitting(false)
     }
-  }, [connect, currentSpaceId, currentSpaceType, store, submitting, userPrompt])
+  }, [
+    connect,
+    currentSpaceId,
+    currentSpaceType,
+    setError,
+    setNodeExecStatuses,
+    setPrompt,
+    setStatus,
+    setWorkflowId,
+    submitting,
+    userPrompt,
+  ])
 
   useEffect(() => {
-    const id = navState?.workflowId || store.workflowId
-    queueMicrotask(() => {
-      if (id) {
-        store.setWorkflowId(id)
-        void recover(id)
-      } else if (navState?.prompt && store.status === 'idle') void start()
-    })
-    return () => connectionRef.current?.close()
-  }, [navState?.prompt, navState?.workflowId, recover, start, store])
+    recoverRef.current = recover
+  }, [recover])
 
-  const result = store.result
+  useEffect(() => {
+    const id = navState?.workflowId || workflowId
+    queueMicrotask(() => {
+      if (id && initializedWorkflowRef.current !== id) {
+        initializedWorkflowRef.current = id
+        setWorkflowId(id)
+        void recover(id)
+      } else if (!id && navState?.prompt && workflowStatus === 'idle' && !autoStartedRef.current) {
+        autoStartedRef.current = true
+        void start()
+      }
+    })
+  }, [
+    navState?.prompt,
+    navState?.workflowId,
+    recover,
+    setWorkflowId,
+    start,
+    workflowId,
+    workflowStatus,
+  ])
+
+  useEffect(
+    () => () => {
+      connectionRef.current?.close()
+      connectionRef.current = null
+      if (recoveryTimerRef.current !== null) window.clearTimeout(recoveryTimerRef.current)
+    },
+    [],
+  )
+
   const generate = result?.generate
+  const selectDirection = async (direction: CreativeDirection) => {
+    if (!workflowId || !result?.creativeDirection) return
+    const nextCreativeDirection = {
+      ...result.creativeDirection,
+      selectedDirectionId: direction.id,
+    }
+    await updateNodeOutput(
+      workflowId,
+      'creativeDirection',
+      nextCreativeDirection as unknown as Record<string, unknown>,
+    )
+    setResult({ ...result, creativeDirection: nextCreativeDirection })
+    await rerunNode(workflowId, 'prompt')
+    setStatus('running')
+    connect(workflowId)
+  }
   const selectCandidate = async (candidate: CandidateImage) => {
-    if (!store.workflowId || !generate) return
+    if (!workflowId || !generate) return
     const nextGenerate = { ...generate, selectedCandidateId: candidate.id }
     await updateNodeOutput(
-      store.workflowId,
+      workflowId,
       'generate',
       nextGenerate as unknown as Record<string, unknown>,
     )
-    store.setResult({
+    setResult({
       ...result,
       generate: nextGenerate,
+      compositionDraft: undefined,
       compose: undefined,
       finalEvaluation: undefined,
       finalImageUrl: undefined,
     })
-    store.setNodeExecStatuses((old) => ({
+    setNodeExecStatuses((old) => ({
       ...old,
       generate: 'done',
       compose: 'stale',
       finalEvaluation: 'stale',
     }))
-    message.success('已选择候选图，可从合成节点继续运行')
+    setSelectedNodeId('compose')
+    await recover(workflowId)
+    if (result?.brief?.needsComposition) {
+      setSelectedNodeId('compose')
+      message.success('已选择候选底图，请继续输入艺术字内容')
+    } else {
+      await rerunNode(workflowId, 'compose')
+      setStatus('running')
+      connect(workflowId)
+      message.success('已选择候选底图，正在执行最终质检')
+    }
   }
   const rerun = async () => {
-    if (!store.workflowId) return
-    await rerunNode(store.workflowId, selectedNodeId)
-    store.setStatus('running')
-    connect(store.workflowId)
+    if (!workflowId) return
+    await rerunNode(workflowId, selectedNodeId)
+    setStatus('running')
+    connect(workflowId)
   }
   const saveWork = async () => {
-    if (!store.workflowId || !result?.finalImageUrl || !result.finalEvaluation) return
+    if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return
     const work = await createWork({
       title: userPrompt.slice(0, 40) || '未命名作品',
       spaceId: currentSpaceId,
       finalImageUrl: result.finalImageUrl,
-      workflowId: store.workflowId,
+      objectKey:
+        result.compose && 'objectKey' in result.compose ? result.compose.objectKey : undefined,
+      workflowId,
       qualityReport: result.finalEvaluation,
-      nodesSnapshot: store.nodeStreamData,
-      metadata: { selectedCandidateId: result.generate?.selectedCandidateId },
+      nodesSnapshot: nodeStreamData,
+      metadata: {
+        selectedCandidateId: result.generate?.selectedCandidateId,
+        artText: result.compositionDraft,
+        composition: result.compose,
+      },
     })
     setSavedWorkId(work._id)
     message.success('作品与初始版本已保存')
@@ -198,17 +309,20 @@ export default function Workspace() {
     a.click()
   }
   const completed = NODE_ORDER.filter((id) =>
-    ['done', 'skipped'].includes(store.nodeExecStatuses[id]),
+    ['done', 'skipped'].includes(nodeExecStatuses[id]),
   ).length
   const semantic: SemanticStatus =
-    store.status === 'completed'
+    workflowStatus === 'completed'
       ? 'success'
-      : store.status === 'failed'
+      : workflowStatus === 'failed'
         ? 'failed'
-        : store.status === 'running'
+        : workflowStatus === 'running'
           ? 'running'
           : 'queued'
-  const selectedOutput = store.nodeStreamData[selectedNodeId]
+  const selectedOutput = nodeStreamData[selectedNodeId]
+  const baseCandidate = generate?.candidates.find(
+    (candidate) => candidate.id === generate.selectedCandidateId,
+  )
 
   return (
     <div className={styles.wrapper}>
@@ -221,7 +335,11 @@ export default function Workspace() {
           )}
         </div>
         <div className={styles.workspaceActions}>
-          <Button icon={<SaveOutlined />} disabled={!result?.finalImageUrl} onClick={saveWork}>
+          <Button
+            icon={<SaveOutlined />}
+            disabled={!result?.finalImageUrl || !result.finalEvaluation?.passed}
+            onClick={saveWork}
+          >
             保存作品
           </Button>
           <Button
@@ -237,7 +355,7 @@ export default function Workspace() {
             type="primary"
             icon={<PlayCircleFilled />}
             loading={submitting}
-            disabled={!userPrompt.trim() || store.status === 'running'}
+            disabled={!userPrompt.trim() || workflowStatus === 'running'}
             onClick={start}
           >
             运行工作流
@@ -274,9 +392,20 @@ export default function Workspace() {
             <ReactFlowProvider>
               <FlowView
                 onNodeClick={(id) => setSelectedNodeId(id as FlowNodeId)}
-                nodeExecStatuses={store.nodeExecStatuses}
+                nodeExecStatuses={nodeExecStatuses}
               />
             </ReactFlowProvider>
+            {selectedNodeId === 'compose' && workflowId && baseCandidate && (
+              <div className={styles.composerOverlay}>
+                <ArtTextComposer
+                  key={baseCandidate.id}
+                  workflowId={workflowId}
+                  baseCandidate={baseCandidate}
+                  draft={result?.compositionDraft}
+                  onChanged={() => recover(workflowId)}
+                />
+              </div>
+            )}
           </div>
         </section>
         <aside className={styles.right}>
@@ -292,12 +421,30 @@ export default function Workspace() {
             <Space direction="vertical" style={{ width: '100%' }}>
               <StatusBadge
                 status={
-                  store.nodeExecStatuses[selectedNodeId] === 'done'
+                  nodeExecStatuses[selectedNodeId] === 'done'
                     ? 'success'
-                    : (store.nodeExecStatuses[selectedNodeId] as SemanticStatus)
+                    : (nodeExecStatuses[selectedNodeId] as SemanticStatus)
                 }
               />
-              {selectedNodeId === 'generate' && generate ? (
+              {selectedNodeId === 'creativeDirection' && result?.creativeDirection ? (
+                <Radio.Group value={result.creativeDirection.selectedDirectionId}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    {result.creativeDirection.directions.map((direction) => (
+                      <Card key={direction.id} size="small">
+                        <Radio
+                          value={direction.id}
+                          onChange={() => void selectDirection(direction)}
+                        >
+                          {direction.title}
+                        </Radio>
+                        <p>{direction.summary}</p>
+                        <Tag>{direction.visualStyle}</Tag>
+                        <Tag>{direction.colorStrategy}</Tag>
+                      </Card>
+                    ))}
+                  </Space>
+                </Radio.Group>
+              ) : selectedNodeId === 'generate' && generate ? (
                 <>
                   <Radio.Group value={generate.selectedCandidateId}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -317,9 +464,11 @@ export default function Workspace() {
                           >
                             <Radio
                               value={candidate.id}
+                              disabled={!evaluation || evaluation.totalScore < 6}
                               onChange={() => void selectCandidate(candidate)}
                             >
-                              选择 · {evaluation?.totalScore ?? '未评分'}分
+                              {evaluation && evaluation.totalScore < 6 ? '质检未通过' : '选择'} ·{' '}
+                              {evaluation?.totalScore ?? '未评分'}分
                             </Radio>
                           </Card>
                         )
@@ -337,7 +486,7 @@ export default function Workspace() {
               )}
               <Button
                 onClick={() => void rerun()}
-                disabled={!store.workflowId || store.status === 'running'}
+                disabled={!workflowId || workflowStatus === 'running'}
               >
                 从此节点重跑
               </Button>
@@ -348,7 +497,7 @@ export default function Workspace() {
       <footer className={styles.executionBar} aria-live="polite">
         <div className={styles.executionStatus}>
           <StatusBadge status={semantic} />
-          <span>{store.error || store.status}</span>
+          <span>{workflowError || workflowStatus}</span>
         </div>
         <div className={styles.executionProgress}>
           <span>整体进度</span>

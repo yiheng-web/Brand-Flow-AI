@@ -249,7 +249,6 @@ const Home = () => {
           />
         </div>
         <div className={styles.topBarRight}>
-          <span className={styles.quotaText}>剩余额度 800</span>
           <Button type="text" size="small">
             导出
           </Button>

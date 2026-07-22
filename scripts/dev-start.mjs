@@ -99,10 +99,10 @@ function validateEnv() {
     console.error('请在 apps/api/.env 中配置有效的 OPENAI_API_KEY');
     console.error('（不能使用 .env.example 中的占位符 sk-xxxxxxx）');
     console.error('');
-    console.error('示例（SiliconFlow，与 .env.example 一致）：');
+    console.error('示例（OpenAI 官方 API，与 .env.example 一致）：');
     console.error('  OPENAI_API_KEY=sk-你的密钥');
-    console.error('  OPENAI_BASE_URL=https://api.siliconflow.cn/v1');
-    console.error('  OPENAI_MODEL_NAME=deepseek-ai/DeepSeek-V3');
+    console.error('  OPENAI_BASE_URL=https://api.openai.com/v1');
+    console.error('  OPENAI_MODEL_NAME=gpt-5.6-terra');
     console.error('');
     console.error('若暂时只需启动前后端做 UI 调试，可执行：');
     console.error('  pnpm dev:all -- --skip-key-check');

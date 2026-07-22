@@ -14,6 +14,8 @@ import CreateAssetModal from './CreateAssetModal'
 import AssetUploadModal from './AssetUploadModal'
 import SaveToKnowledgeModal from './SaveToKnowledgeModal'
 import { deleteAsset, getAssets, type AssetData } from '@/api/assets'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useUserStore } from '@/store/useUserStore'
 
 /** 资产对象结构（与后端约定） */
 interface AssetItem {
@@ -42,6 +44,9 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const AssetsPanel = () => {
+  const userId = useAuthStore((state) => state.user?.id)
+  const currentSpaceId = useUserStore((state) => state.currentSpaceId)
+  const currentSpaceType = useUserStore((state) => state.currentSpaceType)
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -50,12 +55,20 @@ const AssetsPanel = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null)
+  const ownerId = currentSpaceType === 'personal' ? userId || '' : currentSpaceId || ''
+  const ownerType = currentSpaceType === 'personal' ? 'user' : currentSpaceType
+  const visibility =
+    currentSpaceType === 'personal'
+      ? 'private'
+      : currentSpaceType === 'team'
+        ? 'team'
+        : 'enterprise'
 
   /** 加载资产列表 */
   const fetchAssets = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await getAssets()
+      const data = await getAssets(currentSpaceId || 'personal')
       setAssets(
         data.map((asset) => ({
           id: asset._id,
@@ -66,6 +79,10 @@ const AssetsPanel = () => {
               ? asset.metadata.description
               : undefined,
           url: (asset as AssetData & { signedUrl?: string }).signedUrl || asset.url,
+          thumbnailUrl:
+            (asset as AssetData & { thumbnailSignedUrl?: string }).thumbnailSignedUrl ||
+            (asset as AssetData & { signedUrl?: string }).signedUrl ||
+            asset.url,
           createdAt: asset.createdAt || '',
         })),
       )
@@ -76,7 +93,7 @@ const AssetsPanel = () => {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentSpaceId])
 
   useEffect(() => {
     queueMicrotask(() => void fetchAssets())
@@ -244,8 +261,22 @@ const AssetsPanel = () => {
       </Spin>
 
       {/* 弹窗 */}
-      <CreateAssetModal open={createModalOpen} onClose={() => setCreateModalOpen(false)} />
-      <AssetUploadModal open={uploadModalOpen} onClose={() => setUploadModalOpen(false)} />
+      <CreateAssetModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        ownerId={ownerId}
+        ownerType={ownerType}
+        visibility={visibility}
+        onSuccess={() => void fetchAssets()}
+      />
+      <AssetUploadModal
+        open={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        ownerId={ownerId}
+        ownerType={ownerType}
+        visibility={visibility}
+        onSuccess={() => void fetchAssets()}
+      />
       <SaveToKnowledgeModal
         open={saveModalOpen}
         onClose={() => setSaveModalOpen(false)}

@@ -25,6 +25,13 @@ export class WorksService {
 
   async create(userId: string, dto: CreateWorkDto) {
     const space = await this.orgService.getAccessibleSpace(userId, dto.spaceId)
+    if (dto.workflowId && Types.ObjectId.isValid(dto.workflowId)) {
+      const existing = await this.workModel.findOne({
+        workflowId: new Types.ObjectId(dto.workflowId),
+        creatorId: new Types.ObjectId(userId),
+      })
+      if (existing) return this.findOne(userId, existing._id.toString())
+    }
     const ownerType =
       space.spaceType === 'personal'
         ? OwnerType.USER
@@ -77,19 +84,38 @@ export class WorksService {
 
   async findAll(userId: string, spaceId: string) {
     await this.orgService.getAccessibleSpace(userId, spaceId)
-    return this.workModel
+    const works = await this.workModel
       .find({ spaceId })
       .populate('creatorId', 'email profile')
       .sort({ createdAt: -1 })
+    return Promise.all(
+      works.map(async (work) => ({
+        ...work.toObject(),
+        finalImageUrl: work.objectKey
+          ? await this.storageService.getSignedUrl(work.objectKey)
+          : work.finalImageUrl,
+      })),
+    )
   }
 
   async findOne(userId: string, id: string) {
     const work = await this.findAccessibleWork(userId, id)
     const versions = await this.workVersionModel.find({ workId: work._id }).sort({ versionNo: -1 })
+    const previewVersions = await Promise.all(
+      versions.map(async (version) => ({
+        ...version.toObject(),
+        imageUrl: version.objectKey
+          ? await this.storageService.getSignedUrl(version.objectKey)
+          : version.imageUrl,
+      })),
+    )
 
     return {
       ...work.toObject(),
-      versions,
+      finalImageUrl: work.objectKey
+        ? await this.storageService.getSignedUrl(work.objectKey)
+        : work.finalImageUrl,
+      versions: previewVersions,
     }
   }
 
@@ -172,6 +198,7 @@ export class WorksService {
     }
 
     const work = await this.findAccessibleWork(userId, id)
+    await this.assertPngExport(work.objectKey, work.finalImageUrl)
     const downloadUrl = work.objectKey
       ? await this.storageService.getSignedUrl(work.objectKey, { expiresIn: 60 * 10 })
       : work.finalImageUrl
@@ -225,6 +252,30 @@ export class WorksService {
     }
 
     throw new NotFoundException('作品不存在或无权访问')
+  }
+
+  private async assertPngExport(objectKey: string | undefined, imageUrl: string) {
+    const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+    if (objectKey) {
+      const object = await this.storageService.getObjectPrefix(objectKey, 8)
+      if (
+        object.contentType !== 'image/png' ||
+        !Buffer.from(object.bytes).subarray(0, 8).equals(pngSignature)
+      ) {
+        throw new BadRequestException('作品对象不是有效 PNG，无法导出')
+      }
+      return
+    }
+
+    const response = await fetch(imageUrl, { headers: { Range: 'bytes=0-7' } })
+    const bytes = Buffer.from(await response.arrayBuffer()).subarray(0, 8)
+    if (
+      !response.ok ||
+      !response.headers.get('content-type')?.startsWith('image/png') ||
+      !bytes.equals(pngSignature)
+    ) {
+      throw new BadRequestException('作品地址未返回有效 PNG，无法导出')
+    }
   }
 
   private async assertCanCreate(

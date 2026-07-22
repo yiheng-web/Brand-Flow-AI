@@ -2,15 +2,27 @@ import { useState } from 'react'
 import { Modal, Upload, message } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
+import { uploadAsset, type OwnerType, type Visibility } from '@/api/assets'
 
 const { Dragger } = Upload
 
 interface AssetUploadModalProps {
   open: boolean
   onClose: () => void
+  ownerId: string
+  ownerType: OwnerType
+  visibility: Visibility
+  onSuccess: () => void
 }
 
-const AssetUploadModal = ({ open, onClose }: AssetUploadModalProps) => {
+const AssetUploadModal = ({
+  open,
+  onClose,
+  ownerId,
+  ownerType,
+  visibility,
+  onSuccess,
+}: AssetUploadModalProps) => {
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [uploading, setUploading] = useState(false)
 
@@ -22,24 +34,29 @@ const AssetUploadModal = ({ open, onClose }: AssetUploadModalProps) => {
 
     setUploading(true)
 
-    const formData = new FormData()
-    fileList.forEach((file) => {
-      if (file.originFileObj) {
-        formData.append('files', file.originFileObj)
-      }
-    })
-
-    // TODO: POST /api/assets/upload
-    console.log('上传图片素材:', fileList)
-    // const res = await api.uploadAssets(formData)
-
-    // 模拟上传
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    message.success(`${fileList.length} 个文件上传成功`)
-    setFileList([])
-    setUploading(false)
-    onClose()
+    try {
+      await Promise.all(
+        fileList.map((item) => {
+          if (!item.originFileObj) throw new Error(`文件 ${item.name} 无法读取`)
+          return uploadAsset({
+            file: item.originFileObj,
+            name: item.name.replace(/\.[^.]+$/, ''),
+            type: 'image',
+            ownerId,
+            ownerType,
+            visibility,
+          })
+        }),
+      )
+      message.success(`${fileList.length} 个文件上传成功`)
+      setFileList([])
+      onClose()
+      onSuccess()
+    } catch {
+      message.error('素材上传失败，未成功的文件可直接重试')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const uploadProps: UploadProps = {

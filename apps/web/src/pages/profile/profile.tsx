@@ -30,6 +30,7 @@ const Profile = () => {
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
+  const setToken = useAuthStore((state) => state.setToken)
 
   // 企业相关
   const currentEnterpriseId = useUserStore((state) => state.currentEnterpriseId)
@@ -57,10 +58,8 @@ const Profile = () => {
   useEffect(() => {
     const loadEnterprises = async () => {
       try {
-        const res = await getMyEnterprises()
-        if (res.data && Array.isArray(res.data)) {
-          setEnterprises(res.data)
-        }
+        const enterpriseList = await getMyEnterprises()
+        setEnterprises(enterpriseList)
       } catch {
         message.error('加载企业列表失败')
       }
@@ -75,10 +74,8 @@ const Profile = () => {
     if (!currentEnterpriseId) return
     setLoadingTeams(true)
     try {
-      const res = await getTeams()
-      if (res.data && Array.isArray(res.data)) {
-        setTeams(res.data)
-      }
+      const teamList = await getTeams()
+      setTeams(teamList)
     } catch {
       message.error('加载团队列表失败')
     } finally {
@@ -94,9 +91,10 @@ const Profile = () => {
       切换企业
    ============================ */
   const handleSwitchEnterprise = async (enterpriseId: string) => {
-    setCurrentEnterpriseId(enterpriseId)
     try {
-      await switchEnterprise(enterpriseId)
+      const result = await switchEnterprise(enterpriseId)
+      setToken(result.access_token)
+      setCurrentEnterpriseId(enterpriseId)
     } catch {
       message.error('切换企业失败')
     }

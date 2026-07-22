@@ -42,7 +42,7 @@ export class CreateAssetDto {
   })
   @IsOptional()
   @IsObject()
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class UploadAssetDto {

@@ -1,0 +1,103 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  padding: 24px;
+  overflow: auto;
+}
+
+.root h2,
+.root h3,
+.root p {
+  margin: 0;
+}
+
+.root p {
+  color: var(--color-text-secondary, #70757f);
+  line-height: 1.55;
+}
+
+.inputPanel {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1fr) minmax(240px, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #e4e7ee;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.candidateGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.candidateGrid :global(.ant-card-body) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.selected {
+  border-color: #4f6ff7;
+  box-shadow: 0 0 0 2px rgba(79, 111, 247, 0.12);
+}
+
+.previewCanvas {
+  display: block;
+  width: 100%;
+  height: 120px;
+  background: linear-gradient(135deg, #29364a, #76859b);
+}
+
+.canvasToolbar,
+.confirmBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.canvasShell {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  border: 1px solid #dfe3eb;
+  border-radius: 16px;
+  background: #eef1f6;
+  overflow: auto;
+}
+
+.confirmBar {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f4f7ff;
+}
+
+@media (max-width: 1280px) {
+  .inputPanel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .candidateGrid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .inputPanel,
+  .candidateGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .canvasToolbar,
+  .confirmBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -1,6 +1,6 @@
-import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage } from '@langchain/core/messages'
 import { safeJsonParse } from '../../common'
+import { createOpenAIChatModel, extractOpenAIText } from '../../common/openai-config'
 import { CANDIDATE_EVALUATE_PROMPT } from '../prompts/candidate-evaluate-prompt'
 import type { CandidateImage } from '../../generate/generate-types'
 import type { CandidateEvaluationBatch } from './evaluate-types'
@@ -9,10 +9,7 @@ export async function evaluateCandidates(
   candidates: CandidateImage[],
   constraintSummary: string,
 ): Promise<CandidateEvaluationBatch> {
-  const llm = new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL_NAME || 'gpt-4o',
-    temperature: 0.1,
-  })
+  const llm = createOpenAIChatModel()
 
   // 用 HumanMessage + 图片 URL 启用 vision
   const message = new HumanMessage({
@@ -33,12 +30,9 @@ export async function evaluateCandidates(
   })
 
   const response = await llm.invoke([message])
-  const raw =
-    typeof response.content === 'string' ? response.content : JSON.stringify(response.content)
+  const raw = extractOpenAIText(response.content)
 
-  return safeJsonParse<CandidateEvaluationBatch>(raw, {
-    evaluations: [],
-    bestCandidateId: '',
-    summary: '评分失败',
-  })!
+  const parsed = safeJsonParse<CandidateEvaluationBatch>(raw)
+  if (!parsed) throw new Error('候选质检 Provider 返回了无法解析的结果')
+  return parsed
 }

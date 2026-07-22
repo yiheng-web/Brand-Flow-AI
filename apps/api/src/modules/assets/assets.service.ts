@@ -25,12 +25,16 @@ export class AssetsService {
     private readonly knowledgeService: KnowledgeService,
   ) {}
 
-  async createAsset(userId: string, enterpriseId: string, createDto: CreateAssetDto) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
-    }
-
+  async createAsset(userId: string, enterpriseId: string | undefined, createDto: CreateAssetDto) {
     const { name, type, url, ownerId, ownerType, visibility, metadata } = createDto
+
+    if (ownerType === OwnerType.USER) {
+      if (ownerId !== userId || visibility !== Visibility.PRIVATE) {
+        throw new BadRequestException('个人素材只能保存到本人私有空间')
+      }
+    } else if (!enterpriseId) {
+      throw new BadRequestException('团队或企业素材需要有效的企业上下文')
+    }
 
     if (visibility === Visibility.TEAM || visibility === Visibility.ENTERPRISE) {
       const user = await this.userModel.findById(userId)
@@ -53,7 +57,7 @@ export class AssetsService {
       ownerType,
       visibility,
       creatorId: new Types.ObjectId(userId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
+      enterpriseId: enterpriseId ? new Types.ObjectId(enterpriseId) : undefined,
       metadata: metadata || {},
     })
 
@@ -62,20 +66,24 @@ export class AssetsService {
 
   async uploadAsset(
     userId: string,
-    enterpriseId: string,
+    enterpriseId: string | undefined,
     uploadDto: UploadAssetDto,
     file: UploadedAssetFile,
   ) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
-    }
-
     if (!file?.buffer) {
       throw new BadRequestException('上传文件不能为空')
     }
 
     if (!file.mimetype.startsWith('image/')) {
       throw new BadRequestException('当前仅支持上传图片素材')
+    }
+
+    if (uploadDto.ownerType === OwnerType.USER) {
+      if (uploadDto.ownerId !== userId || uploadDto.visibility !== Visibility.PRIVATE) {
+        throw new BadRequestException('个人素材只能上传到本人私有空间')
+      }
+    } else if (!enterpriseId) {
+      throw new BadRequestException('团队或企业素材需要有效的企业上下文')
     }
 
     await this.assertCanCreateAsset(
@@ -116,7 +124,7 @@ export class AssetsService {
       ownerType: uploadDto.ownerType,
       visibility: uploadDto.visibility,
       creatorId: new Types.ObjectId(userId),
-      enterpriseId: new Types.ObjectId(enterpriseId),
+      enterpriseId: enterpriseId ? new Types.ObjectId(enterpriseId) : undefined,
       metadata: {
         tags: this.parseTags(uploadDto.tags),
         description: uploadDto.description,
@@ -127,9 +135,17 @@ export class AssetsService {
     return this.attachSignedUrl(asset)
   }
 
-  async getAssets(userId: string, enterpriseId: string) {
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业')
+  async getAssets(userId: string, enterpriseId?: string, spaceId?: string) {
+    if (spaceId === 'personal' || !enterpriseId) {
+      const personalAssets = await this.assetModel
+        .find({
+          creatorId: new Types.ObjectId(userId),
+          ownerId: new Types.ObjectId(userId),
+          ownerType: OwnerType.USER,
+          visibility: Visibility.PRIVATE,
+        })
+        .sort({ createdAt: -1 })
+      return Promise.all(personalAssets.map((asset) => this.attachSignedUrl(asset)))
     }
 
     const user = await this.userModel.findById(userId)
@@ -141,17 +157,26 @@ export class AssetsService {
       .filter((m) => m.enterpriseId.toString() === enterpriseId && m.teamId)
       .map((m) => m.teamId?.toString())
 
+    if (spaceId && spaceId !== enterpriseId) {
+      if (!myTeams.includes(spaceId)) throw new BadRequestException('您不属于当前团队空间')
+      const teamAssets = await this.assetModel
+        .find({
+          enterpriseId: new Types.ObjectId(enterpriseId),
+          ownerType: OwnerType.TEAM,
+          ownerId: new Types.ObjectId(spaceId),
+          visibility: Visibility.TEAM,
+        })
+        .populate('creatorId', 'email profile')
+        .sort({ createdAt: -1 })
+      return Promise.all(teamAssets.map((asset) => this.attachSignedUrl(asset)))
+    }
+
     const query = {
       enterpriseId: new Types.ObjectId(enterpriseId),
       $or: [
-        { visibility: Visibility.PUBLIC },
+        { visibility: Visibility.PUBLIC, ownerType: OwnerType.ENTERPRISE },
         { creatorId: new Types.ObjectId(userId) },
-        { visibility: Visibility.ENTERPRISE },
-        {
-          visibility: Visibility.TEAM,
-          ownerType: OwnerType.TEAM,
-          ownerId: { $in: myTeams.map((id) => new Types.ObjectId(id)) },
-        },
+        { visibility: Visibility.ENTERPRISE, ownerType: OwnerType.ENTERPRISE },
       ],
     }
 
@@ -174,6 +199,7 @@ export class AssetsService {
         const user = await this.userModel.findById(userId)
         const membership = user?.memberships.find(
           (m) =>
+            asset.enterpriseId &&
             m.enterpriseId.toString() === asset.enterpriseId.toString() &&
             (!m.teamId ||
               (asset.ownerType === OwnerType.TEAM &&
@@ -200,7 +226,7 @@ export class AssetsService {
 
   async saveToKnowledge(
     userId: string,
-    enterpriseId: string,
+    enterpriseId: string | undefined,
     assetId: string,
     dto: SaveAssetToKnowledgeDto,
   ) {
@@ -209,14 +235,16 @@ export class AssetsService {
     }
 
     const asset = await this.findAccessibleAsset(userId, enterpriseId, assetId)
-    const tags = Array.isArray(asset.metadata?.tags) ? asset.metadata.tags : []
+    const tags = Array.isArray(asset.metadata?.tags)
+      ? asset.metadata.tags.filter((tag): tag is string => typeof tag === 'string')
+      : []
+    const description =
+      typeof asset.metadata?.description === 'string' ? asset.metadata.description : undefined
     const content = [
       `素材名称：${asset.name}`,
       `素材类型：${asset.type}`,
-      dto.description || asset.metadata?.description
-        ? `素材描述：${dto.description || asset.metadata.description}`
-        : undefined,
-      asset.metadata?.tags?.length ? `标签：${asset.metadata.tags.join(', ')}` : undefined,
+      dto.description || description ? `素材描述：${dto.description || description}` : undefined,
+      tags.length ? `标签：${tags.join(', ')}` : undefined,
       `素材地址：${asset.url}`,
     ]
       .filter(Boolean)
@@ -260,11 +288,18 @@ export class AssetsService {
 
   private async assertCanCreateAsset(
     userId: string,
-    enterpriseId: string,
+    enterpriseId: string | undefined,
     ownerId: string,
     ownerType: OwnerType,
     visibility: Visibility,
   ) {
+    if (ownerType === OwnerType.USER) {
+      if (ownerId !== userId || visibility !== Visibility.PRIVATE) {
+        throw new BadRequestException('个人素材只能保存到本人私有空间')
+      }
+      return
+    }
+    if (!enterpriseId) throw new BadRequestException('团队或企业素材需要有效的企业上下文')
     if (visibility !== Visibility.TEAM && visibility !== Visibility.ENTERPRISE) {
       return
     }
@@ -351,7 +386,7 @@ export class AssetsService {
       .filter(Boolean)
   }
 
-  private parseMetadata(metadata?: string): Record<string, any> {
+  private parseMetadata(metadata?: string): Record<string, unknown> {
     if (!metadata) {
       return {}
     }

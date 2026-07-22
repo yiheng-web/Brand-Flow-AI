@@ -23,6 +23,7 @@ export interface CreateWorkParams {
   spaceId: string
   finalImageUrl: string
   workflowId: string
+  objectKey?: string
   ownerId?: string
   ownerType?: 'user' | 'team' | 'enterprise'
   visibility?: 'private' | 'team' | 'enterprise' | 'public'

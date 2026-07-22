@@ -30,6 +30,7 @@ export interface RegisterParams {
 export interface AuthResult {
   token: string // JWT token，后续请求携带用于身份验证
   user: {
+    id: string
     name: string // 用户显示名称
     email: string // 用户邮箱
   }
@@ -57,6 +58,7 @@ function toAuthResult(backend: BackendLoginData): AuthResult {
   return {
     token: backend.access_token,
     user: {
+      id: backend.user.id,
       name: backend.user.profile?.nickname || backend.user.email.split('@')[0],
       email: backend.user.email,
     },

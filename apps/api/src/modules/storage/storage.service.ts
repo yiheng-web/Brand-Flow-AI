@@ -74,6 +74,21 @@ export class StorageService {
     return `${this.buildEndpoint()}/${this.config.bucket}/${key}`
   }
 
+  async getObjectPrefix(
+    key: string,
+    byteLength: number,
+  ): Promise<{ contentType?: string; bytes: Uint8Array }> {
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.config.bucket,
+        Key: key,
+        Range: `bytes=0-${Math.max(0, byteLength - 1)}`,
+      }),
+    )
+    const bytes = response.Body ? await response.Body.transformToByteArray() : new Uint8Array()
+    return { contentType: response.ContentType, bytes }
+  }
+
   getBucket(): string {
     return this.config.bucket
   }

@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -30,6 +31,17 @@ import { CreateAssetDto, SaveAssetToKnowledgeDto, UploadAssetDto } from './dto/a
 import { AssetResponseDto, SaveAssetToKnowledgeResponseDto } from './dto/assets-response.dto'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
 
+interface AuthenticatedRequest {
+  user: { sub: string; entId?: string }
+}
+
+interface UploadedAssetFile {
+  originalname: string
+  mimetype: string
+  size: number
+  buffer?: Buffer
+}
+
 @ApiTags('素材资产 Assets')
 @ApiBearerAuth()
 @Controller('assets')
@@ -44,7 +56,7 @@ export class AssetsController {
       '用于登记已经存在 URL 的素材资产。适合外部 CDN 图片、生成图 URL 或已上传对象的补录。',
   })
   @ApiCreatedSuccessResponse(AssetResponseDto, '创建成功，返回封装后的资产记录。')
-  async createAsset(@Req() req: any, @Body() createDto: CreateAssetDto) {
+  async createAsset(@Req() req: AuthenticatedRequest, @Body() createDto: CreateAssetDto) {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
     return this.assetsService.createAsset(userId, enterpriseId, createDto)
@@ -76,7 +88,11 @@ export class AssetsController {
     },
   })
   @ApiCreatedSuccessResponse(AssetResponseDto, '上传成功，返回封装后的资产记录和 signedUrl。')
-  async uploadAsset(@Req() req: any, @Body() uploadDto: UploadAssetDto, @UploadedFile() file: any) {
+  async uploadAsset(
+    @Req() req: AuthenticatedRequest,
+    @Body() uploadDto: UploadAssetDto,
+    @UploadedFile() file: UploadedAssetFile,
+  ) {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
     return this.assetsService.uploadAsset(userId, enterpriseId, uploadDto, file)
@@ -88,10 +104,10 @@ export class AssetsController {
     description: '返回当前用户在当前企业下可见的素材，包括本人私有、团队、企业和公开素材。',
   })
   @ApiSuccessArrayResponse(AssetResponseDto, '返回封装后的资产列表。')
-  async getAssets(@Req() req: any) {
+  async getAssets(@Req() req: AuthenticatedRequest, @Query('spaceId') spaceId?: string) {
     const userId = req.user.sub
     const enterpriseId = req.user.entId
-    return this.assetsService.getAssets(userId, enterpriseId)
+    return this.assetsService.getAssets(userId, enterpriseId, spaceId)
   }
 
   @Post(':id/save-to-knowledge')
@@ -106,7 +122,7 @@ export class AssetsController {
     '保存成功，返回封装后的 KnowledgeItem 和向量入库结果。',
   )
   async saveToKnowledge(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Param('id') assetId: string,
     @Body() dto: SaveAssetToKnowledgeDto,
   ) {
@@ -122,7 +138,7 @@ export class AssetsController {
   })
   @ApiParam({ name: 'id', description: '素材资产 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
-  async deleteAsset(@Req() req: any, @Param('id') assetId: string) {
+  async deleteAsset(@Req() req: AuthenticatedRequest, @Param('id') assetId: string) {
     const userId = req.user.sub
     return this.assetsService.deleteAsset(userId, assetId)
   }

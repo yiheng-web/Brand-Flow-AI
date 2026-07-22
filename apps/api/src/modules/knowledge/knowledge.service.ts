@@ -105,6 +105,7 @@ export class KnowledgeService {
       tags: dto.tags || [],
       sourceType: 'manual',
       status: 'active',
+      constraintLevel: dto.constraintLevel ?? 'recommended',
       creatorId: new Types.ObjectId(userId),
       metadata: dto.metadata || {},
     })
@@ -126,7 +127,7 @@ export class KnowledgeService {
       content: string
       assetId: string
       tags?: string[]
-      metadata?: Record<string, any>
+      metadata?: Record<string, unknown>
     },
   ) {
     await this.checkPermission(userId, enterpriseId, knowledgeId)
@@ -140,6 +141,11 @@ export class KnowledgeService {
       sourceType: 'asset',
       assetId: new Types.ObjectId(payload.assetId),
       status: 'active',
+      constraintLevel:
+        payload.metadata?.constraintLevel === 'required' ||
+        payload.metadata?.constraintLevel === 'optional'
+          ? payload.metadata.constraintLevel
+          : 'recommended',
       creatorId: new Types.ObjectId(userId),
       metadata: payload.metadata || {},
     })
@@ -228,7 +234,7 @@ export class KnowledgeService {
     return { success: true }
   }
 
-  async getRecords(enterpriseId: string, knowledgeId: string): Promise<any[]> {
+  async getRecords(enterpriseId: string, knowledgeId: string): Promise<unknown[]> {
     // 首先校验归属权限
     await this.findOne(enterpriseId, knowledgeId)
 

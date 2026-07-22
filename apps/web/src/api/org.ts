@@ -23,6 +23,7 @@ export interface EnterpriseData {
 export interface SwitchEnterpriseResult {
   success: boolean
   currentEnterpriseId: string
+  access_token: string
 }
 
 // 创建团队请求参数
@@ -57,12 +58,12 @@ export async function createEnterprise(params: CreateEnterpriseParams) {
 }
 
 // 获取我的企业列表
-export async function getMyEnterprises() {
+export async function getMyEnterprises(): Promise<EnterpriseData[]> {
   return apiClient.get('/org/enterprises')
 }
 
 // 切换当前企业
-export async function switchEnterprise(enterpriseId: string) {
+export async function switchEnterprise(enterpriseId: string): Promise<SwitchEnterpriseResult> {
   return apiClient.put(`/org/enterprise/${enterpriseId}/switch`)
 }
 
@@ -77,6 +78,6 @@ export async function createTeam(params: CreateTeamParams) {
 }
 
 // 获取当前企业下的团队列表
-export async function getTeams() {
+export async function getTeams(): Promise<TeamData[]> {
   return apiClient.get('/org/teams')
 }

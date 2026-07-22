@@ -1,7 +1,7 @@
 import { BrandGuidelines, BrandContext, BrandConstraintPackage } from './brand-types'
 import { searchKnowledge } from '../retrieval'
-import { ChatOpenAI } from '@langchain/openai'
 import { safeJsonParse } from '../common'
+import { createOpenAIChatModel, extractOpenAIText } from '../common/openai-config'
 import { HumanMessage } from '@langchain/core/messages'
 
 const DEFAULT_BRAND: BrandGuidelines = {
@@ -97,10 +97,7 @@ export class BrandService {
     userIntent: string,
     docs: { text: string; source: string }[],
   ): Promise<BrandConstraintPackage> {
-    const llm = new ChatOpenAI({
-      modelName: process.env.OPENAI_MODEL_NAME || 'gpt-4o',
-      temperature: 0.1,
-    })
+    const llm = createOpenAIChatModel()
 
     const docsText = docs
       .map((d, i) => `[文档${i + 1} 来源知识库:${d.source}]\n${d.text}`)
@@ -134,8 +131,7 @@ ${docsText}
 `.trim()
 
     const response = await llm.invoke([new HumanMessage(prompt)])
-    const raw =
-      typeof response.content === 'string' ? response.content : JSON.stringify(response.content)
+    const raw = extractOpenAIText(response.content)
     const json = safeJsonParse<any>(raw, {
       required: [],
       recommended: [],

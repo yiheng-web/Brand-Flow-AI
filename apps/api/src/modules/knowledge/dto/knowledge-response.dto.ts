@@ -56,11 +56,17 @@ export class KnowledgeItemResponseDto {
   @ApiProperty({ description: '知识项状态', enum: ['active', 'archived'] })
   status!: 'active' | 'archived'
 
+  @ApiProperty({
+    description: '品牌约束级别',
+    enum: ['required', 'recommended', 'optional'],
+  })
+  constraintLevel!: 'required' | 'recommended' | 'optional'
+
   @ApiProperty({ description: '创建者用户 ID' })
   creatorId!: string
 
   @ApiPropertyOptional({ description: '扩展信息' })
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class CreateKnowledgeItemResponseDto {
@@ -79,5 +85,5 @@ export class KnowledgeRecordResponseDto {
   text!: string
 
   @ApiProperty({ description: '向量记录元数据' })
-  metadata!: Record<string, any>
+  metadata!: Record<string, unknown>
 }

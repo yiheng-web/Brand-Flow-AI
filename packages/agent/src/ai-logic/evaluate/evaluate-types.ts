@@ -59,7 +59,7 @@ export interface DeductionItem {
 
 /** 最终品牌质检结果 */
 export interface FinalEvaluationResult {
-  overallScore: number // 1-100
+  overallScore: number // 1-10
   passed: boolean
   dimensionScores: {
     brandCompliance: number

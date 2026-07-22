@@ -76,6 +76,26 @@ export class WorkflowProcessor extends WorkerHost {
           startedAt: new Date(),
         })
 
+        if (nodeType === 'compose' && result.brief?.needsComposition) {
+          await this.workflowNodeModel.findByIdAndUpdate(node._id, {
+            status: 'pending',
+            $unset: { output: 1, completedAt: 1 },
+          })
+          await this.workflowModel.findByIdAndUpdate(workflow._id, {
+            status: 'awaiting_user',
+            awaitingAction: 'enter_art_text',
+            result,
+          })
+          await job.updateProgress({
+            type: 'workflow_awaiting_user',
+            workflowId: workflow._id.toString(),
+            action: 'enter_art_text',
+            result,
+            timestamp: new Date().toISOString(),
+          } satisfies WorkflowSseEvent)
+          return result
+        }
+
         if (nodeType === 'compose' && result.brief && !result.brief.needsComposition) {
           const selected = result.generate?.candidates.find(
             (candidate) => candidate.id === result.generate?.selectedCandidateId,
@@ -119,11 +139,34 @@ export class WorkflowProcessor extends WorkerHost {
           timestamp: new Date().toISOString(),
         } satisfies WorkflowSseEvent)
         await this.persistProgress(workflow._id.toString(), result)
+
+        const awaitingAction =
+          nodeType === 'creativeDirection'
+            ? 'select_direction'
+            : nodeType === 'generate'
+              ? 'select_candidate'
+              : undefined
+        if (awaitingAction) {
+          await this.workflowModel.findByIdAndUpdate(workflow._id, {
+            status: 'awaiting_user',
+            awaitingAction,
+            result,
+          })
+          await job.updateProgress({
+            type: 'workflow_awaiting_user',
+            workflowId: workflow._id.toString(),
+            action: awaitingAction,
+            result,
+            timestamp: new Date().toISOString(),
+          } satisfies WorkflowSseEvent)
+          return result
+        }
       }
 
       await this.workflowModel.findByIdAndUpdate(workflow._id, {
         status: 'completed',
         result,
+        $unset: { awaitingAction: 1 },
       })
       return result
     } catch (error) {
@@ -189,7 +232,7 @@ export class WorkflowProcessor extends WorkerHost {
 
     if (nodeType === 'creativeDirection') {
       const directions = await createCreativeDirections(result.brief, result.brandConstraint)
-      const creativeDirection = { directions, selectedDirectionId: directions[0].id }
+      const creativeDirection = { directions, selectedDirectionId: '' }
       return {
         result: { ...result, creativeDirection },
         nodeOutput: creativeDirection as unknown as Record<string, unknown>,
@@ -220,16 +263,10 @@ export class WorkflowProcessor extends WorkerHost {
       const evaluations = sortCandidateEvaluations(
         await evaluateCandidateImages(candidates, result.brandConstraint),
       )
-      const selectedCandidateId =
-        result.generate?.selectedCandidateId ||
-        evaluations.find((evaluation) => evaluation.recommended)?.candidateId ||
-        evaluations[0]?.candidateId ||
-        candidates.find((candidate) => candidate.imageUrl)?.id
-      if (!selectedCandidateId) throw new Error('四张候选图均生成失败')
       const generate = {
         candidates,
         evaluations,
-        selectedCandidateId,
+        selectedCandidateId: '',
         durationMs: Date.now() - startedAt,
       }
       return {
@@ -272,16 +309,20 @@ export class WorkflowProcessor extends WorkerHost {
     const items = await this.knowledgeItemModel
       .find({ knowledgeId: { $in: ids.map((id) => new Types.ObjectId(id)) }, status: 'active' })
       .limit(30)
+    const mapped = items.map((item) => ({
+      id: item._id.toString(),
+      title: item.title,
+      description: item.content,
+      sourceKnowledgeBaseId: item.knowledgeId.toString(),
+      sourceItemId: item._id.toString(),
+    }))
     return {
-      required: [],
-      recommended: items.map((item) => ({
-        id: item._id.toString(),
-        title: item.title,
-        description: item.content,
-        sourceKnowledgeBaseId: item.knowledgeId.toString(),
-        sourceItemId: item._id.toString(),
-      })),
-      optional: [],
+      required: mapped.filter((_, index) => items[index].constraintLevel === 'required'),
+      recommended: mapped.filter(
+        (_, index) =>
+          !items[index].constraintLevel || items[index].constraintLevel === 'recommended',
+      ),
+      optional: mapped.filter((_, index) => items[index].constraintLevel === 'optional'),
       sources: ids.map((knowledgeBaseId) => ({ knowledgeBaseId })),
     }
   }

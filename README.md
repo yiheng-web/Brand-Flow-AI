@@ -98,7 +98,9 @@ pnpm dev:all
 pnpm start
 ```
 
-首次运行前请在 `apps/api/.env` 中填写有效的 `OPENAI_API_KEY`（若不存在会从 `.env.example` 自动复制）。若密钥仍是占位符 `sk-xxxxxxx`，启动会中止；仅调试 UI 时可执行 `pnpm dev:all -- --skip-key-check`。
+首次运行前请在 `apps/api/.env` 中填写有效的 `OPENAI_API_KEY`（若不存在会从 `.env.example` 自动复制）。项目默认统一使用 OpenAI 官方 API：`gpt-5.6-terra` 负责文本与图片分析，`gpt-image-2` 负责底图生成，`text-embedding-3-small` 负责知识库向量化。若密钥仍是占位符 `sk-xxxxxxx`，启动会中止；仅调试 UI 时可执行 `pnpm dev:all -- --skip-key-check`。
+
+使用 `gpt-image-2` 前，请确认当前 OpenAI API 组织已获得该模型权限；部分账号需要先在 OpenAI Developer Console 完成组织验证。API Key 只保存在本地 `apps/api/.env`，不要提交到 Git。
 
 等价于分步执行：
 
