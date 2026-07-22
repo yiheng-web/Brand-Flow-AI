@@ -1,6 +1,10 @@
 import { HumanMessage } from '@langchain/core/messages'
 import { safeJsonParse } from '../../common'
-import { createOpenAIChatModel, extractOpenAIText } from '../../common/openai-config'
+import {
+  createSiliconFlowChatModel,
+  extractChatText,
+  prepareSiliconFlowVisionImage,
+} from '../../common/siliconflow-chat'
 import { CANDIDATE_EVALUATE_PROMPT } from '../prompts/candidate-evaluate-prompt'
 import type { CandidateImage } from '../../generate/generate-types'
 import type { CandidateEvaluationBatch } from './evaluate-types'
@@ -9,7 +13,10 @@ export async function evaluateCandidates(
   candidates: CandidateImage[],
   constraintSummary: string,
 ): Promise<CandidateEvaluationBatch> {
-  const llm = createOpenAIChatModel()
+  const llm = createSiliconFlowChatModel()
+  const imageUrls = await Promise.all(
+    candidates.map((candidate) => prepareSiliconFlowVisionImage(candidate.url)),
+  )
 
   // 用 HumanMessage + 图片 URL 启用 vision
   const message = new HumanMessage({
@@ -22,15 +29,15 @@ export async function evaluateCandidates(
           .replace('{image3Url}', candidates[2]?.url || '')
           .replace('{image4Url}', candidates[3]?.url || ''),
       },
-      ...candidates.map((c) => ({
+      ...imageUrls.map((url) => ({
         type: 'image_url' as const,
-        image_url: { url: c.url },
+        image_url: { url },
       })),
     ],
   })
 
   const response = await llm.invoke([message])
-  const raw = extractOpenAIText(response.content)
+  const raw = extractChatText(response.content)
 
   const parsed = safeJsonParse<CandidateEvaluationBatch>(raw)
   if (!parsed) throw new Error('候选质检 Provider 返回了无法解析的结果')

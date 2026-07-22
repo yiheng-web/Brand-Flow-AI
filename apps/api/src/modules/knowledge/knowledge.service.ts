@@ -84,7 +84,9 @@ export class KnowledgeService {
     })
 
     return {
-      message: `成功入库，共生成 ${result.chunks} 个向量切片`,
+      message: result.vectorized
+        ? `成功入库，共生成 ${result.chunks} 个向量切片`
+        : '知识项已保存；当前未启用向量化，V1 工作流将直接读取品牌约束',
       ...result,
     }
   }

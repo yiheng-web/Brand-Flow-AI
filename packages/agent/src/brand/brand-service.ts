@@ -1,7 +1,13 @@
-import { BrandGuidelines, BrandContext, BrandConstraintPackage } from './brand-types'
+import type {
+  BrandGuidelines,
+  BrandContext,
+  BrandConstraintPackage,
+  BrandMatchItem,
+  MatchLevel,
+} from './brand-types'
 import { searchKnowledge } from '../retrieval'
 import { safeJsonParse } from '../common'
-import { createOpenAIChatModel, extractOpenAIText } from '../common/openai-config'
+import { createSiliconFlowChatModel, extractChatText } from '../common/siliconflow-chat'
 import { HumanMessage } from '@langchain/core/messages'
 
 const DEFAULT_BRAND: BrandGuidelines = {
@@ -10,6 +16,13 @@ const DEFAULT_BRAND: BrandGuidelines = {
   mainColors: ['#ffffff', '#000000'],
   targetAudience: '全年龄段',
   forbiddenContent: ['低俗', '暴力', '违规元素'],
+}
+
+interface RawBrandConstraintPackage {
+  required?: unknown
+  recommended?: unknown
+  optional?: unknown
+  summary?: unknown
 }
 
 export class BrandService {
@@ -97,7 +110,7 @@ export class BrandService {
     userIntent: string,
     docs: { text: string; source: string }[],
   ): Promise<BrandConstraintPackage> {
-    const llm = createOpenAIChatModel()
+    const llm = createSiliconFlowChatModel()
 
     const docsText = docs
       .map((d, i) => `[文档${i + 1} 来源知识库:${d.source}]\n${d.text}`)
@@ -131,30 +144,40 @@ ${docsText}
 `.trim()
 
     const response = await llm.invoke([new HumanMessage(prompt)])
-    const raw = extractOpenAIText(response.content)
-    const json = safeJsonParse<any>(raw, {
-      required: [],
-      recommended: [],
-      optional: [],
-      summary: '',
-    })
+    const raw = extractChatText(response.content)
+    const json =
+      safeJsonParse<RawBrandConstraintPackage>(raw, {
+        required: [],
+        recommended: [],
+        optional: [],
+        summary: '',
+      }) ?? {}
 
     // 补充 level 和 sourceKnowledgeName
-    const enrich = (items: any[], level: 'required' | 'recommended' | 'optional') =>
-      (items || []).map((item: any) => ({
-        level,
-        ruleName: item.ruleName || '',
-        ruleDescription: item.ruleDescription || '',
-        relevance: item.relevance || 'partial',
-        recommendation: item.recommendation || '',
-        sourceKnowledgeName: docs[0]?.source || '未知',
-      }))
+    const enrich = (items: unknown, level: MatchLevel): BrandMatchItem[] =>
+      (Array.isArray(items) ? items : [])
+        .filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+        )
+        .map((item) => ({
+          level,
+          ruleName: typeof item.ruleName === 'string' ? item.ruleName : '',
+          ruleDescription: typeof item.ruleDescription === 'string' ? item.ruleDescription : '',
+          relevance:
+            item.relevance === 'matched' ||
+            item.relevance === 'partial' ||
+            item.relevance === 'unmatched'
+              ? item.relevance
+              : 'partial',
+          recommendation: typeof item.recommendation === 'string' ? item.recommendation : '',
+          sourceKnowledgeName: docs[0]?.source || '未知',
+        }))
 
     return {
       required: enrich(json.required || [], 'required'),
       recommended: enrich(json.recommended || [], 'recommended'),
       optional: enrich(json.optional || [], 'optional'),
-      summary: json.summary || '无特殊约束',
+      summary: typeof json.summary === 'string' && json.summary ? json.summary : '无特殊约束',
     }
   }
 }

@@ -98,9 +98,24 @@ pnpm dev:all
 pnpm start
 ```
 
-首次运行前请在 `apps/api/.env` 中填写有效的 `OPENAI_API_KEY`（若不存在会从 `.env.example` 自动复制）。项目默认统一使用 OpenAI 官方 API：`gpt-5.6-terra` 负责文本与图片分析，`gpt-image-2` 负责底图生成，`text-embedding-3-small` 负责知识库向量化。若密钥仍是占位符 `sk-xxxxxxx`，启动会中止；仅调试 UI 时可执行 `pnpm dev:all -- --skip-key-check`。
+首次运行前请在 `apps/api/.env` 中填写有效的 `SILICONFLOW_API_KEY`（若不存在会从 `.env.example` 自动复制）。文本与图片理解通过 Chat Completions 调用 `Pro/moonshotai/Kimi-K2.6`，四候选底图通过 Images API 调用 `Kwai-Kolors/Kolors`，两类模型统一使用 SiliconFlow。若密钥仍是占位符 `sk-xxxxxxx`，启动会中止；仅调试 UI 时可执行 `pnpm dev:all -- --skip-key-check`。
 
-使用 `gpt-image-2` 前，请确认当前 OpenAI API 组织已获得该模型权限；部分账号需要先在 OpenAI Developer Console 完成组织验证。API Key 只保存在本地 `apps/api/.env`，不要提交到 Git。
+SiliconFlow 配置示例：`SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1`、`SILICONFLOW_CHAT_MODEL=Pro/moonshotai/Kimi-K2.6`、`IMAGE_MODEL=Kwai-Kolors/Kolors`。API Key 只保存在本地 `apps/api/.env`，不要提交到 Git。V1 默认设置 `KNOWLEDGE_VECTOR_MODE=disabled`，直接读取 MongoDB 品牌约束；语义检索与向量诊断不可用。
+
+文本与视觉请求遵循 [SiliconFlow Chat Completions 官方契约](https://api-docs.siliconflow.cn/docs/api/chat-completions-post)，图片内容使用 `image_url` 消息块。
+
+可在启动服务前分别执行以下 SiliconFlow 脱敏冒烟检查；脚本只输出状态、请求 ID 和简短文本，不输出 Key 或完整响应。
+
+```bash
+node scripts/smoke-siliconflow-chat.mjs text
+node scripts/smoke-siliconflow-chat.mjs vision
+```
+
+配置 SiliconFlow Key 后，可以执行一次会产生真实生图费用的脱敏检查：
+
+```bash
+node scripts/smoke-siliconflow-image.mjs
+```
 
 等价于分步执行：
 

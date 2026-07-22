@@ -2,12 +2,24 @@ import { Document } from '@langchain/core/documents'
 import { Pinecone } from '@pinecone-database/pinecone'
 import { PineconeStore } from '@langchain/pinecone'
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters'
-import { createOpenAIEmbeddings } from './common/openai-config'
+import { createSiliconFlowEmbeddings } from './common/siliconflow-chat'
 
 export interface IngestMetadata {
   enterpriseId: string
   knowledgeId: string
-  [key: string]: any
+  [key: string]: unknown
+}
+
+export interface IngestResult {
+  success: true
+  chunks: number
+  vectorized: boolean
+  skipped?: boolean
+  reason?: string
+}
+
+function isVectorRetrievalEnabled(): boolean {
+  return process.env.KNOWLEDGE_VECTOR_MODE?.trim().toLowerCase() !== 'disabled'
 }
 
 /**
@@ -15,7 +27,20 @@ export interface IngestMetadata {
  * @param text 纯文本内容
  * @param metadata 必须包含 enterpriseId 和 knowledgeId 标签
  */
-export async function ingestDocument(text: string, metadata: IngestMetadata) {
+export async function ingestDocument(
+  text: string,
+  metadata: IngestMetadata,
+): Promise<IngestResult> {
+  if (!isVectorRetrievalEnabled()) {
+    return {
+      success: true,
+      chunks: 0,
+      vectorized: false,
+      skipped: true,
+      reason: 'KNOWLEDGE_VECTOR_MODE=disabled',
+    }
+  }
+
   // 1. 初始化 Pinecone 客户端
   const pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY as string,
@@ -37,7 +62,7 @@ export async function ingestDocument(text: string, metadata: IngestMetadata) {
   }))
 
   // 4. 使用与主工作流相同的 OpenAI 凭据生成向量
-  const embeddings = createOpenAIEmbeddings()
+  const embeddings = createSiliconFlowEmbeddings()
 
   // 5. 调用 LangChain 存入 Pinecone
   await PineconeStore.fromDocuments(docsWithMetadata, embeddings, {
@@ -45,7 +70,7 @@ export async function ingestDocument(text: string, metadata: IngestMetadata) {
     namespace: metadata.knowledgeId, // 使用知识库 ID 作为命名空间，提升后续单一库的检索效率
   })
 
-  return { success: true, chunks: docsWithMetadata.length }
+  return { success: true, chunks: docsWithMetadata.length, vectorized: true }
 }
 
 /**
@@ -59,12 +84,16 @@ export async function searchKnowledge(
   filter: IngestMetadata,
   k: number = 3,
 ): Promise<Document[]> {
+  if (!isVectorRetrievalEnabled()) {
+    throw new Error('知识库向量检索已禁用，当前 V1 工作流将直接读取 MongoDB 品牌约束')
+  }
+
   const pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY as string,
   })
   const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME as string)
 
-  const embeddings = createOpenAIEmbeddings()
+  const embeddings = createSiliconFlowEmbeddings()
 
   const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
     pineconeIndex,
@@ -84,7 +113,11 @@ export async function searchKnowledge(
  */
 export async function listKnowledgeRecords(
   knowledgeId: string,
-): Promise<Array<{ id: string; text: string; metadata: any }>> {
+): Promise<Array<{ id: string; text: string; metadata: Record<string, unknown> }>> {
+  if (!isVectorRetrievalEnabled()) {
+    throw new Error('知识库向量检索已禁用，无法列出 Pinecone 记录')
+  }
+
   const pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY as string,
   })
@@ -98,8 +131,13 @@ export async function listKnowledgeRecords(
     if (listResult.vectors) {
       vectorIds = listResult.vectors.map((v) => v.id).filter((id): id is string => id !== undefined)
     }
-  } catch (e: any) {
-    throw new Error(`列出 Pinecone 记录失败 (可能需开启 Serverless / 升级 SDK): ${e.message}`)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '未知错误'
+    const wrapped = new Error(
+      `列出 Pinecone 记录失败 (可能需开启 Serverless / 升级 SDK): ${message}`,
+    )
+    ;(wrapped as Error & { cause?: unknown }).cause = error
+    throw wrapped
   }
 
   if (vectorIds.length === 0) return []
@@ -110,7 +148,7 @@ export async function listKnowledgeRecords(
   const records = Object.values(fetchResult.records).map((record) => ({
     id: record.id,
     text: (record.metadata?.text as string) || '', // LangChain Store 通常把 pageContent 存在这里
-    metadata: record.metadata as any,
+    metadata: (record.metadata || {}) as Record<string, unknown>,
   }))
 
   return records

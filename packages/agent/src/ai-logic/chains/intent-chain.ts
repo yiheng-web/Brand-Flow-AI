@@ -4,13 +4,13 @@ import { StringOutputParser } from '@langchain/core/output_parsers'
 import { INTENT_ANALYSIS_PROMPT } from '../prompts/intent-prompt'
 import { safeJsonParse } from '../../common'
 import { asRunnableLlm } from '../../common/langchain-utils'
-import { createOpenAIChatModel } from '../../common/openai-config'
+import { createSiliconFlowChatModel } from '../../common/siliconflow-chat'
 
 export type IntentType = '品牌描述' | '图片生成' | '风格调整' | '其他'
 
 export interface IntentInput {
   userQuery: string
-  context?: Record<string, any>
+  context?: Record<string, unknown>
 }
 
 export interface IntentOutput {
@@ -21,7 +21,7 @@ export interface IntentOutput {
 }
 
 export function createIntentChain() {
-  const llm = createOpenAIChatModel()
+  const llm = createSiliconFlowChatModel()
   const prompt = PromptTemplate.fromTemplate(INTENT_ANALYSIS_PROMPT)
 
   return RunnableSequence.from([

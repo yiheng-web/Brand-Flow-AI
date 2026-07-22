@@ -5,7 +5,7 @@ import { PROMPT_GENERATE_TEMPLATE } from '../prompts/prompt-expert'
 import type { IntentType } from './intent-chain'
 import { safeJsonParse } from '../../common'
 import { asRunnableLlm } from '../../common/langchain-utils'
-import { createOpenAIChatModel } from '../../common/openai-config'
+import { createSiliconFlowChatModel } from '../../common/siliconflow-chat'
 
 export interface PromptChainInput {
   userQuery: string
@@ -23,7 +23,7 @@ export interface PromptChainOutput {
 }
 
 export function createPromptChain() {
-  const llm = createOpenAIChatModel()
+  const llm = createSiliconFlowChatModel()
 
   const promptTemplate = PromptTemplate.fromTemplate(PROMPT_GENERATE_TEMPLATE)
 

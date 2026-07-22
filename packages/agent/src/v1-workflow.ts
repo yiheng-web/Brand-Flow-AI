@@ -19,7 +19,12 @@ import type {
 import { safeJsonParse } from './common'
 import { evaluateCandidates, runFinalEvaluation } from './ai-logic/evaluate'
 import { generateService } from './generate'
-import { createOpenAIChatModel, extractOpenAIText, getOpenAISettings } from './common/openai-config'
+import {
+  createSiliconFlowChatModel,
+  extractChatText,
+  prepareSiliconFlowVisionImage,
+} from './common/siliconflow-chat'
+import { getSiliconFlowImageSettings } from './common/siliconflow-image-client'
 
 export function isDemoMode(): boolean {
   return process.env.BRAND_FLOW_DEMO_MODE === 'true'
@@ -78,11 +83,11 @@ export function parseCreativeBrief(raw: string, originalRequest: string): Creati
 }
 
 async function invokeJson<T>(instruction: string, payload: unknown): Promise<T | null> {
-  const llm = createOpenAIChatModel()
+  const llm = createSiliconFlowChatModel()
   const response = await llm.invoke([
     new HumanMessage(`${instruction}\n\n输入：\n${JSON.stringify(payload)}\n\n只输出 JSON。`),
   ])
-  const raw = extractOpenAIText(response.content)
+  const raw = extractChatText(response.content)
   return safeJsonParse<T>(raw)
 }
 
@@ -91,7 +96,8 @@ async function invokeImageJson<T>(
   payload: unknown,
   imageUrl: string,
 ): Promise<T | null> {
-  const llm = createOpenAIChatModel()
+  const llm = createSiliconFlowChatModel()
+  const preparedImageUrl = await prepareSiliconFlowVisionImage(imageUrl)
   const response = await llm.invoke([
     new HumanMessage({
       content: [
@@ -99,11 +105,11 @@ async function invokeImageJson<T>(
           type: 'text',
           text: `${instruction}\n\n输入：\n${JSON.stringify(payload)}\n\n只输出 JSON。`,
         },
-        { type: 'image_url' as const, image_url: { url: imageUrl } },
+        { type: 'image_url' as const, image_url: { url: preparedImageUrl } },
       ],
     }),
   ])
-  const raw = extractOpenAIText(response.content)
+  const raw = extractChatText(response.content)
   return safeJsonParse<T>(raw)
 }
 
@@ -358,7 +364,7 @@ export async function generateCandidates(plan: PromptPlan): Promise<CandidateIma
     imageUrl: candidate.url,
     prompt: candidate.promptUsed,
     seed: candidate.seed,
-    model: getOpenAISettings().imageModel,
+    model: getSiliconFlowImageSettings().model,
     metadata: { failed: !candidate.url },
   }))
 }

@@ -7,11 +7,8 @@ import {
 import { brandService } from '../brand'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
 import { asRunnableLlm } from '../common/langchain-utils'
-import {
-  createOpenAIChatModel,
-  extractOpenAIText,
-  getOpenAISettings,
-} from '../common/openai-config'
+import { createSiliconFlowChatModel, extractChatText } from '../common/siliconflow-chat'
+import { generateSiliconFlowImages } from '../common/siliconflow-image-client'
 import type { ChatOpenAI } from '@langchain/openai'
 
 // 生成服务核心类
@@ -21,7 +18,7 @@ export class GenerateService {
 
   private get textLlm(): ChatOpenAI {
     if (!this._textLlm) {
-      this._textLlm = createOpenAIChatModel()
+      this._textLlm = createSiliconFlowChatModel()
     }
     return this._textLlm
   }
@@ -66,63 +63,14 @@ export class GenerateService {
     }
   }
 
-  // 调用 OpenAI Image API 生成 PNG Data URL
+  // 底图生成使用独立 SiliconFlow Provider，避免把 Codex 中转站凭据发送给图片服务
   private async callImageGenerationApi(
     prompt: string,
     negativePrompt?: string,
     count = 1,
   ): Promise<string[]> {
-    const settings = getOpenAISettings()
-    const url = `${settings.baseUrl}/images/generations`
     const finalPrompt = negativePrompt ? `${prompt}\n\n必须避免：${negativePrompt}` : prompt
-    const timeoutMs = Number(process.env.IMAGE_GENERATION_TIMEOUT_MS || 120000)
-
-    const body = {
-      model: settings.imageModel,
-      prompt: finalPrompt,
-      n: count,
-      size: process.env.IMAGE_SIZE || '1024x1024',
-      quality: process.env.IMAGE_QUALITY || 'medium',
-      output_format: 'png',
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-
-    if (!response.ok) {
-      const requestId = response.headers.get('x-request-id')
-      const errorBody = (await response.text()).slice(0, 500)
-      throw new Error(
-        `OpenAI 图片生成失败: HTTP ${response.status}${requestId ? ` request_id=${requestId}` : ''} ${errorBody}`,
-      )
-    }
-
-    const data: unknown = await response.json()
-    const items =
-      data && typeof data === 'object' && Array.isArray(Reflect.get(data, 'data'))
-        ? Reflect.get(data, 'data')
-        : []
-    const images = items
-      .map((item: unknown) => {
-        if (!item || typeof item !== 'object') return ''
-        const base64 = Reflect.get(item, 'b64_json')
-        if (typeof base64 === 'string' && base64) return `data:image/png;base64,${base64}`
-        const urlValue = Reflect.get(item, 'url')
-        return typeof urlValue === 'string' ? urlValue : ''
-      })
-      .filter((value: string) => value.length > 0)
-
-    if (images.length !== count) {
-      throw new Error(`OpenAI 图片生成返回 ${images.length} 张，期望 ${count} 张`)
-    }
-    return images
+    return generateSiliconFlowImages({ prompt: finalPrompt, count })
   }
 
   // 调用 GPT 生成品牌文案
@@ -142,7 +90,7 @@ export class GenerateService {
     const chain = chatPrompt.pipe(asRunnableLlm(this.textLlm))
     const result = await chain.invoke({})
 
-    return extractOpenAIText(result.content)
+    return extractChatText(result.content)
   }
 
   // 调用 GPT 生成品牌物料
@@ -161,11 +109,11 @@ export class GenerateService {
     const chain = chatPrompt.pipe(asRunnableLlm(this.textLlm))
     const result = await chain.invoke({})
 
-    return extractOpenAIText(result.content)
+    return extractChatText(result.content)
   }
 
   /**
-   * 使用 OpenAI Image API 一次生成严格四张候选底图。
+   * 使用 SiliconFlow 图片接口生成严格四张候选底图。
    */
   async generateFourCandidates(
     imagePrompt: string,

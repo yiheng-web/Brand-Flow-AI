@@ -5,11 +5,11 @@ import { EVALUATION_PROMPT } from '../prompts/evaluate-prompt'
 import type { EvaluationInput, EvaluationResult } from './evaluate-types'
 import { safeJsonParse } from '../../common'
 import { asRunnableLlm } from '../../common/langchain-utils'
-import { createOpenAIChatModel } from '../../common/openai-config'
+import { createSiliconFlowChatModel } from '../../common/siliconflow-chat'
 
 // 创建评估链
 export function createPromptEvaluationChain() {
-  const llm = createOpenAIChatModel()
+  const llm = createSiliconFlowChatModel()
 
   const prompt = PromptTemplate.fromTemplate(EVALUATION_PROMPT)
 

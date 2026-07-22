@@ -84,25 +84,25 @@ function ensureEnvFile() {
 
 function validateEnv() {
   const env = loadEnvFile(envPath);
-  const apiKey = env.OPENAI_API_KEY?.trim() ?? '';
+  const apiKey = env.SILICONFLOW_API_KEY?.trim() ?? '';
 
   if (PLACEHOLDER_KEYS.has(apiKey)) {
     if (skipKeyCheck) {
       console.warn('');
-      console.warn('      [跳过] OPENAI_API_KEY 仍为占位符，仅启动 Web/API/数据库');
+      console.warn('      [跳过] SILICONFLOW_API_KEY 仍为占位符，仅启动 Web/API/数据库');
       console.warn('      AI 工作流（意图解析、生图）在配置密钥前无法使用');
       console.warn('');
       return env;
     }
 
     console.error('');
-    console.error('请在 apps/api/.env 中配置有效的 OPENAI_API_KEY');
+    console.error('请在 apps/api/.env 中配置有效的 SILICONFLOW_API_KEY');
     console.error('（不能使用 .env.example 中的占位符 sk-xxxxxxx）');
     console.error('');
-    console.error('示例（OpenAI 官方 API，与 .env.example 一致）：');
-    console.error('  OPENAI_API_KEY=sk-你的密钥');
-    console.error('  OPENAI_BASE_URL=https://api.openai.com/v1');
-    console.error('  OPENAI_MODEL_NAME=gpt-5.6-terra');
+    console.error('示例（SiliconFlow，与 .env.example 一致）：');
+    console.error('  SILICONFLOW_API_KEY=sk-你的密钥');
+    console.error('  SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1');
+    console.error('  SILICONFLOW_CHAT_MODEL=Pro/moonshotai/Kimi-K2.6');
     console.error('');
     console.error('若暂时只需启动前后端做 UI 调试，可执行：');
     console.error('  pnpm dev:all -- --skip-key-check');
