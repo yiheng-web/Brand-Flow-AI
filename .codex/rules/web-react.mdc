@@ -1,0 +1,20 @@
+---
+description: apps/web React、Zustand、API、路由、画布与交互规范
+globs: apps/web/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Web 前端规则
+
+- 遵循 `pages`、`layouts`、`router`、`store`、`api`、`components` 现有职责；先找可复用组件和现有交互模式。
+- 使用函数组件和显式 Props 类型；事件处理函数使用 `handle` 前缀。组件复杂度接近 500-600 行时按业务职责拆分，不按行数机械拆分。
+- 局部状态留在组件，真正跨页面/远距离共享的数据才进入 Zustand；禁止引入新的全局状态库。
+- Zustand 优先按字段 selector 订阅；持久化只保存刷新后必要的数据，更新结构时考虑旧 localStorage 兼容。
+- HTTP 请求统一放入 `src/api` 并使用 `apiClient`。客户端已解包 `{ success, data }`，页面直接处理业务数据，不依赖 `AxiosResponse`。
+- API 类型与后端 DTO、响应 DTO 和 `apps/api/API.md` 对齐；接口变化必须同步搜索前后端消费者。
+- SSE 使用现有鉴权工具；事件变更同步 `StreamEvent`、API 流、BullMQ progress 和工作流节点状态。
+- 所有请求与操作处理 loading、空态、错误、禁用、失败提示和重复提交；避免拦截器与页面重复提示同一错误。
+- Effect、SSE、定时器、AbortController、React Flow/Fabric 实例在依赖变化或卸载时清理，防止竞态和泄漏。
+- 高频拖拽、缩放、指针移动不持续更新整个 React 树或大块 Store；React Flow/Fabric 实例使用 `useRef` 管理。
+- 鉴权复用 `AuthGuard` 和认证 Store；前端隐藏按钮不能替代 API 权限校验。
+- 新增 UI 保持 Ant Design 和现有视觉体系，兼顾键盘操作、可访问名称、错误反馈及基本响应式布局。
