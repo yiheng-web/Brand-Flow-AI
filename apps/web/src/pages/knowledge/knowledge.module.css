@@ -1,0 +1,189 @@
+.wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 24px 16px;
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerIcon {
+  font-size: 28px;
+  color: var(--primary, #1677ff);
+}
+
+.headerTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-main, #1a1a1a);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 24px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #999;
+  font-size: 14px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  border-radius: 8px;
+}
+
+.card :global(.ant-card-meta-title) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.card :global(.ant-card-meta-description) {
+  font-size: 13px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardIcon {
+  font-size: 24px;
+  color: var(--primary, #1677ff);
+}
+
+/* ===== 详情页 ===== */
+
+.detailWrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
+  flex-shrink: 0;
+}
+
+.backBtn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.backBtn:hover {
+  background: #f0f0f0;
+}
+
+.detailTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main, #1a1a1a);
+}
+
+.detailActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.detailContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.itemCard {
+  border-radius: 8px;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.itemCard:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.itemTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main, #1a1a1a);
+  margin-bottom: 6px;
+}
+
+.itemContent {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.itemMeta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #999;
+}
+
+.addItemBar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.addItemInput {
+  flex: 1;
+}

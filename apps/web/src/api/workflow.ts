@@ -16,7 +16,12 @@ import apiClient from './index'
 export interface SubmitPromptParams {
   prompt: string
   spaceId: string
+  /** @deprecated 使用 selectedKnowledgeBaseIds 替代 */
   knowledgeId?: string
+  /** 空间类型（首页选择） */
+  spaceType?: 'personal' | 'team' | 'enterprise'
+  /** 选中的知识库 ID 列表（最多 3 个） */
+  selectedKnowledgeBaseIds?: string[]
 }
 
 /** 意图解析输出（对应 packages/agent 中的 IntentOutput） */
