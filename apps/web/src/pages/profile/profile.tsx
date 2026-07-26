@@ -58,8 +58,8 @@ const Profile = () => {
     const loadEnterprises = async () => {
       try {
         const res = await getMyEnterprises()
-        if (res.data && Array.isArray(res.data)) {
-          setEnterprises(res.data)
+        if (Array.isArray(res)) {
+          setEnterprises(res)
         }
       } catch {
         message.error('加载企业列表失败')
@@ -76,8 +76,8 @@ const Profile = () => {
     setLoadingTeams(true)
     try {
       const res = await getTeams()
-      if (res.data && Array.isArray(res.data)) {
-        setTeams(res.data)
+      if (Array.isArray(res)) {
+        setTeams(res)
       }
     } catch {
       message.error('加载团队列表失败')

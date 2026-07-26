@@ -56,6 +56,26 @@ const NODE_LABELS: Record<FlowNodeId, string> = {
   eval: '自我评估',
 }
 
+const createInitialNodeStatuses = (): Record<FlowNodeId, NodeExecStatus> => ({
+  intent: 'pending',
+  'brand-kb': 'pending',
+  prompt: 'pending',
+  'image-gen': 'pending',
+  compose: 'pending',
+  eval: 'pending',
+})
+
+const isIntentOutput = (value: unknown): value is IntentOutput => {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.intent === 'string' &&
+    typeof record.confidence === 'number' &&
+    typeof record.reason === 'string' &&
+    typeof record.suggestedAction === 'string'
+  )
+}
+
 const Workspace = () => {
   const location = useLocation()
   const navState = location.state as { prompt?: string; workflowId?: string } | null
@@ -103,6 +123,31 @@ const Workspace = () => {
   /* ---- 引用：SSE 连接 ---- */
   const eventSourceRef = useRef<{ close: () => void } | null>(null)
   const nodeStreamDataRef = useRef<Record<string, Record<string, unknown>>>({})
+  const lastNavWorkflowIdRef = useRef<string | null>(null)
+
+  const resetWorkflowRuntime = useCallback(
+    (prompt?: string) => {
+      setWorkflowError(null)
+      setAgentState(null)
+      setImageUrl(null)
+      setWorkflowStatus('pending')
+      setNodeExecStatuses(createInitialNodeStatuses())
+      setNodeStreamData({})
+      nodeStreamDataRef.current = {}
+      if (prompt !== undefined) {
+        setStoredPrompt(prompt)
+      }
+    },
+    [
+      setAgentState,
+      setImageUrl,
+      setNodeExecStatuses,
+      setNodeStreamData,
+      setStoredPrompt,
+      setWorkflowError,
+      setWorkflowStatus,
+    ],
+  )
 
   /* ============================
       SSE 流式连接
@@ -136,6 +181,13 @@ const Workspace = () => {
             )?.[0] as FlowNodeId | undefined
             if (currentNodeId) {
               setNodeExecStatuses((prev) => ({ ...prev, [currentNodeId]: 'running' }))
+              setNodeStreamData((prev) => {
+                if (!prev[nodeKey]) return prev
+                const updated = { ...prev }
+                delete updated[nodeKey]
+                nodeStreamDataRef.current = updated
+                return updated
+              })
             }
             return
           }
@@ -300,18 +352,14 @@ const Workspace = () => {
         const nodes = data.nodes || []
 
         setWorkflowStatus(workflow.status)
+        setStoredPrompt(workflow.prompt || '')
         if (workflow.errorMessage) {
           setWorkflowError(workflow.errorMessage)
+        } else {
+          setWorkflowError(null)
         }
 
-        const newStatuses: Record<FlowNodeId, NodeExecStatus> = {
-          intent: 'pending',
-          'brand-kb': 'pending',
-          prompt: 'pending',
-          'image-gen': 'pending',
-          compose: 'pending',
-          eval: 'pending',
-        }
+        const newStatuses = createInitialNodeStatuses()
         const newData: Record<string, Record<string, unknown>> = {}
 
         let hasRunning = false
@@ -357,7 +405,14 @@ const Workspace = () => {
         setWorkflowError('无法恢复工作流状态，可能由于越权拦截或网络异常。')
       }
     },
-    [setWorkflowStatus, setWorkflowError, setNodeExecStatuses, setNodeStreamData, connectStream],
+    [
+      setStoredPrompt,
+      setWorkflowStatus,
+      setWorkflowError,
+      setNodeExecStatuses,
+      setNodeStreamData,
+      connectStream,
+    ],
   )
 
   /* ============================
@@ -366,29 +421,15 @@ const Workspace = () => {
   const startWorkflow = useCallback(async () => {
     if (!userPrompt?.trim()) return
     setIsSubmitting(true)
-    setWorkflowError(null)
-    setWorkflowStatus('pending')
-    setStoredPrompt(userPrompt) // 同步到 store
-    setNodeExecStatuses({
-      intent: 'pending',
-      'brand-kb': 'pending',
-      prompt: 'pending',
-      'image-gen': 'pending',
-      compose: 'pending',
-      eval: 'pending',
-    })
-    setNodeStreamData({})
-    nodeStreamDataRef.current = {}
+    resetWorkflowRuntime(userPrompt)
 
     try {
       const res = await submitPrompt({
         prompt: userPrompt,
         spaceId: 'personal',
       })
-      const id: string =
-        (res as { data?: { id?: string }; id?: string }).data?.id ||
-        (res as { data?: { id?: string }; id?: string }).id ||
-        ''
+      const resFull = res as { data?: { id?: string }; id?: string }
+      const id: string = resFull.data?.id || resFull.id || ''
       if (!id) throw new Error('创建工作流后未返回 ID')
 
       setWorkflowId(id) // 同步到 store
@@ -407,19 +448,20 @@ const Workspace = () => {
     }
   }, [
     userPrompt,
-    setStoredPrompt,
     setWorkflowId,
     setWorkflowError,
     setWorkflowStatus,
     setNodeExecStatuses,
-    setNodeStreamData,
     connectStream,
+    resetWorkflowRuntime,
   ])
 
   /* ---- 自动启动工作流 / 断线重连 ---- */
   useEffect(() => {
-    // 场景 1: 从首页带来了全新的 workflowId
-    if (navState?.workflowId && navState.workflowId !== workflowId) {
+    // 场景 1: 从首页或历史入口带来了 workflowId，按路由状态恢复当前任务
+    if (navState?.workflowId && navState.workflowId !== lastNavWorkflowIdRef.current) {
+      lastNavWorkflowIdRef.current = navState.workflowId
+      resetWorkflowRuntime(navState.prompt)
       setWorkflowId(navState.workflowId)
       // 场景 1: 从外部点进来，先同步恢复状态
       syncWorkflowState(navState.workflowId)
@@ -430,13 +472,22 @@ const Workspace = () => {
     }
     // 场景 3: 页面刷新，已存在 workflowId，但 SSE 连接已断开，重新同步状态并连接
     else if (
+      !navState?.workflowId &&
       workflowId &&
       (workflowStatus === 'running' || workflowStatus === 'pending') &&
       !eventSourceRef.current
     ) {
       syncWorkflowState(workflowId)
     }
-  }, [navState, workflowId, workflowStatus, setWorkflowId, syncWorkflowState, startWorkflow])
+  }, [
+    navState,
+    workflowId,
+    workflowStatus,
+    setWorkflowId,
+    syncWorkflowState,
+    startWorkflow,
+    resetWorkflowRuntime,
+  ])
 
   /* ---- 清理 ---- */
   useEffect(() => {
@@ -458,12 +509,15 @@ const Workspace = () => {
     sceneType?: string
     intentResult?: IntentOutput
   } | null => {
-    const intentData = nodeStreamData['intentNode'] as { intentResult?: IntentOutput } | undefined
-    if (!intentData?.intentResult) return null
+    const intentData = nodeStreamData['intentNode']
+    const intentResult = isIntentOutput(intentData?.intentResult)
+      ? intentData.intentResult
+      : intentData
+    if (!isIntentOutput(intentResult)) return null
     return {
-      intentResult: intentData.intentResult,
-      keywords: intentData.intentResult.intent ? [intentData.intentResult.intent] : undefined,
-      sceneType: intentData.intentResult.intent || undefined,
+      intentResult,
+      keywords: intentResult.intent ? [intentResult.intent] : undefined,
+      sceneType: intentResult.intent || undefined,
     }
   }
 
@@ -653,8 +707,10 @@ const Workspace = () => {
       const intentData = getIntentData()
       return (
         <IntentPanel
+          key={`${workflowId || 'draft'}-${intentData?.intentResult?.intent || 'empty'}`}
           userPrompt={userPrompt}
           intentResult={intentData?.intentResult || null}
+          isRunning={nodeExecStatuses.intent === 'running' || isSubmitting}
           onSave={(payload) => handleSaveNode('intent', payload)}
           onReRun={() => handleRerunNode('intent')}
         />
@@ -666,6 +722,7 @@ const Workspace = () => {
       return (
         <BrandKbPanel
           knowledgeContext={getKnowledgeData()}
+          isRunning={nodeExecStatuses['brand-kb'] === 'running'}
           onReRun={() => handleRerunNode('brand-kb')}
         />
       )
@@ -676,6 +733,7 @@ const Workspace = () => {
       const promptData = getPromptData()
       return (
         <PromptExpertPanel
+          key={`${workflowId || 'draft'}-${promptData?.finalPrompt || 'empty'}`}
           userPrompt={userPrompt}
           promptResult={promptData}
           onSave={(payload) => handleSaveNode('prompt', payload)}
@@ -688,10 +746,8 @@ const Workspace = () => {
     if (selectedNodeId === 'image-gen') {
       return (
         <ImageGenPanel
-          selectedModel="flux"
           isExecuting={isImageGenExecuting}
           baseImageUrl={baseImageUrl}
-          genParams={generateResult ? undefined : undefined}
           onReRun={() => handleRerunNode('image-gen')}
         />
       )
@@ -733,7 +789,9 @@ const Workspace = () => {
   return (
     <div className={styles.wrapper}>
       <div className={styles.topBar}>
-        <span className={styles.topBarTitle}>{userPrompt || '新工作流'}</span>
+        <span className={styles.topBarTitle} title={userPrompt || '新工作流'}>
+          {userPrompt || '新工作流'}
+        </span>
         <SwitchTabs
           items={WORKSPACE_VIEW_TABS}
           defaultIndex={viewTabIndex}
