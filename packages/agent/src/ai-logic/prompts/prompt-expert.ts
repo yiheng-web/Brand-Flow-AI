@@ -10,7 +10,8 @@ export const PROMPT_GENERATE_TEMPLATE = `
 {{
   "systemPrompt": "系统角色定义",
   "userPrompt": "用户核心需求",
-  "finalPrompt": "可直接用于模型调用的完整提示词",
+  "finalPrompt": "可直接用于模型调用的完整正向提示词 (Positive Prompt)",
+  "negativePrompt": "绘图专用的负向提示词 (Negative Prompt，英文，如丑陋、多指、变形等)",
   "purpose": "生成目的"
 }}
 `;

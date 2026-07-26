@@ -74,6 +74,7 @@ export const AgentState = Annotation.Root({
 // ============================================================
 
 export async function intentNode(state: any): Promise<any> {
+  if (state.context?.skipNodes?.includes('intentNode')) return {};
   if (state.status === "failed") {
     logger.warn(`[intentNode] 状态已失败，跳过`);
     return state;
@@ -95,6 +96,7 @@ export async function intentNode(state: any): Promise<any> {
 }
 
 export async function knowledgeNode(state: any): Promise<any> {
+  if (state.context?.skipNodes?.includes('knowledgeNode')) return {};
   if (state.status === "failed") {
     logger.warn(`[knowledgeNode] 状态已失败，跳过`);
     return state;
@@ -141,6 +143,7 @@ export async function knowledgeNode(state: any): Promise<any> {
 }
 
 export async function promptNode(state: any): Promise<any> {
+  if (state.context?.skipNodes?.includes('promptNode')) return {};
   if (state.status === "failed") {
     logger.warn(`[promptNode] 状态已失败，跳过`);
     return state;
@@ -164,6 +167,7 @@ export async function promptNode(state: any): Promise<any> {
 }
 
 export async function generateNode(state: any): Promise<any> {
+  if (state.context?.skipNodes?.includes('generateNode')) return {};
   if (state.status === "failed") {
     logger.warn(`[generateNode] 状态已失败，跳过`);
     return state;
@@ -216,6 +220,7 @@ export async function generateNode(state: any): Promise<any> {
 }
 
 export async function evaluateNode(state: any): Promise<any> {
+  if (state.context?.skipNodes?.includes('evaluateNode')) return {};
   if (state.status === "failed") {
     logger.warn(`[evaluateNode] 状态已失败，跳过`);
     return state;

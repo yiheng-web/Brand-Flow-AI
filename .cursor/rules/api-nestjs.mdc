@@ -1,0 +1,20 @@
+---
+description: apps/api NestJS 分层、DTO、响应、鉴权、租户与数据一致性规范
+globs: apps/api/src/**/*.ts
+alwaysApply: false
+---
+
+# NestJS API 规则
+
+- 按业务域维护 Module、Controller、Service、DTO 和 Schema；Controller 只做参数绑定、鉴权上下文和 Service 调用，复杂业务留在 Service。
+- 可注入依赖通过 Nest 依赖注入获取，不在 Service 内直接实例化数据库、队列、存储或 Agent 客户端。
+- 请求使用 DTO + `class-validator` 校验；异步方法明确返回类型。响应变更同步响应 DTO、Swagger、`apps/api/API.md`、`rest-client` 和 Web 类型。
+- 普通成功响应交给 TransformInterceptor 包装，业务方法返回真实数据；SSE/文件流遵循现有豁免，不二次包装。
+- 失败使用 `BusinessException`、Nest HTTP 异常及全局过滤器，不返回伪成功，不向客户端泄漏堆栈、连接信息和敏感配置。
+- 身份与租户只信任验证后的 `req.user.sub`、`req.user.entId`；客户端传入的 owner/user/enterprise 字段不能作为授权依据。
+- 读取、更新、删除、重跑和 SSE 订阅必须执行同等资源归属检查。个人空间校验用户，团队/企业空间校验成员、角色与企业边界。
+- 受保护路由复用 JWT Guard、Roles Guard 和既有权限方法；新增路由不能依赖前端权限控制。
+- ObjectId 在查询前校验，查询条件包含租户/归属字段；避免先查全局记录后只在内存筛选。
+- 多存储、队列、向量库和数据库的多步操作考虑部分失败、幂等、补偿和重试，不吞异常。
+- 配置通过 `ConfigService` 或既有入口读取；新增变量同步 `.env.example`，必填项尽早失败并给出明确错误。
+- 业务逻辑或外部适配改动补充相邻 `*.spec.ts`；不得通过放宽断言、删除用例或跳过测试解决失败。

@@ -10,6 +10,7 @@
  *   合成完成后通过「跳转到画板预览」按钮切换到 CanvasPreview 查看最终效果。
  */
 
+import NodePanelFooter from './NodePanelFooter'
 import styles from '../workspace.module.css'
 
 interface LayerStatus {
@@ -44,7 +45,6 @@ const ComposePanel = ({
   layers = DEFAULT_LAYERS,
   isComposing = false,
   finalImageUrl = null,
-  layerDataJson = null,
   onSwitchToPreview,
   onReRun,
 }: ComposePanelProps) => {
@@ -54,9 +54,7 @@ const ComposePanel = ({
       <p className={styles.composeDesc}>
         图文分离叠加处理中…
         <br />
-        <span className={styles.composeDescSub}>
-          底图 + 标题层 + Logo 层 + 装饰层
-        </span>
+        <span className={styles.composeDescSub}>底图 + 标题层 + Logo 层 + 装饰层</span>
       </p>
 
       {/* ===== 图层叠加进度 ===== */}
@@ -67,9 +65,7 @@ const ComposePanel = ({
             <div
               key={layer.name}
               className={`${styles.composeLayerItem} ${
-                layer.done
-                  ? styles.composeLayerDone
-                  : styles.composeLayerPending
+                layer.done ? styles.composeLayerDone : styles.composeLayerPending
               }`}
             >
               <span className={styles.composeLayerIcon}>{layer.icon}</span>
@@ -100,25 +96,13 @@ const ComposePanel = ({
       </div>
 
       {/* ===== 底部操作按钮 ===== */}
-      <div className={styles.rightFooter}>
+      <NodePanelFooter rerunDisabled={isComposing} onReRun={onReRun}>
         {finalImageUrl && (
-          <button
-            type="button"
-            className={styles.composePreviewBtn}
-            onClick={onSwitchToPreview}
-          >
+          <button type="button" className={styles.composePreviewBtn} onClick={onSwitchToPreview}>
             🎯 跳转到画板预览
           </button>
         )}
-        <button
-          type="button"
-          className={styles.interceptBtn}
-          disabled={isComposing}
-          onClick={onReRun}
-        >
-          重新运行该节点
-        </button>
-      </div>
+      </NodePanelFooter>
     </div>
   )
 }

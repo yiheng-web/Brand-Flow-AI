@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -13,12 +13,17 @@ import {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import FlowNode from './FlowNode'
-import { FLOW_NODES, type FlowNodeId, type LayoutDir, type NodeExecStatus } from '../workspace.const'
+import {
+  FLOW_NODES,
+  type FlowNodeId,
+  type LayoutDir,
+  type NodeExecStatus,
+} from '../workspace.const'
 
 const nodeTypes = { flowNode: FlowNode }
 
 const NODE_W = 200
-const NODE_H = 130
+const NODE_H = 150
 const GAP = 48
 
 function buildNodes(dir: LayoutDir, execStatuses?: Record<FlowNodeId, NodeExecStatus>): Node[] {
@@ -61,9 +66,7 @@ interface FlowViewProps {
 
 const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
   const [layoutDir, setLayoutDir] = useState<LayoutDir>('vertical')
-  const [nodes, setNodes, onNodesChange] = useNodesState(
-    buildNodes('vertical', nodeExecStatuses)
-  )
+  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('vertical', nodeExecStatuses))
   const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges())
   const [showMiniMap, setShowMiniMap] = useState(true)
 
@@ -74,6 +77,20 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
       return next
     })
   }, [setNodes, nodeExecStatuses])
+
+  // 监听外部 nodeExecStatuses 的变化，同步更新画布上的节点状态
+  useEffect(() => {
+    if (!nodeExecStatuses) return
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          execStatus: nodeExecStatuses[n.id as FlowNodeId] ?? n.data.execStatus,
+        },
+      })),
+    )
+  }, [nodeExecStatuses, setNodes])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -88,7 +105,16 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         } as Edge,
       ])
     },
-    [setEdges]
+    [setEdges],
+  )
+
+  const onNodeClickCb = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (onNodeClick) {
+        onNodeClick(node.id)
+      }
+    },
+    [onNodeClick],
   )
 
   const key = layoutDir
@@ -121,15 +147,13 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeClick={onNodeClickCb}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         minZoom={0.3}
         maxZoom={1.5}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-        onNodeClick={(_event, node) => {
-          onNodeClick?.(node.id)
-        }}
         nodesDraggable={true}
         nodesConnectable={false}
         elementsSelectable={true}

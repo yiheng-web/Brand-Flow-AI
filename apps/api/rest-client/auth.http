@@ -1,0 +1,26 @@
+### 变量
+@baseUrl = http://localhost:3000/api
+
+### 注册
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123",
+  "nickname": "测试用户"
+}
+
+### 登录
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 获取当前用户
+@accessToken = accessToken
+GET {{baseUrl}}/auth/profile
+Authorization: Bearer {{accessToken}}

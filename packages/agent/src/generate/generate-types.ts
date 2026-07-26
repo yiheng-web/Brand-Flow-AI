@@ -1,20 +1,37 @@
-import type { PromptChainOutput } from "../ai-logic/chains/prompt-chain";
+// ↑ 旧代码保留不动
+import type { PromptChainOutput } from '../ai-logic/chains/prompt-chain'
 
-// 生成类型
-export type GenerateType = "image" | "text" | "brand_material";
+export type GenerateType = 'image' | 'text' | 'brand_material' | 'art_text'
 
-// 生成请求参数
 export interface GenerateRequest {
-  promptData: PromptChainOutput;
-  generateType: GenerateType;
-  sessionId?: string;
+  promptData: PromptChainOutput
+  generateType: GenerateType
+  sessionId?: string
 }
 
-// 生成结果
 export interface GenerateResult {
-  success: boolean;
-  content: string;
-  generateType: GenerateType;
-  promptUsed: string;
-  message?: string;
+  success: boolean
+  content: string
+  generateType: GenerateType
+  promptUsed: string
+  message?: string
+}
+
+// ↓ ========== V1.0 新增 ==========
+
+/** 单张候选图 */
+export interface CandidateImage {
+  id: string
+  url: string
+  index: number // 1-4
+  promptUsed: string
+  seed?: number
+}
+
+/** 4 张候选图批次（固定 4 张） */
+export interface CandidateImageBatch {
+  candidates: [CandidateImage, CandidateImage, CandidateImage, CandidateImage]
+  basePrompt: string
+  negativePrompt: string
+  generatedAt: string
 }

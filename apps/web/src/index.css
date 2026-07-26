@@ -56,7 +56,7 @@ a {
 }
 
 .flow-node {
-  width: 200px;
+  width: 220px;
   background: #fff;
   border: 1.5px solid #d7dce5;
   border-radius: 12px;
@@ -64,6 +64,10 @@ a {
   overflow: hidden;
   cursor: grab;
   user-select: none;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .flow-node:active {
@@ -71,12 +75,13 @@ a {
 }
 
 .flow-node:hover {
-  border-color: #4f6ff7;
-  box-shadow: 0 4px 16px rgba(79, 111, 247, 0.15);
+  border-color: #4f6ff7 !important;
+  box-shadow: 0 8px 30px rgba(79, 111, 247, 0.25) !important;
+  transform: translateY(-4px);
 }
 
 .flow-node-body {
-  padding: 14px 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -84,7 +89,8 @@ a {
 }
 
 .flow-node-title {
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.35;
   font-weight: 700;
   color: #202124;
   text-align: center;
@@ -94,12 +100,12 @@ a {
 }
 
 .flow-node-emoji {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .flow-node-sub {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: #6b7280;
   text-align: center;

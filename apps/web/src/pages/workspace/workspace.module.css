@@ -1,4 +1,4 @@
-﻿.wrapper {
+.wrapper {
   width: 100%;
   height: 100%;
   display: flex;
@@ -19,9 +19,14 @@
 }
 
 .topBarTitle {
+  min-width: 0;
+  max-width: min(560px, 48vw);
+  overflow: hidden;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-main);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .statusIndicator {
@@ -53,7 +58,7 @@
 /* ===== 下方双栏区域 ===== */
 .body {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr 400px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -163,7 +168,9 @@
   border-radius: 10px;
   background: transparent;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .previewToolBtn:hover {
@@ -192,11 +199,95 @@
   background: #f5f6f8;
 }
 
-.previewCanvas::after {
-  content: '海报预览区域';
-  color: #b0b7c7;
-  font-size: 14px;
-  font-weight: 500;
+/* 海报预览区域 */
+.previewImage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+  transition: transform 0.2s;
+}
+
+.previewImage:hover {
+  transform: scale(1.02);
+}
+
+/* 保存图片按钮 */
+.saveImageBtn {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 18px;
+  border: 1px solid #4f6ff7;
+  border-radius: 12px;
+  background: #4f6ff7;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.saveImageBtn:hover {
+  background: #3b5de7;
+  box-shadow: 0 2px 8px rgba(79, 111, 247, 0.3);
+}
+
+.saveImageBtn:active {
+  background: #2f4fd9;
+}
+
+/* ===== 图片放大灯箱 ===== */
+.imageLightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+.imageLightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.lightboxClose {
+  position: absolute;
+  top: 24px;
+  right: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+  z-index: 201;
+}
+
+.lightboxClose:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* 工具行右侧存入个人知识库按钮 — 绝对定位在工具栏右侧 */
@@ -217,7 +308,9 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -292,7 +385,9 @@
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .tagChipRemove:hover {
@@ -301,6 +396,69 @@
 }
 
 /* ===== 虚线添加标签按钮 + 内联输入框 ===== */
+.intentConfidenceSection {
+  padding: 16px 20px 18px;
+  border-top: 1px solid #eef1f6;
+}
+
+.intentConfidenceSection .rightSectionTitle {
+  margin-bottom: 12px;
+}
+
+.intentConfidenceRow {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  column-gap: 14px;
+  align-items: start;
+  padding: 9px 0;
+  border-bottom: 1px solid #f2f4f8;
+}
+
+.intentConfidenceRow:last-child {
+  border-bottom: none;
+}
+
+.intentConfidenceLabel {
+  color: #8b93a6;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.intentConfidenceValue {
+  min-width: 0;
+  color: #2d2f33;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.intentEmptySection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 20px 0;
+  padding: 14px;
+  border: 1px dashed #d7dbe7;
+  border-radius: 12px;
+  background: #f8f9fb;
+  color: #8b93a6;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.intentEmptySpinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 2px solid #d7dbe7;
+  border-top-color: #4f6ff7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .tagAddDashed {
   display: inline-flex;
   align-items: center;
@@ -314,7 +472,9 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .tagAddDashed:hover {
@@ -369,7 +529,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
 }
 
 .interceptBtn:hover {
@@ -447,7 +609,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -579,7 +743,9 @@
   color: #8b93a6;
   font-size: 18px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .modalCloseBtn:hover {
@@ -805,7 +971,9 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .modalCancelBtn:hover {
@@ -826,7 +994,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -894,7 +1064,7 @@
   height: 20px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s;
   pointer-events: none;
 }
@@ -949,10 +1119,48 @@
   color: #70757f;
 }
 
+.kbContextList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kbContextLine {
+  font-size: 12px;
+  font-weight: 500;
+  color: #70757f;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .kbCardDate {
   font-size: 11px;
   font-weight: 500;
   color: #b0b7c7;
+}
+
+.kbEmptyState {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed #d7dbe7;
+  border-radius: 12px;
+  background: #f8f9fb;
+  color: #8b93a6;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.kbEmptySpinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 2px solid #d7dbe7;
+  border-top-color: #4f6ff7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 /* 底部按钮行 */
@@ -978,7 +1186,9 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -1098,6 +1308,28 @@
   background: #fff;
 }
 
+.promptTextareaCompact {
+  width: 100%;
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ee;
+  border-radius: 12px;
+  background: #f8f9fb;
+  color: #2d2f33;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.promptTextareaCompact:focus {
+  border-color: #4f6ff7;
+  background: #fff;
+}
+
 /* =====================================
    图像生成节点面板 (ImageGenPanel)
    ===================================== */
@@ -1109,70 +1341,6 @@
   font-size: 13px;
   font-weight: 500;
   line-height: 1.5;
-}
-
-.genModelSection {
-  padding: 16px 20px 0;
-}
-
-.genModelSelectWrap {
-  position: relative;
-}
-
-.genModelSelect {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 14px;
-  border: 1px solid #d7dbe7;
-  border-radius: 12px;
-  background: #fff;
-  color: #2d2f33;
-  font-size: 14px;
-  font-weight: 600;
-  outline: none;
-  cursor: pointer;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-  appearance: auto;
-}
-
-.genModelSelect:focus {
-  border-color: #4f6ff7;
-}
-
-.genParamsSection {
-  padding: 16px 20px 0;
-}
-
-.genParamsGrid {
-  display: flex;
-  gap: 12px;
-}
-
-.genParamItem {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px;
-  border: 1px solid #e4e7ee;
-  border-radius: 10px;
-  background: #f8f9fb;
-}
-
-.genParamLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: #b0b7c7;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.genParamValue {
-  font-size: 13px;
-  font-weight: 700;
-  color: #2d2f33;
-  font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
 }
 
 /* 底图预览 */
@@ -1250,7 +1418,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -1402,7 +1572,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
 }
 
@@ -1578,7 +1750,9 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
   box-shadow: 0 2px 8px rgba(231, 76, 60, 0.25);
 }
 
@@ -1591,4 +1765,34 @@
   background: #a93226;
 }
 
+/* 下一个节点按钮 */
+.nextNodeBar {
+  padding: 0 20px 20px;
+  margin-top: auto;
+}
 
+.nextNodeBtn {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  border: none;
+  border-radius: 16px;
+  background: #4f6ff7;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(79, 111, 247, 0.25);
+}
+
+.nextNodeBtn:hover {
+  background: #3b5de7;
+  box-shadow: 0 4px 14px rgba(79, 111, 247, 0.35);
+}
+.nextNodeBtn:active {
+  background: #2f4fd9;
+  box-shadow: 0 2px 6px rgba(79, 111, 247, 0.2);
+}
