@@ -136,6 +136,7 @@ const Home = () => {
   const spaces = useUserStore((s) => s.spaces)
   const setSpaces = useUserStore((s) => s.setSpaces)
   const setCurrentSpace = useUserStore((s) => s.setCurrentSpace)
+  const resetWorkflow = useWorkflowStore((s) => s.reset)
   const setWorkflowId = useWorkflowStore((s) => s.setWorkflowId)
 
   // ---- 本地状态 ----
@@ -191,6 +192,7 @@ const Home = () => {
         spaceType: currentSpaceType,
       })
       const workflowId = workflowData?.id
+      resetWorkflow()
       if (workflowId) {
         setWorkflowId(workflowId)
       }

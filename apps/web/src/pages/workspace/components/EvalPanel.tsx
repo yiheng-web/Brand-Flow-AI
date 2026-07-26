@@ -11,6 +11,7 @@
  */
 
 import type { EvaluationResult } from '../../../api/workflow'
+import NodePanelFooter from './NodePanelFooter'
 import styles from '../workspace.module.css'
 
 export interface EvalReport {
@@ -59,8 +60,7 @@ const EvalPanel = ({
       ? {
           score: evaluationResult.overallScore,
           passed: evaluationResult.overallScore >= 6,
-          feedback:
-            evaluationResult.suggestions?.join('；') || '',
+          feedback: evaluationResult.suggestions?.join('\n') || '',
         }
       : report
 
@@ -91,9 +91,7 @@ const EvalPanel = ({
                 {line}
               </p>
             ))}
-            {isEvaluating && (
-              <span className={styles.evalThinkingCursor}>|</span>
-            )}
+            {isEvaluating && <span className={styles.evalThinkingCursor}>|</span>}
           </div>
         </div>
       )}
@@ -103,9 +101,7 @@ const EvalPanel = ({
         <div className={styles.evalResultSection}>
           <div
             className={`${styles.evalResultCard} ${
-              effectiveReport.passed
-                ? styles.evalResultPassed
-                : styles.evalResultFailed
+              effectiveReport.passed ? styles.evalResultPassed : styles.evalResultFailed
             }`}
           >
             <div className={styles.evalScoreRow}>
@@ -118,9 +114,14 @@ const EvalPanel = ({
             <div className={styles.evalVerdict}>
               {effectiveReport.passed ? '✅ 合格' : '❌ 不合格'}
             </div>
-            <p className={styles.evalFeedback}>
-              {effectiveReport.feedback}
-            </p>
+            <ol className={styles.evalFeedback}>
+              {effectiveReport.feedback
+                .split('\n')
+                .filter(Boolean)
+                .map((text, i) => (
+                  <li key={i}>{text}</li>
+                ))}
+            </ol>
           </div>
         </div>
       )}
@@ -131,33 +132,16 @@ const EvalPanel = ({
           <p className={styles.evalRetryPrompt}>
             该图片不达标（{effectiveReport.score}/10），是否允许大模型自动重构？
           </p>
-          <button
-            type="button"
-            className={styles.evalAllowRetryBtn}
-            onClick={onAllowRetry}
-          >
+          <button type="button" className={styles.evalAllowRetryBtn} onClick={onAllowRetry}>
             ✅ 允许自动重构
           </button>
-          <button
-            type="button"
-            className={styles.interceptBtn}
-            onClick={onManualRetry}
-          >
+          <button type="button" className={styles.interceptBtn} onClick={onManualRetry}>
             手动调整参数
           </button>
         </div>
       )}
 
-      <div className={styles.rightFooter}>
-        <button
-          type="button"
-          className={styles.interceptBtn}
-          disabled={isEvaluating}
-          onClick={onReRun}
-        >
-          重新运行该节点
-        </button>
-      </div>
+      <NodePanelFooter rerunDisabled={isEvaluating} onReRun={onReRun} />
     </div>
   )
 }
