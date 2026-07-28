@@ -1,5 +1,25 @@
 # Brand-Flow AI - 接口规范
 
+> V1 当前契约以 Swagger 与 `@brand-flow/contracts` 为准。工作流固定为
+> `brief → brandConstraint → creativeDirection → prompt → generate → compose → finalEvaluation`。
+> Workflow 状态为 `pending/running/awaiting_user/completed/failed`，节点另保留
+> `queued/skipped/stale` 等执行语义。本文后部残留的旧六节点示例仅用于历史兼容，不应作为新代码依据。
+
+## V1 闭环新增接口
+
+- `POST /workflow/:id/brief/confirm`：确认 Brief，并从品牌约束节点继续。
+- `PUT /workflow/:id/brief`：修改并确认 Brief。
+- `POST /workflow/:id/brief/regenerate`：重新生成 Brief，并再次等待用户确认。
+- `POST /workflow/:id/optimize`：提交快捷分类与自然语言反馈，修订 Prompt 并生成新一轮四候选。
+- `GET /workflow/:id/revisions`：查询 Prompt 修订与候选迭代历史。
+- `POST /workflow/:id/result/download`：获取当前可信结果的十分钟下载地址。
+- `POST /works/:id/versions/from-workflow`：从已完成且质检通过的可信 Workflow 创建作品版本。
+- `POST /works/:id/favorite`：设置作品收藏状态。
+
+创建 Workflow 可附带 `requirements`，包含品牌名称、产品类别、产品描述、目标用户、使用场景、
+最多三个视觉风格、色彩偏好和图片比例。Brief 完成后 Workflow 进入
+`awaiting_user + confirm_brief`，确认前不会执行下游节点。
+
 ## 1. 全局配置
 
 - **Base URL**: `http://localhost:3000/api`

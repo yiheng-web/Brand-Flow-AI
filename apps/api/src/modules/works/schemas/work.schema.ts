@@ -41,6 +41,9 @@ export class Work {
   @Prop({ type: Object })
   nodesSnapshot?: Record<string, unknown>
 
+  @Prop({ type: Boolean, default: false, index: true })
+  isFavorite!: boolean
+
   @Prop({ type: Types.ObjectId, required: true, index: true })
   ownerId!: Types.ObjectId
 

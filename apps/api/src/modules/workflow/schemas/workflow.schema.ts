@@ -1,6 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document } from 'mongoose'
-import type { SpaceType, WorkflowAwaitingAction, WorkflowStatus } from '@brand-flow/contracts'
+import type {
+  BrandRequirementInput,
+  SpaceType,
+  WorkflowAwaitingAction,
+  WorkflowStatus,
+} from '@brand-flow/contracts'
 
 export type { WorkflowStatus } from '@brand-flow/contracts'
 export type WorkflowDocument = Workflow &
@@ -29,6 +34,9 @@ export class Workflow {
   @Prop({ type: [String], default: [] })
   selectedKnowledgeBaseIds!: string[]
 
+  @Prop({ type: Object })
+  requirements?: BrandRequirementInput
+
   @Prop({ type: Number, default: 0 })
   retryCount!: number
 
@@ -44,6 +52,7 @@ export class Workflow {
     type: String,
     enum: [
       'select_direction',
+      'confirm_brief',
       'select_candidate',
       'enter_art_text',
       'select_art_text',

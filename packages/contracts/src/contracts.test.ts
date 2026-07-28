@@ -6,6 +6,7 @@ import {
   downstreamNodeTypes,
   isNormalizedArtTextRegion,
   parseWorkflowSseEvent,
+  normalizeCreativeDirection,
   sortCandidateEvaluations,
 } from './index'
 
@@ -71,4 +72,18 @@ test('SSE 解析支持等待用户的可恢复状态', () => {
     timestamp: new Date().toISOString(),
   })
   assert.equal(event?.type, 'workflow_awaiting_user')
+})
+
+test('旧创意方向可以归一化为增强契约', () => {
+  const direction = normalizeCreativeDirection({
+    id: 'legacy',
+    title: '高端路线',
+    summary: '强调材质与光影',
+    visualStyle: '商业摄影',
+    channels: ['品牌官网'],
+  })
+  assert.equal(direction.name, '高端路线')
+  assert.deepEqual(direction.applicableScenes, ['品牌官网'])
+  assert.ok(direction.reason)
+  assert.ok(direction.risk)
 })

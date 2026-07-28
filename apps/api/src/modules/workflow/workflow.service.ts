@@ -13,6 +13,7 @@ import {
   createArtTextPlacementPlan,
   evaluateFinalImage,
   generateArtTextCandidates as generateControlledArtTextCandidates,
+  revisePromptPlan,
 } from '@brand-flow/agent'
 import {
   createInitialWorkflowNodes,
@@ -27,6 +28,8 @@ import {
   type WorkflowAwaitingAction,
   type WorkflowResult,
   type WorkflowSseEvent,
+  type WorkflowNodeType,
+  type BrandRequirementInput,
 } from '@brand-flow/contracts'
 import { Queue, QueueEvents, type JobProgress } from 'bullmq'
 import { createHash } from 'node:crypto'
@@ -41,9 +44,11 @@ import {
   SelectArtTextCandidateDto,
 } from './dto/composition.dto'
 import { CreateWorkflowDto } from './dto/create-workflow.dto'
+import { OptimizeWorkflowDto, UpdateBriefDto } from './dto/brief-review.dto'
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
 import { Workflow, WorkflowDocument, WorkflowStatus } from './schemas/workflow.schema'
 import { WorkflowNode, WorkflowNodeDocument } from './schemas/workflow-node.schema'
+import { WorkflowRevision, WorkflowRevisionDocument } from './schemas/workflow-revision.schema'
 import { User, UserDocument } from '../org/schemas/user.schema'
 import { Team, TeamDocument } from '../org/schemas/team.schema'
 import { Enterprise, EnterpriseDocument } from '../org/schemas/enterprise.schema'
@@ -60,6 +65,7 @@ export interface WorkflowResponse {
   result?: Record<string, unknown>
   errorMessage?: string
   awaitingAction?: WorkflowAwaitingAction
+  requirements?: BrandRequirementInput
 }
 
 @Injectable()
@@ -71,6 +77,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     private readonly workflowModel: Model<WorkflowDocument>,
     @InjectModel(WorkflowNode.name)
     private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
+    @InjectModel(WorkflowRevision.name)
+    private readonly workflowRevisionModel: Model<WorkflowRevisionDocument>,
     @InjectQueue(WORKFLOW_QUEUE)
     private readonly workflowQueue: Queue,
     @InjectModel(User.name)
@@ -149,6 +157,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       userId,
       entId: space.entId,
       selectedKnowledgeBaseIds,
+      requirements: dto.requirements,
       status: 'pending',
     })
 
@@ -198,6 +207,146 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return {
       workflow: response,
       nodes,
+    }
+  }
+
+  async confirmBrief(id: string, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const result = (workflow.result as WorkflowResult | undefined) ?? {}
+    if (
+      workflow.status !== 'awaiting_user' ||
+      workflow.awaitingAction !== 'confirm_brief' ||
+      !result.brief
+    ) {
+      throw new BadRequestException('当前工作流没有待确认的 Brief')
+    }
+    result.briefReview = {
+      status: 'confirmed',
+      source: result.briefReview?.source ?? 'generated',
+      version: result.briefReview?.version ?? 1,
+      confirmedAt: new Date().toISOString(),
+    }
+    workflow.result = result as unknown as Record<string, unknown>
+    workflow.status = 'running'
+    workflow.awaitingAction = undefined
+    workflow.errorMessage = undefined
+    workflow.markModified('result')
+    await workflow.save()
+    await this.queueNode(id, 'brandConstraint', result.briefReview.version)
+    return result.briefReview
+  }
+
+  async updateBrief(id: string, dto: UpdateBriefDto, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const result = (workflow.result as WorkflowResult | undefined) ?? {}
+    if (workflow.status !== 'awaiting_user' || workflow.awaitingAction !== 'confirm_brief') {
+      throw new BadRequestException('当前工作流不接受 Brief 修改')
+    }
+    const version = (result.briefReview?.version ?? 1) + 1
+    result.brief = dto
+    result.briefReview = { status: 'pending', source: 'user_modified', version }
+    this.clearDownstreamResult(result, 'brief')
+    const node = await this.workflowNodeModel.findOne({ workflowId: id, type: 'brief' })
+    if (!node) throw new NotFoundException('Brief 节点不存在')
+    node.output = dto as unknown as Record<string, unknown>
+    node.userModified = true
+    node.version = version
+    node.status = 'completed'
+    node.markModified('output')
+    await node.save()
+    workflow.result = result as unknown as Record<string, unknown>
+    workflow.markModified('result')
+    await workflow.save()
+    return this.confirmBrief(id, userId, entId)
+  }
+
+  async regenerateBrief(id: string, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    if (workflow.status !== 'awaiting_user' || workflow.awaitingAction !== 'confirm_brief') {
+      throw new BadRequestException('当前工作流不接受 Brief 重新生成')
+    }
+    return this.runNode(id, 'brief', userId, entId)
+  }
+
+  async optimize(id: string, dto: OptimizeWorkflowDto, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const result = (workflow.result as WorkflowResult | undefined) ?? {}
+    const sourceCandidate = result.generate?.candidates.find(
+      (candidate) => candidate.id === dto.sourceCandidateId,
+    )
+    const direction = result.creativeDirection?.directions.find(
+      (item) => item.id === result.creativeDirection?.selectedDirectionId,
+    )
+    if (
+      !sourceCandidate ||
+      !result.brief ||
+      !result.brandConstraint ||
+      !result.prompt ||
+      !direction
+    ) {
+      throw new BadRequestException('当前工作流缺少可优化的候选图或上游上下文')
+    }
+    const feedback = {
+      ...dto,
+      preserveBrandPositioning: true as const,
+      preserveCoreSubject: true as const,
+    }
+    const revisedPrompt = await revisePromptPlan(
+      result.brief,
+      direction,
+      result.brandConstraint,
+      result.prompt,
+      feedback,
+    )
+    const round =
+      (await this.workflowRevisionModel.countDocuments({ workflowId: workflow._id })) + 1
+    const revision = await this.workflowRevisionModel.create({
+      workflowId: workflow._id,
+      round,
+      feedback,
+      previousPrompt: result.prompt,
+      revisedPrompt,
+      previousGenerate: result.generate ?? {},
+      status: 'queued',
+    })
+    result.prompt = revisedPrompt
+    this.clearDownstreamResult(result, 'prompt')
+    await this.workflowNodeModel.updateOne(
+      { workflowId: id, type: 'prompt' },
+      { $set: { output: revisedPrompt, userModified: true }, $inc: { version: 1 } },
+    )
+    await this.workflowNodeModel.updateMany(
+      { workflowId: id, type: { $in: ['generate', 'compose', 'finalEvaluation'] } },
+      { $set: { status: 'stale' }, $unset: { output: 1, error: 1, errorMessage: 1 } },
+    )
+    workflow.result = result as unknown as Record<string, unknown>
+    workflow.status = 'running'
+    workflow.awaitingAction = undefined
+    workflow.errorMessage = undefined
+    workflow.markModified('result')
+    await workflow.save()
+    await this.queueNode(id, 'generate', round)
+    return { revisionId: revision._id.toString(), round, revisedPrompt }
+  }
+
+  async getRevisions(id: string, userId: string, entId?: string) {
+    await this.verifyWorkflowAccess(id, userId, entId)
+    return this.workflowRevisionModel.find({ workflowId: id }).sort({ round: -1 })
+  }
+
+  async getResultDownload(id: string, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const result = (workflow.result as WorkflowResult | undefined) ?? {}
+    const composedKey =
+      result.compose && 'objectKey' in result.compose ? result.compose.objectKey : undefined
+    const selected = result.generate?.candidates.find(
+      (candidate) => candidate.id === result.generate?.selectedCandidateId,
+    )
+    const objectKey = composedKey || selected?.metadata?.objectKey
+    if (typeof objectKey !== 'string') throw new BadRequestException('当前结果尚未持久化，无法下载')
+    return {
+      fileName: `brand-flow-${id}.png`,
+      downloadUrl: await this.storageService.getSignedUrl(objectKey, { expiresIn: 60 * 10 }),
     }
   }
 
@@ -807,6 +956,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       result: workflow.result,
       errorMessage: workflow.errorMessage,
       awaitingAction: workflow.awaitingAction,
+      requirements: workflow.requirements,
     }
   }
 
@@ -824,6 +974,18 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     await this.workflowNodeModel.updateMany(
       { workflowId, type: { $in: ['compose', 'finalEvaluation'] } },
       { $set: { status: 'pending' }, $unset: { output: 1, error: 1, errorMessage: 1 } },
+    )
+  }
+
+  private async queueNode(workflowId: string, nodeType: WorkflowNodeType, version: number) {
+    await this.workflowQueue.add(
+      RUN_WORKFLOW_JOB,
+      { workflowId, nodeType },
+      {
+        jobId: `${workflowId}-${nodeType}-v${version}-${Date.now()}`,
+        removeOnComplete: 100,
+        removeOnFail: 100,
+      },
     )
   }
 

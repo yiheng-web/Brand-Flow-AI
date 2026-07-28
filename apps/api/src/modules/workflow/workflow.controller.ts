@@ -17,6 +17,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { CreateArtTextCandidatesDto } from './dto/create-art-text-candidates.dto'
 import { CreateWorkflowDto } from './dto/create-workflow.dto'
+import { OptimizeWorkflowDto, UpdateBriefDto } from './dto/brief-review.dto'
 import {
   CreatePlacementPlanDto,
   SaveCompositionDto,
@@ -55,6 +56,50 @@ export class WorkflowController {
   @ApiOperation({ summary: '获取工作流详情' })
   getWorkflowDetail(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.workflowService.getWorkflowDetail(id, req.user.sub, req.user.entId)
+  }
+
+  @Post(':id/brief/confirm')
+  @ApiOperation({ summary: '确认当前视觉 Brief 并继续工作流' })
+  confirmBrief(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.confirmBrief(id, req.user.sub, req.user.entId)
+  }
+
+  @Put(':id/brief')
+  @ApiOperation({ summary: '修改并确认视觉 Brief' })
+  updateBrief(
+    @Param('id') id: string,
+    @Body() dto: UpdateBriefDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.workflowService.updateBrief(id, dto, req.user.sub, req.user.entId)
+  }
+
+  @Post(':id/brief/regenerate')
+  @ApiOperation({ summary: '重新生成视觉 Brief' })
+  regenerateBrief(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.regenerateBrief(id, req.user.sub, req.user.entId)
+  }
+
+  @Post(':id/optimize')
+  @ApiOperation({ summary: '根据用户反馈修订 Prompt 并生成新一轮候选图' })
+  optimize(
+    @Param('id') id: string,
+    @Body() dto: OptimizeWorkflowDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.workflowService.optimize(id, dto, req.user.sub, req.user.entId)
+  }
+
+  @Get(':id/revisions')
+  @ApiOperation({ summary: '查询工作流优化历史' })
+  getRevisions(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.getRevisions(id, req.user.sub, req.user.entId)
+  }
+
+  @Post(':id/result/download')
+  @ApiOperation({ summary: '获取当前可信结果的短时下载地址' })
+  getResultDownload(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.getResultDownload(id, req.user.sub, req.user.entId)
   }
 
   @Post(':id/composition/art-text/candidates')

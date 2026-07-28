@@ -7,6 +7,7 @@ import { WorkflowProcessor } from './workflow.processor'
 import { WorkflowService } from './workflow.service'
 import { Workflow, WorkflowSchema } from './schemas/workflow.schema'
 import { WorkflowNode, WorkflowNodeSchema } from './schemas/workflow-node.schema'
+import { WorkflowRevision, WorkflowRevisionSchema } from './schemas/workflow-revision.schema'
 import { OrgModule } from '../org/org.module'
 import { Knowledge, KnowledgeSchema } from '../knowledge/schemas/knowledge.schema'
 import { KnowledgeItem, KnowledgeItemSchema } from '../knowledge/schemas/knowledge-item.schema'
@@ -17,6 +18,7 @@ import { StorageModule } from '../storage/storage.module'
     MongooseModule.forFeature([
       { name: Workflow.name, schema: WorkflowSchema },
       { name: WorkflowNode.name, schema: WorkflowNodeSchema },
+      { name: WorkflowRevision.name, schema: WorkflowRevisionSchema },
       { name: Knowledge.name, schema: KnowledgeSchema },
       { name: KnowledgeItem.name, schema: KnowledgeItemSchema },
     ]),

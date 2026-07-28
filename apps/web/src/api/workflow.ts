@@ -12,6 +12,10 @@ import type {
   WorkflowNodeSnapshot,
   WorkflowResult,
   WorkflowSseEvent,
+  BrandRequirementInput,
+  CreativeBrief,
+  OptimizationFeedback,
+  PromptPlan,
 } from '@brand-flow/contracts'
 
 import apiClient from './index'
@@ -55,6 +59,7 @@ export interface WorkflowData {
   result?: WorkflowResult
   errorMessage?: string
   awaitingAction?: WorkflowAwaitingAction
+  requirements?: BrandRequirementInput
 }
 
 export interface WorkflowDetailResponse {
@@ -84,6 +89,29 @@ export async function rerunNode(
 ): Promise<{ success: boolean; message: string }> {
   return apiClient.post(`/workflow/${workflowId}/nodes/${nodeType}/run`)
 }
+
+export const confirmBrief = (workflowId: string) =>
+  apiClient.post(`/workflow/${workflowId}/brief/confirm`)
+
+export const updateBrief = (workflowId: string, brief: CreativeBrief) =>
+  apiClient.put(`/workflow/${workflowId}/brief`, brief)
+
+export const regenerateBrief = (workflowId: string) =>
+  apiClient.post(`/workflow/${workflowId}/brief/regenerate`)
+
+export const optimizeWorkflow = (
+  workflowId: string,
+  feedback: Omit<OptimizationFeedback, 'preserveBrandPositioning' | 'preserveCoreSubject'>,
+): Promise<{ revisionId: string; round: number; revisedPrompt: PromptPlan }> =>
+  apiClient.post(`/workflow/${workflowId}/optimize`, feedback)
+
+export const getWorkflowRevisions = (workflowId: string) =>
+  apiClient.get(`/workflow/${workflowId}/revisions`)
+
+export const getResultDownload = (
+  workflowId: string,
+): Promise<{ fileName: string; downloadUrl: string }> =>
+  apiClient.post(`/workflow/${workflowId}/result/download`)
 
 export async function generateArtTextCandidates(
   workflowId: string,

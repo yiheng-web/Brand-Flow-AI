@@ -9,6 +9,7 @@ import {
   ensureThreeDirections,
   generateArtTextCandidates,
   normalizePlacementContrastStrength,
+  revisePromptPlan,
   parseCreativeBrief,
   validateArtTextVectorSpec,
 } from './v1-workflow'
@@ -143,4 +144,35 @@ test('无需合成时保留原候选图并标记 skipped', () => {
   )
   assert.equal(result.mode, 'skipped')
   assert.equal(result.finalImageUrl, 'https://example.com/a.png')
+})
+
+test('演示模式反馈优化保留旧 Prompt 并附加修改要求', async () => {
+  const previous = process.env.BRAND_FLOW_DEMO_MODE
+  process.env.BRAND_FLOW_DEMO_MODE = 'true'
+  try {
+    const brief = createCreativeBriefFallback('生成科技咖啡海报')
+    const [direction] = createDirectionFallbacks(brief)
+    const revised = await revisePromptPlan(
+      brief,
+      direction,
+      { required: [], recommended: [], optional: [], sources: [] },
+      {
+        selectedDirectionId: direction.id,
+        imagePrompt: '咖啡产品主视觉',
+        generationConfig: { aspectRatio: '1:1' },
+      },
+      {
+        categories: ['color'],
+        instruction: '背景改成夜景，增加科技感',
+        sourceCandidateId: 'c1',
+        preserveBrandPositioning: true,
+        preserveCoreSubject: true,
+      },
+    )
+    assert.match(revised.imagePrompt, /背景改成夜景/)
+    assert.match(revised.imagePrompt, /保持品牌定位与核心主体不变/)
+  } finally {
+    if (previous === undefined) delete process.env.BRAND_FLOW_DEMO_MODE
+    else process.env.BRAND_FLOW_DEMO_MODE = previous
+  }
 })

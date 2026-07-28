@@ -281,6 +281,19 @@
   border-top: 1px solid #f0f0f0;
 }
 
+.requirementGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .requirementGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .footerLeft {
   display: flex;
   flex-direction: column;

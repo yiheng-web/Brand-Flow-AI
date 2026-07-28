@@ -14,7 +14,10 @@ import type {
   CompositionOutput,
   FinalEvaluationResult,
   PromptPlan,
+  BrandRequirementInput,
+  OptimizationFeedback,
 } from '@brand-flow/contracts'
+import { normalizeCreativeDirection } from '@brand-flow/contracts'
 
 import { safeJsonParse } from './common'
 import { evaluateCandidates, runFinalEvaluation } from './ai-logic/evaluate'
@@ -122,17 +125,33 @@ async function invokeImageJson<T>(
   return safeJsonParse<T>(raw)
 }
 
-export async function createCreativeBrief(originalRequest: string): Promise<CreativeBrief> {
-  if (isDemoMode()) return createCreativeBriefFallback(originalRequest)
+export async function createCreativeBrief(
+  originalRequest: string,
+  requirements?: BrandRequirementInput,
+): Promise<CreativeBrief> {
+  const structuredRequest = requirements
+    ? `${originalRequest}\n品牌：${requirements.brandName}；品类：${requirements.productCategory}；产品：${requirements.productDescription}；目标用户：${requirements.targetAudience}；场景：${requirements.usageScenario}；风格：${requirements.visualStyles.join('、')}；色彩：${requirements.colorPreference || '未指定'}；比例：${requirements.aspectRatio}`
+    : originalRequest
+  if (isDemoMode()) {
+    const fallback = createCreativeBriefFallback(structuredRequest)
+    return {
+      ...fallback,
+      targetAudience: requirements?.targetAudience || fallback.targetAudience,
+      channel: requirements?.usageScenario || fallback.channel,
+      constraints: requirements
+        ? [...fallback.constraints, `画面比例 ${requirements.aspectRatio}`]
+        : fallback.constraints,
+    }
+  }
 
   const result = await invokeJson<CreativeBrief>(
     '把用户需求转换为 CreativeBrief。必须包含 originalRequest、normalizedIntent、outputMode、needsComposition、constraints、assumptions；outputMode 只能是 pure_image、graphic_design、scene_text、both。',
-    { originalRequest },
+    { originalRequest, requirements },
   )
   if (!result?.normalizedIntent || typeof result.needsComposition !== 'boolean') {
     throw new Error('Brief Provider 返回的数据不完整')
   }
-  return parseCreativeBrief(JSON.stringify(result), originalRequest)
+  return parseCreativeBrief(JSON.stringify(result), structuredRequest)
 }
 
 export function createDirectionFallbacks(brief: CreativeBrief): CreativeDirection[] {
@@ -140,6 +159,12 @@ export function createDirectionFallbacks(brief: CreativeBrief): CreativeDirectio
   return [
     {
       id: 'direction-editorial',
+      name: '清爽编辑视觉',
+      concept: '使用留白和清晰信息层级，让产品主体与品牌信息快速被理解。',
+      visualKeywords: ['留白', '清晰层级', '生活方式'],
+      applicableScenes: [channel, '品牌长期内容'],
+      reason: '稳定、易读，适合持续构建统一品牌认知。',
+      risk: '视觉冲击力相对克制，需要用产品细节避免平淡。',
       title: '清爽编辑视觉',
       summary: '使用大面积留白和清晰信息层级，强调产品主体与可读性。',
       visualStyle: '现代编辑设计',
@@ -152,6 +177,12 @@ export function createDirectionFallbacks(brief: CreativeBrief): CreativeDirectio
     },
     {
       id: 'direction-dynamic',
+      name: '动感场景叙事',
+      concept: '通过动作和环境线索构建年轻、有传播力的场景故事。',
+      visualKeywords: ['动感', '社交传播', '高对比'],
+      applicableScenes: [channel, '社交媒体'],
+      reason: '情绪明确、抓眼，适合新品发布与社媒传播。',
+      risk: '元素较多时可能削弱品牌主体，需要严格控制层级。',
       title: '动感场景叙事',
       summary: '把主体放入有动作和环境线索的场景，增强情绪与社媒吸引力。',
       visualStyle: '商业摄影与轻电影感',
@@ -164,6 +195,12 @@ export function createDirectionFallbacks(brief: CreativeBrief): CreativeDirectio
     },
     {
       id: 'direction-premium',
+      name: '极简品牌主视觉',
+      concept: '减少元素，用材质、光影和比例建立高端商业感。',
+      visualKeywords: ['高级摄影', '材质', '极简'],
+      applicableScenes: [channel, '品牌主视觉'],
+      reason: '品牌感集中，适合官网、发布会和长期核心视觉。',
+      risk: '对摄影质感和品牌色准确度要求高，失败时容易显得空洞。',
       title: '极简品牌主视觉',
       summary: '压缩元素数量，用材质、光影和比例建立高级品牌感。',
       visualStyle: '极简品牌广告',
@@ -182,13 +219,9 @@ export function ensureThreeDirections(
   brief: CreativeBrief,
 ): CreativeDirection[] {
   const valid = Array.isArray(directions)
-    ? directions.filter(
-        (direction) =>
-          direction &&
-          typeof direction.id === 'string' &&
-          typeof direction.title === 'string' &&
-          typeof direction.composition === 'string',
-      )
+    ? directions
+        .filter((direction) => direction && typeof direction.id === 'string')
+        .map((direction) => normalizeCreativeDirection(direction))
     : []
   if (valid.length === 3 && new Set(valid.map((item) => item.visualStyle)).size === 3) return valid
   return createDirectionFallbacks(brief)
@@ -200,12 +233,16 @@ export async function createCreativeDirections(
 ): Promise<CreativeDirection[]> {
   if (isDemoMode()) return createDirectionFallbacks(brief)
   const result = await invokeJson<{ directions: CreativeDirection[] } | CreativeDirection[]>(
-    '生成恰好 3 个明显不同的 CreativeDirection。返回格式必须是 {"directions":[...]}；每个方案必须包含字符串字段 id、title、summary、visualStyle、composition、colorStrategy、visualFocus、mood、copyStyle，以及字符串数组 channels。三个方案的 visualStyle、composition、colorStrategy 必须分别互不相同，不要添加其他顶层字段。',
+    '生成恰好 3 个明显不同的 CreativeDirection。返回格式必须是 {"directions":[...]}；每个方案必须包含字符串字段 id、name、concept、reason、risk、title、summary、visualStyle、composition、colorStrategy、visualFocus、mood、copyStyle，以及字符串数组 visualKeywords、applicableScenes、channels。三个方案的 visualStyle、composition、colorStrategy 必须分别互不相同。',
     { brief, constraints },
   )
   const directions = Array.isArray(result) ? result : result?.directions
   const requiredStringFields: Array<keyof CreativeDirection> = [
     'id',
+    'name',
+    'concept',
+    'reason',
+    'risk',
     'title',
     'summary',
     'visualStyle',
@@ -221,6 +258,10 @@ export async function createCreativeDirections(
       requiredStringFields.every(
         (field) => typeof item[field] === 'string' && (item[field] as string).trim().length > 0,
       ) &&
+      Array.isArray(item.visualKeywords) &&
+      item.visualKeywords.length > 0 &&
+      Array.isArray(item.applicableScenes) &&
+      item.applicableScenes.length > 0 &&
       Array.isArray(item.channels) &&
       item.channels.length > 0 &&
       item.channels.every((channel) => typeof channel === 'string' && channel.trim().length > 0),
@@ -234,7 +275,7 @@ export async function createCreativeDirections(
   ) {
     throw new Error('创意方向 Provider 未返回三个明显不同的有效方案')
   }
-  return valid
+  return valid.map((item) => normalizeCreativeDirection(item))
 }
 
 export function createPromptPlanFallback(
@@ -295,6 +336,32 @@ export async function createPromptPlan(
     selectedDirectionId: direction.id,
     layoutPlan: brief.needsComposition ? result.layoutPlan : undefined,
     generationConfig: result.generationConfig || { aspectRatio: '1:1' },
+  }
+}
+
+export async function revisePromptPlan(
+  brief: CreativeBrief,
+  direction: CreativeDirection,
+  constraints: BrandConstraintPackage,
+  previousPrompt: PromptPlan,
+  feedback: OptimizationFeedback,
+): Promise<PromptPlan> {
+  if (isDemoMode()) {
+    return {
+      ...previousPrompt,
+      imagePrompt: `${previousPrompt.imagePrompt}。本轮优化：${feedback.instruction}。保持品牌定位与核心主体不变。`,
+    }
+  }
+  const result = await invokeJson<PromptPlan>(
+    '根据反馈修订 PromptPlan。必须保持 Brief 中的品牌定位、核心主体和品牌约束；只修改反馈指定的风格、色彩、主体细节、构图或文字处理。文字类反馈不得要求生图模型直接生成最终文字。返回完整 PromptPlan。',
+    { brief, direction, constraints, previousPrompt, feedback },
+  )
+  if (!result?.imagePrompt) throw new Error('Prompt 优化 Provider 返回的数据不完整')
+  return {
+    ...result,
+    selectedDirectionId: direction.id,
+    generationConfig: result.generationConfig || previousPrompt.generationConfig,
+    layoutPlan: brief.needsComposition ? result.layoutPlan || previousPrompt.layoutPlan : undefined,
   }
 }
 

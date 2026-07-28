@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
+import { IsBoolean, IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
 import { OwnerType, Visibility } from '@/common/enums'
 
 export class CreateWorkDto {
@@ -119,4 +119,15 @@ export class CreateWorkVersionDto {
   @IsOptional()
   @IsObject()
   qualityReport?: Record<string, unknown>
+}
+
+export class CreateTrustedWorkVersionDto {
+  @IsString()
+  @IsNotEmpty()
+  workflowId!: string
+}
+
+export class UpdateWorkFavoriteDto {
+  @IsBoolean()
+  isFavorite!: boolean
 }

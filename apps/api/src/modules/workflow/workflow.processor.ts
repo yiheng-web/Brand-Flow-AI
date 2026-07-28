@@ -24,6 +24,7 @@ import { KnowledgeItem, KnowledgeItemDocument } from '../knowledge/schemas/knowl
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
 import { WorkflowNode, WorkflowNodeDocument } from './schemas/workflow-node.schema'
 import { Workflow, WorkflowDocument } from './schemas/workflow.schema'
+import { WorkflowRevision, WorkflowRevisionDocument } from './schemas/workflow-revision.schema'
 import { StorageService } from '../storage/storage.service'
 
 interface RunWorkflowJobData {
@@ -38,6 +39,8 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly workflowModel: Model<WorkflowDocument>,
     @InjectModel(WorkflowNode.name)
     private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
+    @InjectModel(WorkflowRevision.name)
+    private readonly workflowRevisionModel: Model<WorkflowRevisionDocument>,
     @InjectModel(KnowledgeItem.name)
     private readonly knowledgeItemModel: Model<KnowledgeItemDocument>,
     private readonly storageService: StorageService,
@@ -141,13 +144,22 @@ export class WorkflowProcessor extends WorkerHost {
           timestamp: new Date().toISOString(),
         } satisfies WorkflowSseEvent)
         await this.persistProgress(workflow._id.toString(), result)
+        if (nodeType === 'generate') {
+          await this.workflowRevisionModel.findOneAndUpdate(
+            { workflowId: workflow._id, status: 'queued' },
+            { status: 'completed' },
+            { sort: { round: -1 } },
+          )
+        }
 
         const awaitingAction =
-          nodeType === 'creativeDirection'
-            ? 'select_direction'
-            : nodeType === 'generate'
-              ? 'select_candidate'
-              : undefined
+          nodeType === 'brief'
+            ? 'confirm_brief'
+            : nodeType === 'creativeDirection'
+              ? 'select_direction'
+              : nodeType === 'generate'
+                ? 'select_candidate'
+                : undefined
         if (awaitingAction) {
           await this.workflowModel.findByIdAndUpdate(workflow._id, {
             status: 'awaiting_user',
@@ -203,6 +215,11 @@ export class WorkflowProcessor extends WorkerHost {
         result,
         errorMessage: message,
       })
+      await this.workflowRevisionModel.findOneAndUpdate(
+        { workflowId: workflow._id, status: 'queued' },
+        { status: 'failed' },
+        { sort: { round: -1 } },
+      )
       throw error
     }
   }
@@ -213,9 +230,18 @@ export class WorkflowProcessor extends WorkerHost {
     result: WorkflowResult,
   ): Promise<{ result: WorkflowResult; nodeOutput: Record<string, unknown> }> {
     if (nodeType === 'brief') {
-      const brief = await createCreativeBrief(workflow.prompt)
+      const brief = await this.executeWithRetry(
+        nodeType,
+        () => createCreativeBrief(workflow.prompt, workflow.requirements),
+        3,
+      )
+      const briefReview = {
+        status: 'pending' as const,
+        source: 'generated' as const,
+        version: (result.briefReview?.version ?? 0) + 1,
+      }
       return {
-        result: { ...result, brief },
+        result: { ...result, brief, briefReview },
         nodeOutput: brief as unknown as Record<string, unknown>,
       }
     }
@@ -233,7 +259,11 @@ export class WorkflowProcessor extends WorkerHost {
     }
 
     if (nodeType === 'creativeDirection') {
-      const directions = await createCreativeDirections(result.brief, result.brandConstraint)
+      const directions = await this.executeWithRetry(
+        nodeType,
+        () => createCreativeDirections(result.brief!, result.brandConstraint!),
+        3,
+      )
       const creativeDirection = { directions, selectedDirectionId: '' }
       return {
         result: { ...result, creativeDirection },
@@ -247,7 +277,14 @@ export class WorkflowProcessor extends WorkerHost {
     if (!selectedDirection) throw new Error(`节点 ${nodeType} 缺少已选择的创意方案`)
 
     if (nodeType === 'prompt') {
-      const prompt = await createPromptPlan(result.brief, selectedDirection, result.brandConstraint)
+      const prompt = await this.executeWithRetry(
+        nodeType,
+        () => createPromptPlan(result.brief!, selectedDirection, result.brandConstraint!),
+        3,
+      )
+      if (workflow.requirements?.aspectRatio) {
+        prompt.generationConfig.aspectRatio = workflow.requirements.aspectRatio
+      }
       return {
         result: { ...result, prompt },
         nodeOutput: prompt as unknown as Record<string, unknown>,
@@ -289,7 +326,11 @@ export class WorkflowProcessor extends WorkerHost {
         { output: checkpoint },
       )
       const evaluations = sortCandidateEvaluations(
-        await evaluateCandidateImages(candidates, result.brandConstraint),
+        await this.executeWithRetry(
+          nodeType,
+          () => evaluateCandidateImages(candidates, result.brandConstraint!),
+          3,
+        ),
       )
       const generate = {
         candidates,
@@ -317,15 +358,38 @@ export class WorkflowProcessor extends WorkerHost {
     }
 
     const finalImageUrl = result.compose?.finalImageUrl || selectedCandidate.imageUrl
-    const finalEvaluation = await evaluateFinalImage(
-      finalImageUrl,
-      result.brandConstraint,
-      result.brief,
+    const finalEvaluation = await this.executeWithRetry(
+      nodeType,
+      () => evaluateFinalImage(finalImageUrl, result.brandConstraint!, result.brief!),
+      3,
     )
     return {
       result: { ...result, finalEvaluation, finalImageUrl },
       nodeOutput: finalEvaluation as unknown as Record<string, unknown>,
     }
+  }
+
+  private async executeWithRetry<T>(
+    nodeType: WorkflowNodeType,
+    operation: () => Promise<T>,
+    maxAttempts: number,
+  ): Promise<T> {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await operation()
+      } catch (error) {
+        lastError = error
+        const message = error instanceof Error ? error.message : String(error)
+        const retryable = /timeout|超时|provider|network|fetch|json|解析|429|502|503|504/i.test(
+          message,
+        )
+        if (!retryable || attempt === maxAttempts) break
+        await new Promise((resolve) => setTimeout(resolve, attempt * 250))
+      }
+    }
+    const message = lastError instanceof Error ? lastError.message : `${nodeType} 执行失败`
+    throw new Error(`${message}（已完成 ${maxAttempts} 次内的安全重试）`)
   }
 
   private async buildConstraintPackage(

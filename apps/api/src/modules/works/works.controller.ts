@@ -7,7 +7,13 @@ import {
 } from '@/common/swagger/api-success-response'
 import { SuccessResultDto } from '@/common/swagger/common-response.dto'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
-import { CreateWorkDto, CreateWorkVersionDto, ExportWorkDto } from './dto/works.dto'
+import {
+  CreateTrustedWorkVersionDto,
+  CreateWorkDto,
+  CreateWorkVersionDto,
+  ExportWorkDto,
+  UpdateWorkFavoriteDto,
+} from './dto/works.dto'
 import {
   ExportWorkResponseDto,
   WorkDetailResponseDto,
@@ -15,6 +21,10 @@ import {
   WorkVersionResponseDto,
 } from './dto/works-response.dto'
 import { WorksService } from './works.service'
+
+interface AuthenticatedRequest {
+  user: { sub: string }
+}
 
 @ApiTags('作品 Works')
 @ApiBearerAuth()
@@ -30,7 +40,7 @@ export class WorksController {
       '把工作流最终生成结果保存为作品，并自动创建第 1 个 WorkVersion，供作品中心和作品详情展示。',
   })
   @ApiCreatedSuccessResponse(WorkDetailResponseDto, '保存成功，返回封装后的作品详情和版本列表。')
-  async create(@Req() req: any, @Body() dto: CreateWorkDto) {
+  async create(@Req() req: AuthenticatedRequest, @Body() dto: CreateWorkDto) {
     return this.worksService.create(req.user.sub, dto)
   }
 
@@ -40,7 +50,7 @@ export class WorksController {
     description: '返回当前用户在当前企业下可访问的作品，包括本人私有、团队、企业和公开作品。',
   })
   @ApiSuccessArrayResponse(WorkResponseDto, '返回封装后的作品列表。')
-  async findAll(@Req() req: any, @Query('spaceId') spaceId = 'personal') {
+  async findAll(@Req() req: AuthenticatedRequest, @Query('spaceId') spaceId = 'personal') {
     return this.worksService.findAll(req.user.sub, spaceId)
   }
 
@@ -52,7 +62,7 @@ export class WorksController {
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(WorkDetailResponseDto, '返回封装后的作品详情和版本列表。')
-  async findOne(@Req() req: any, @Param('id') id: string) {
+  async findOne(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.worksService.findOne(req.user.sub, id)
   }
 
@@ -63,7 +73,7 @@ export class WorksController {
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
-  async remove(@Req() req: any, @Param('id') id: string) {
+  async remove(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.worksService.remove(req.user.sub, id)
   }
 
@@ -75,8 +85,32 @@ export class WorksController {
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiCreatedSuccessResponse(WorkVersionResponseDto, '创建成功，返回封装后的新作品版本。')
-  async createVersion(@Req() req: any, @Param('id') id: string, @Body() dto: CreateWorkVersionDto) {
+  async createVersion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: CreateWorkVersionDto,
+  ) {
     return this.worksService.createVersion(req.user.sub, id, dto)
+  }
+
+  @Post(':id/versions/from-workflow')
+  @ApiOperation({ summary: '从已完成且质检通过的可信工作流创建作品版本' })
+  async createTrustedVersion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: CreateTrustedWorkVersionDto,
+  ) {
+    return this.worksService.createTrustedVersion(req.user.sub, id, dto.workflowId)
+  }
+
+  @Post(':id/favorite')
+  @ApiOperation({ summary: '设置作品收藏状态' })
+  async updateFavorite(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkFavoriteDto,
+  ) {
+    return this.worksService.updateFavorite(req.user.sub, id, dto.isFavorite)
   }
 
   @Get(':id/versions')
@@ -86,7 +120,7 @@ export class WorksController {
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessArrayResponse(WorkVersionResponseDto, '返回封装后的作品版本列表。')
-  async findVersions(@Req() req: any, @Param('id') id: string) {
+  async findVersions(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.worksService.findVersions(req.user.sub, id)
   }
 
@@ -99,7 +133,7 @@ export class WorksController {
   @ApiParam({ name: 'versionId', description: '作品版本 ID' })
   @ApiSuccessResponse(WorkVersionResponseDto, '返回封装后的作品版本详情。')
   async findVersion(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Param('versionId') versionId: string,
   ) {
@@ -113,7 +147,11 @@ export class WorksController {
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(ExportWorkResponseDto, '返回封装后的导出日志 ID、文件名和下载地址。')
-  async export(@Req() req: any, @Param('id') id: string, @Body() dto: ExportWorkDto) {
+  async export(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: ExportWorkDto,
+  ) {
     return this.worksService.export(req.user.sub, id, dto)
   }
 }

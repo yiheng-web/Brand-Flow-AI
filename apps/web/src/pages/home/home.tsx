@@ -18,6 +18,11 @@ import { useUserStore, type SpaceItem, type SpaceType } from '@/store/useUserSto
 import { useWorkflowStore } from '@/store/useWorkflowStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
+import {
+  BRAND_VISUAL_STYLES,
+  IMAGE_ASPECT_RATIOS,
+  type BrandRequirementInput,
+} from '@brand-flow/contracts'
 import styles from './home.module.css'
 
 /** 空间类型对应的标签文案和描述 */
@@ -154,6 +159,16 @@ const Home = () => {
   const [submitting, setSubmitting] = useState(false)
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeData[]>([])
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([])
+  const [requirements, setRequirements] = useState<BrandRequirementInput>({
+    brandName: '',
+    productCategory: '',
+    productDescription: '',
+    targetAudience: '',
+    usageScenario: '',
+    visualStyles: [],
+    colorPreference: '',
+    aspectRatio: '1:1',
+  })
 
   // ---- 加载空间列表 ----
   useEffect(() => {
@@ -193,11 +208,21 @@ const Home = () => {
 
   // ---- 提交创意 → 跳转工作台 ----
   const handleSubmit = async () => {
-    const trimmed = prompt.trim()
-    if (!trimmed) {
-      message.warning('请先描述你的创意')
+    const missingStructured =
+      [
+        requirements.brandName,
+        requirements.productCategory,
+        requirements.productDescription,
+        requirements.targetAudience,
+        requirements.usageScenario,
+      ].some((value) => !value.trim()) || requirements.visualStyles.length === 0
+    if (missingStructured) {
+      message.warning('请完整填写品牌、产品、目标用户、使用场景和视觉风格')
       return
     }
+    const trimmed =
+      prompt.trim() ||
+      `为${requirements.brandName}的${requirements.productCategory}创作${requirements.usageScenario}品牌图片：${requirements.productDescription}`
 
     setSubmitting(true)
     try {
@@ -207,6 +232,7 @@ const Home = () => {
         spaceId: currentSpaceId || 'personal',
         spaceType: currentSpaceType,
         selectedKnowledgeBaseIds,
+        requirements,
       })
       const workflowId = workflowData?.id
       if (workflowId) {
@@ -292,6 +318,72 @@ const Home = () => {
               autoSize={{ minRows: 4, maxRows: 8 }}
               disabled={submitting}
             />
+            <div className={styles.requirementGrid}>
+              <Input
+                value={requirements.brandName}
+                onChange={(event) =>
+                  setRequirements((old) => ({ ...old, brandName: event.target.value }))
+                }
+                placeholder="品牌名称 *"
+                disabled={submitting}
+              />
+              <Input
+                value={requirements.productCategory}
+                onChange={(event) =>
+                  setRequirements((old) => ({ ...old, productCategory: event.target.value }))
+                }
+                placeholder="产品类别 *"
+                disabled={submitting}
+              />
+              <Input
+                value={requirements.productDescription}
+                onChange={(event) =>
+                  setRequirements((old) => ({ ...old, productDescription: event.target.value }))
+                }
+                placeholder="产品描述 *"
+                disabled={submitting}
+              />
+              <Input
+                value={requirements.targetAudience}
+                onChange={(event) =>
+                  setRequirements((old) => ({ ...old, targetAudience: event.target.value }))
+                }
+                placeholder="目标用户 *"
+                disabled={submitting}
+              />
+              <Input
+                value={requirements.usageScenario}
+                onChange={(event) =>
+                  setRequirements((old) => ({ ...old, usageScenario: event.target.value }))
+                }
+                placeholder="图片使用场景 *"
+                disabled={submitting}
+              />
+              <Input
+                value={requirements.colorPreference}
+                onChange={(event) =>
+                  setRequirements((old) => ({ ...old, colorPreference: event.target.value }))
+                }
+                placeholder="色彩偏好（可选）"
+                disabled={submitting}
+              />
+              <Select
+                mode="multiple"
+                maxCount={3}
+                value={requirements.visualStyles}
+                options={BRAND_VISUAL_STYLES.map((style) => ({ value: style, label: style }))}
+                onChange={(visualStyles) => setRequirements((old) => ({ ...old, visualStyles }))}
+                placeholder="视觉风格，最多 3 个 *"
+                disabled={submitting}
+              />
+              <Select
+                value={requirements.aspectRatio}
+                options={IMAGE_ASPECT_RATIOS.map((ratio) => ({ value: ratio, label: ratio }))}
+                onChange={(aspectRatio) => setRequirements((old) => ({ ...old, aspectRatio }))}
+                placeholder="图片比例"
+                disabled={submitting}
+              />
+            </div>
 
             {/* 输入框底部：空间信息 + 标签 + 操作 */}
             <div className={styles.inputFooter}>

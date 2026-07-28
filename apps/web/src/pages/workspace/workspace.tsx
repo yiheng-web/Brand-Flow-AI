@@ -1,17 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ExportOutlined, PlayCircleFilled, SaveOutlined } from '@ant-design/icons'
+import {
+  DownloadOutlined,
+  ExportOutlined,
+  HeartOutlined,
+  PlayCircleFilled,
+  SaveOutlined,
+} from '@ant-design/icons'
 import type {
   CandidateImage,
   CreativeDirection,
   WorkflowNodeStatus,
   WorkflowResult,
 } from '@brand-flow/contracts'
-import { Button, Card, Image, Progress, Radio, Space, Tag, Tooltip, message } from 'antd'
+import {
+  Button,
+  Card,
+  Checkbox,
+  Image,
+  Input,
+  Modal,
+  Progress,
+  Radio,
+  Space,
+  Tag,
+  Tooltip,
+  message,
+} from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ReactFlowProvider } from 'reactflow'
 
-import { createWork, exportWork } from '@/api/works'
-import { getWorkflowDetail, rerunNode, submitPrompt, updateNodeOutput } from '@/api/workflow'
+import { createTrustedWorkVersion, createWork, exportWork, updateWorkFavorite } from '@/api/works'
+import {
+  getResultDownload,
+  getWorkflowDetail,
+  optimizeWorkflow,
+  rerunNode,
+  submitPrompt,
+  updateNodeOutput,
+} from '@/api/workflow'
 import { StatusBadge, type SemanticStatus } from '@/design-system/components'
 import { useUserStore } from '@/store/useUserStore'
 import { INITIAL_NODE_EXEC_STATUSES, useWorkflowStore } from '@/store/useWorkflowStore'
@@ -19,6 +45,7 @@ import { createAuthEventSource } from '@/utils/sse'
 
 import FlowView from './components/FlowView'
 import ArtTextComposer from './components/ArtTextComposer'
+import BriefReviewPanel from './components/BriefReviewPanel'
 import { FLOW_NODES, type FlowNodeId, type NodeExecStatus } from './workspace.const'
 import styles from './workspace.module.css'
 
@@ -59,6 +86,11 @@ export default function Workspace() {
   const [submitting, setSubmitting] = useState(false)
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
   const [workflowSpaceId, setWorkflowSpaceId] = useState(currentSpaceId)
+  const [awaitingAction, setAwaitingAction] = useState<string | undefined>()
+  const [previewCandidateId, setPreviewCandidateId] = useState<string>('')
+  const [promptOpen, setPromptOpen] = useState(false)
+  const [feedbackCategories, setFeedbackCategories] = useState<string[]>([])
+  const [feedbackInstruction, setFeedbackInstruction] = useState('')
   const connectionRef = useRef<{ close: () => void } | null>(null)
   const recoverRef = useRef<(workflowId: string) => Promise<void>>(async () => undefined)
   const recoveryTimerRef = useRef<number | null>(null)
@@ -94,13 +126,16 @@ export default function Workspace() {
           }
           if (event.type === 'workflow_awaiting_user') {
             setStatus('awaiting_user')
+            setAwaitingAction(event.action)
             if (event.result) setResult(event.result)
             setSelectedNodeId(
-              event.action === 'select_direction'
-                ? 'creativeDirection'
-                : event.action === 'select_candidate'
-                  ? 'generate'
-                  : 'compose',
+              event.action === 'confirm_brief'
+                ? 'brief'
+                : event.action === 'select_direction'
+                  ? 'creativeDirection'
+                  : event.action === 'select_candidate'
+                    ? 'generate'
+                    : 'compose',
             )
             connectionRef.current?.close()
             connectionRef.current = null
@@ -137,6 +172,18 @@ export default function Workspace() {
         setWorkflowSpaceId(detail.workflow.spaceId)
         setPrompt(detail.workflow.prompt)
         setResult(detail.workflow.result || null)
+        setAwaitingAction(detail.workflow.awaitingAction)
+        if (detail.workflow.status === 'awaiting_user') {
+          setSelectedNodeId(
+            detail.workflow.awaitingAction === 'confirm_brief'
+              ? 'brief'
+              : detail.workflow.awaitingAction === 'select_direction'
+                ? 'creativeDirection'
+                : detail.workflow.awaitingAction === 'select_candidate'
+                  ? 'generate'
+                  : 'compose',
+          )
+        }
         const statuses = { ...INITIAL_NODE_EXEC_STATUSES }
         const outputs: Record<string, Record<string, unknown>> = {}
         detail.nodes.forEach((node) => {
@@ -227,6 +274,10 @@ export default function Workspace() {
   )
 
   const generate = result?.generate
+  const previewCandidate =
+    generate?.candidates.find((candidate) => candidate.id === previewCandidateId) ||
+    generate?.candidates.find((candidate) => candidate.id === generate.selectedCandidateId) ||
+    generate?.candidates[0]
   const selectDirection = async (direction: CreativeDirection) => {
     if (!workflowId || !result?.creativeDirection) return
     const nextCreativeDirection = {
@@ -283,8 +334,13 @@ export default function Workspace() {
     setStatus('running')
     connect(workflowId)
   }
-  const saveWork = async () => {
-    if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return
+  const saveWork = async (): Promise<string | null> => {
+    if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return null
+    if (savedWorkId) {
+      await createTrustedWorkVersion(savedWorkId, workflowId)
+      message.success('作品新版本已保存')
+      return savedWorkId
+    }
     const work = await createWork({
       title: userPrompt.slice(0, 40) || '未命名作品',
       spaceId: workflowSpaceId,
@@ -302,6 +358,7 @@ export default function Workspace() {
     })
     setSavedWorkId(work._id)
     message.success('作品与初始版本已保存')
+    return work._id
   }
   const formalExport = async () => {
     if (!savedWorkId) return
@@ -326,6 +383,38 @@ export default function Workspace() {
   const baseCandidate = generate?.candidates.find(
     (candidate) => candidate.id === generate.selectedCandidateId,
   )
+  const downloadResult = async () => {
+    if (!workflowId) return
+    const download = await getResultDownload(workflowId)
+    const link = document.createElement('a')
+    link.href = download.downloadUrl
+    link.download = download.fileName
+    link.click()
+  }
+  const favoriteResult = async () => {
+    const workId = savedWorkId || (await saveWork())
+    if (!workId) return
+    await updateWorkFavorite(workId, true)
+    message.success('已收藏到作品中心')
+  }
+  const submitOptimization = async () => {
+    if (!workflowId || !previewCandidate || !feedbackInstruction.trim()) {
+      message.warning('请选择图片并输入优化要求')
+      return
+    }
+    await optimizeWorkflow(workflowId, {
+      categories: feedbackCategories as Array<
+        'style' | 'color' | 'subject' | 'composition' | 'text'
+      >,
+      instruction: feedbackInstruction.trim(),
+      sourceCandidateId: previewCandidate.id,
+    })
+    setStatus('running')
+    setFeedbackInstruction('')
+    setFeedbackCategories([])
+    connect(workflowId)
+    message.success('已保留品牌定位与主体，正在生成新一轮候选图')
+  }
 
   return (
     <div className={styles.wrapper}>
@@ -429,7 +518,15 @@ export default function Workspace() {
                     : (nodeExecStatuses[selectedNodeId] as SemanticStatus)
                 }
               />
-              {selectedNodeId === 'creativeDirection' && result?.creativeDirection ? (
+              {selectedNodeId === 'brief' && result?.brief && workflowId ? (
+                <BriefReviewPanel
+                  key={result.briefReview?.version ?? 1}
+                  workflowId={workflowId}
+                  brief={result.brief}
+                  awaitingConfirmation={awaitingAction === 'confirm_brief'}
+                  onChanged={() => recover(workflowId)}
+                />
+              ) : selectedNodeId === 'creativeDirection' && result?.creativeDirection ? (
                 <Radio.Group value={result.creativeDirection.selectedDirectionId}>
                   <Space direction="vertical" style={{ width: '100%' }}>
                     {result.creativeDirection.directions.map((direction) => (
@@ -438,17 +535,41 @@ export default function Workspace() {
                           value={direction.id}
                           onChange={() => void selectDirection(direction)}
                         >
-                          {direction.title}
+                          {direction.name || direction.title}
                         </Radio>
-                        <p>{direction.summary}</p>
-                        <Tag>{direction.visualStyle}</Tag>
-                        <Tag>{direction.colorStrategy}</Tag>
+                        <p>{direction.concept || direction.summary}</p>
+                        <p>
+                          <strong>推荐：</strong>
+                          {direction.reason}
+                        </p>
+                        <p>
+                          <strong>风险：</strong>
+                          {direction.risk}
+                        </p>
+                        <Space wrap>
+                          {(direction.visualKeywords || [direction.visualStyle]).map((keyword) => (
+                            <Tag key={keyword}>{keyword}</Tag>
+                          ))}
+                        </Space>
                       </Card>
                     ))}
                   </Space>
                 </Radio.Group>
               ) : selectedNodeId === 'generate' && generate ? (
                 <>
+                  {previewCandidate?.imageUrl && (
+                    <Card cover={<Image src={previewCandidate.imageUrl} alt="当前预览图片" />}>
+                      <Space wrap>
+                        <Button icon={<DownloadOutlined />} onClick={() => void downloadResult()}>
+                          下载
+                        </Button>
+                        <Button onClick={() => setPromptOpen(true)}>查看 Prompt</Button>
+                        <Button icon={<HeartOutlined />} onClick={() => void favoriteResult()}>
+                          收藏
+                        </Button>
+                      </Space>
+                    </Card>
+                  )}
                   <Radio.Group value={generate.selectedCandidateId}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       {generate.candidates.map((candidate) => {
@@ -465,6 +586,9 @@ export default function Workspace() {
                               ) : undefined
                             }
                           >
+                            <Button type="link" onClick={() => setPreviewCandidateId(candidate.id)}>
+                              预览此图
+                            </Button>
                             <Radio
                               value={candidate.id}
                               disabled={!evaluation || evaluation.totalScore < 6}
@@ -481,6 +605,40 @@ export default function Workspace() {
                   <Tooltip title="选择候选图后从合成节点重跑">
                     <span />
                   </Tooltip>
+                  <Card size="small" title="继续优化">
+                    <Checkbox.Group
+                      value={feedbackCategories}
+                      onChange={(values) => setFeedbackCategories(values as string[])}
+                      options={[
+                        { label: '风格不满意', value: 'style' },
+                        { label: '色彩调整', value: 'color' },
+                        { label: '主体错误', value: 'subject' },
+                        { label: '构图调整', value: 'composition' },
+                        { label: '文字错误', value: 'text' },
+                      ]}
+                    />
+                    <Input.TextArea
+                      value={feedbackInstruction}
+                      onChange={(event) => setFeedbackInstruction(event.target.value)}
+                      placeholder="例如：背景改成夜景，增加科技感"
+                      autoSize={{ minRows: 2, maxRows: 4 }}
+                    />
+                    <Button type="primary" onClick={() => void submitOptimization()}>
+                      保持品牌与主体并重新生成
+                    </Button>
+                  </Card>
+                  <Modal
+                    open={promptOpen}
+                    footer={null}
+                    onCancel={() => setPromptOpen(false)}
+                    title="当前 Prompt"
+                  >
+                    <p>{result.prompt?.imagePrompt}</p>
+                    <p>
+                      <strong>负向 Prompt：</strong>
+                      {result.prompt?.negativePrompt || '无'}
+                    </p>
+                  </Modal>
                 </>
               ) : (
                 <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>

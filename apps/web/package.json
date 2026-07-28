@@ -8,11 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test test/workflow.test.js"
+    "test": "node --test test/workflow.test.js && vitest run"
   },
   "dependencies": {
-    "@brand-flow/contracts": "workspace:*",
     "@ant-design/icons": "^6.2.2",
+    "@brand-flow/contracts": "workspace:*",
     "@microsoft/fetch-event-source": "^2.0.1",
     "antd": "^6.3.7",
     "axios": "^1.16.0",
@@ -24,14 +24,18 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^10.2.1",
+    "jsdom": "^30.0.0",
     "less": "^4.6.4",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vitest": "^4.1.10"
   }
 }

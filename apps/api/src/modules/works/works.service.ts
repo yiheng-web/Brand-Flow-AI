@@ -44,7 +44,13 @@ export class WorksService {
     ) {
       throw new BadRequestException('只能保存本人当前 Space 中已完成且质检通过的工作流')
     }
-    const trustedObjectKey = 'objectKey' in result.compose ? result.compose.objectKey : undefined
+    const selectedCandidate = result.generate?.candidates.find(
+      (candidate) => candidate.id === result.generate?.selectedCandidateId,
+    )
+    const selectedCandidateKey = selectedCandidate?.metadata?.objectKey
+    const trustedObjectKey =
+      ('objectKey' in result.compose ? result.compose.objectKey : undefined) ||
+      (typeof selectedCandidateKey === 'string' ? selectedCandidateKey : undefined)
     if (
       !trustedObjectKey ||
       !trustedObjectKey.startsWith(`workflows/${userId}/${dto.workflowId}/`)
@@ -247,6 +253,79 @@ export class WorksService {
     await work.save()
 
     return version
+  }
+
+  async createTrustedVersion(userId: string, id: string, workflowId: string) {
+    const work = await this.findAccessibleWork(userId, id)
+    if (work.creatorId.toString() !== userId || !Types.ObjectId.isValid(workflowId)) {
+      throw new BadRequestException('只能从本人有效工作流创建新版本')
+    }
+    const workflow = await this.workflowModel.findOne({ _id: workflowId, userId })
+    const result = workflow?.result as WorkflowResult | undefined
+    const selectedCandidate = result?.generate?.candidates.find(
+      (candidate) => candidate.id === result.generate?.selectedCandidateId,
+    )
+    const selectedCandidateKey = selectedCandidate?.metadata?.objectKey
+    const sourceKey =
+      (result?.compose && 'objectKey' in result.compose ? result.compose.objectKey : undefined) ||
+      (typeof selectedCandidateKey === 'string' ? selectedCandidateKey : undefined)
+    if (
+      !workflow ||
+      workflow.status !== 'completed' ||
+      !result?.finalEvaluation?.passed ||
+      !sourceKey
+    ) {
+      throw new BadRequestException('只能从已完成且质检通过的可信工作流创建版本')
+    }
+    const source = await this.storageService.getObject(sourceKey)
+    if (source.contentType !== 'image/png') throw new BadRequestException('工作流成片不是有效 PNG')
+    const latest = await this.workVersionModel.findOne({ workId: work._id }).sort({ versionNo: -1 })
+    const versionNo = (latest?.versionNo || 0) + 1
+    const objectKey = `works/${userId}/${work._id.toString()}/versions/${versionNo}.png`
+    await this.storageService.uploadObject({
+      key: objectKey,
+      body: Buffer.from(source.bytes),
+      size: source.bytes.length,
+      contentType: 'image/png',
+      metadata: { workflowId, sourceObjectKey: sourceKey },
+    })
+    const imageUrl = await this.storageService.getSignedUrl(objectKey)
+    const nodes = await this.workflowNodeModel.find({ workflowId }).sort({ createdAt: 1 })
+    const nodesSnapshot = Object.fromEntries(
+      nodes.map((node) => [node.type, { status: node.status, output: node.output }]),
+    )
+    try {
+      const version = await this.workVersionModel.create({
+        workId: work._id,
+        versionNo,
+        imageUrl,
+        objectKey,
+        sourceWorkflowId: workflow._id,
+        nodesSnapshot,
+        qualityReport: result.finalEvaluation,
+        createdBy: new Types.ObjectId(userId),
+      })
+      work.finalImageUrl = imageUrl
+      work.objectKey = objectKey
+      work.workflowId = workflow._id
+      work.nodesSnapshot = nodesSnapshot
+      work.qualityReport = result.finalEvaluation as unknown as Record<string, unknown>
+      await work.save()
+      return version
+    } catch (error) {
+      await this.storageService.deleteObject(objectKey).catch(() => undefined)
+      throw error
+    }
+  }
+
+  async updateFavorite(userId: string, id: string, isFavorite: boolean) {
+    const work = await this.findAccessibleWork(userId, id)
+    if (work.creatorId.toString() !== userId) {
+      throw new BadRequestException('只能收藏本人创建的作品')
+    }
+    work.isFavorite = isFavorite
+    await work.save()
+    return { id: work._id.toString(), isFavorite }
   }
 
   async findVersions(userId: string, id: string) {

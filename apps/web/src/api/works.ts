@@ -17,6 +17,7 @@ export interface WorkData {
   nodesSnapshot?: Record<string, unknown>
   createdAt?: string
   versions?: WorkVersionData[]
+  isFavorite?: boolean
 }
 export interface CreateWorkParams {
   title: string
@@ -40,3 +41,12 @@ export const deleteWork = (id: string): Promise<{ success: true }> =>
   apiClient.delete(`/works/${id}`)
 export const exportWork = (id: string): Promise<{ fileName: string; downloadUrl: string }> =>
   apiClient.post(`/works/${id}/export`, { format: 'png' })
+export const createTrustedWorkVersion = (
+  id: string,
+  workflowId: string,
+): Promise<WorkVersionData> => apiClient.post(`/works/${id}/versions/from-workflow`, { workflowId })
+export const updateWorkFavorite = (
+  id: string,
+  isFavorite: boolean,
+): Promise<{ id: string; isFavorite: boolean }> =>
+  apiClient.post(`/works/${id}/favorite`, { isFavorite })
