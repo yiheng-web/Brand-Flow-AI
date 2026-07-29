@@ -37,7 +37,7 @@ const KnowledgeListPage = () => {
       const res = (await getKnowledgeList(spaceId)) as unknown as KnowledgeData[]
       setList(res)
     } catch {
-      message.error('加载知识库列表失败')
+      setList([])
     } finally {
       setLoading(false)
     }

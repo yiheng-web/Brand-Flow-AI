@@ -48,7 +48,8 @@ const KnowledgeDetailPage = () => {
       setKb(kbRes)
       setItems(itemsRes)
     } catch {
-      message.error('加载知识库数据失败')
+      setKb(null)
+      setItems([])
     } finally {
       setLoading(false)
     }

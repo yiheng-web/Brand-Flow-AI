@@ -59,6 +59,18 @@ const STATUS_MAP: Record<WorkflowNodeStatus, NodeExecStatus> = {
   failed: 'failed',
   stale: 'stale',
 }
+const NODE_STATUS_MAP: Record<NodeExecStatus, SemanticStatus> = {
+  unconfigured: 'unconfigured',
+  ready: 'ready',
+  pending: 'queued',
+  queued: 'queued',
+  running: 'running',
+  done: 'success',
+  warning: 'warning',
+  failed: 'failed',
+  skipped: 'skipped',
+  stale: 'warning',
+}
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
@@ -512,11 +524,7 @@ export default function Workspace() {
           <div style={{ padding: 16, overflow: 'auto' }}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <StatusBadge
-                status={
-                  nodeExecStatuses[selectedNodeId] === 'done'
-                    ? 'success'
-                    : (nodeExecStatuses[selectedNodeId] as SemanticStatus)
-                }
+                status={NODE_STATUS_MAP[nodeExecStatuses[selectedNodeId]] ?? 'unconfigured'}
               />
               {selectedNodeId === 'brief' && result?.brief && workflowId ? (
                 <BriefReviewPanel

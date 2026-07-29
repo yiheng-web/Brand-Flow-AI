@@ -38,11 +38,13 @@ interface StatusBadgeProps {
 }
 
 export const StatusBadge = ({ status, label }: StatusBadgeProps) => {
-  const meta = STATUS_META[status]
+  // 状态可能来自旧缓存或历史服务端数据，未知值不能导致整个页面崩溃。
+  const resolvedStatus = STATUS_META[status] ? status : 'unconfigured'
+  const meta = STATUS_META[resolvedStatus]
   return (
-    <span className={`${styles.badge} ${styles[status]}`} aria-label={label || meta.label}>
+    <span className={`${styles.badge} ${styles[resolvedStatus]}`} aria-label={label || meta.label}>
       <span className={styles.icon} aria-hidden="true">
-        {status === 'skipped' ? <PauseCircleFilled /> : meta.icon}
+        {resolvedStatus === 'skipped' ? <PauseCircleFilled /> : meta.icon}
       </span>
       {label || meta.label}
     </span>

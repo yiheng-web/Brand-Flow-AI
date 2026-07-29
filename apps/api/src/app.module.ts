@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { MongooseModule } from '@nestjs/mongoose'
 import { BullModule } from '@nestjs/bullmq'
+import { resolve } from 'node:path'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { OrgModule } from './modules/org/org.module'
@@ -21,7 +22,8 @@ import { WorksModule } from './modules/works/works.module'
     WorksModule,
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      // API 可能由仓库根目录或包目录启动，环境文件路径不能依赖当前工作目录。
+      envFilePath: resolve(__dirname, '..', '.env'),
     }),
 
     // 初始化 MongoDB 连接

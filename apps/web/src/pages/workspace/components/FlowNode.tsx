@@ -41,7 +41,7 @@ const STATUS_MAP: Record<NodeExecStatus, SemanticStatus> = {
 }
 
 const FlowNode = memo(({ data, selected }: NodeProps<FlowNodeData>) => {
-  const semanticStatus = STATUS_MAP[data.execStatus]
+  const semanticStatus = STATUS_MAP[data.execStatus] ?? 'unconfigured'
   const isHorizontal = data.layoutDir === 'horizontal'
 
   return (

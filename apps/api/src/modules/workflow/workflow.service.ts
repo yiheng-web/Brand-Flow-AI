@@ -147,6 +147,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       selectedKnowledgeBaseIds,
       dto.spaceId,
       space.spaceType,
+      userId,
       space.entId,
     )
 
@@ -1093,6 +1094,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     ids: string[],
     spaceId: string,
     spaceType: SpaceType,
+    userId: string,
     entId?: string,
   ) {
     if (ids.some((id) => !Types.ObjectId.isValid(id))) {
@@ -1100,7 +1102,11 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     }
     if (ids.length === 0) return
 
-    const scopeFilters: Record<string, unknown>[] = [{ spaceId }]
+    const scopeFilters: Record<string, unknown>[] = [
+      spaceType === 'personal'
+        ? { spaceId: 'personal', creatorId: new Types.ObjectId(userId) }
+        : { spaceId },
+    ]
     if (spaceType === 'enterprise' && entId) {
       scopeFilters.push({ spaceId: { $exists: false }, enterpriseId: new Types.ObjectId(entId) })
     }

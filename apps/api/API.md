@@ -281,21 +281,36 @@ interface UserInfo {
 
 ### 知识库与向量检索模块 (/knowledge)
 
+知识库接口支持个人、团队和企业 Space。`GET /knowledge` 通过查询参数 `spaceId`
+指定空间，默认值为 `personal`；个人空间按当前登录用户隔离，不要求用户加入企业。
+其他详情和写接口根据知识库自身的 Space 归属执行服务端权限校验。
+
 - **`POST /knowledge`**
-  - **说明**: 为当前企业创建一个新的知识库。
+  - **说明**: 在当前用户可访问的 Space 创建知识库。
   - **Body**:
     ```typescript
     {
+      spaceId: string,       // personal、团队 ID 或企业 ID
       name: string,          // 知识库名称
-      description?: string   // 知识库描述
+      description?: string,  // 知识库描述
+      isRequired?: boolean   // 仅企业空间管理员可设置
     }
     ```
 
 - **`GET /knowledge`**
-  - **说明**: 获取当前企业下的所有知识库列表。
+  - **说明**: 获取当前 Space 下的知识库列表。
+  - **查询参数**: `spaceId`（可选，默认 `personal`）
   - **返回 Data**:
     ```typescript
-    Array<{ _id: string; name: string; description: string }>
+    Array<{
+      _id: string
+      name: string
+      description?: string
+      spaceId: string
+      spaceType: 'personal' | 'team' | 'enterprise'
+      enterpriseId?: string
+      isRequired: boolean
+    }>
     ```
 
 - **`GET /knowledge/:id`**

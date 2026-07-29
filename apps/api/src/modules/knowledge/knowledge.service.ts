@@ -24,6 +24,7 @@ import { KnowledgeItem, KnowledgeItemDocument } from './schemas/knowledge-item.s
 interface KnowledgeScope {
   spaceId: string
   spaceType: SpaceType
+  ownerId: Types.ObjectId
   enterpriseId?: string
   role: Role
 }
@@ -225,6 +226,12 @@ export class KnowledgeService {
   private async assertKnowledgeAccess(userId: string, knowledge: KnowledgeDocument) {
     const spaceId = knowledge.spaceId || knowledge.enterpriseId?.toString()
     if (!spaceId) throw new NotFoundException('知识库缺少有效空间归属')
+    if (
+      (knowledge.spaceType === 'personal' || spaceId === 'personal') &&
+      knowledge.creatorId.toString() !== userId
+    ) {
+      throw new NotFoundException('知识库不存在或无权访问')
+    }
     return this.resolveScope(userId, spaceId)
   }
 
@@ -248,13 +255,17 @@ export class KnowledgeService {
     return {
       spaceId,
       spaceType: space.spaceType,
+      ownerId: new Types.ObjectId(userId),
       enterpriseId: space.enterpriseId,
       role: space.role,
     }
   }
 
   private buildListFilter(scope: KnowledgeScope) {
-    const exactScope = { spaceId: scope.spaceId }
+    const exactScope =
+      scope.spaceType === 'personal'
+        ? { spaceId: scope.spaceId, creatorId: scope.ownerId }
+        : { spaceId: scope.spaceId }
     if (scope.spaceType === 'personal' || !scope.enterpriseId) return exactScope
     const legacyEnterprise = {
       spaceId: { $exists: false },

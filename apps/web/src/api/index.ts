@@ -8,6 +8,11 @@ const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+const showApiError = (content: string, status?: number) => {
+  // 并发初始化请求可能同时失败；相同错误只保留一条提示，避免 Toast 堆叠。
+  void message.error({ content, key: `api-error-${status ?? 'network'}-${content}` })
+}
+
 // ----- 请求拦截器 -----
 // 自动注入 token（从 auth store 中读取）
 apiClient.interceptors.request.use(
@@ -32,7 +37,7 @@ apiClient.interceptors.response.use(
         return resData.data // 提取出业务数据并返回
       } else {
         const errMessage = resData.message || '请求失败'
-        message.error(errMessage)
+        showApiError(errMessage, response.status)
         return Promise.reject(new Error(errMessage))
       }
     }
@@ -41,7 +46,7 @@ apiClient.interceptors.response.use(
   (error) => {
     const backendData = error.response?.data
     const errorMessage = backendData?.message || error.message || '网络异常，请稍后重试'
-    message.error(errorMessage)
+    showApiError(errorMessage, error.response?.status)
 
     if (error.response?.status === 401) {
       // token 过期，清除持久化登录状态后跳转到登录页
