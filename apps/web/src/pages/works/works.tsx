@@ -6,7 +6,7 @@ import {
   ReloadOutlined,
   MoreOutlined,
   DeleteOutlined,
-  ArchiveOutlined,
+  InboxOutlined,
   AppstoreOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons'
@@ -247,13 +247,13 @@ const Works = () => {
               isArchived
                 ? {
                     key: 'restore',
-                    icon: <ArchiveOutlined />,
+                    icon: <InboxOutlined />,
                     label: '恢复',
                     onClick: (e) => handleRestore(e as any, work._id),
                   }
                 : {
                     key: 'archive',
-                    icon: <ArchiveOutlined />,
+                    icon: <InboxOutlined />,
                     label: '归档',
                     onClick: (e) => handleArchive(e as any, work._id),
                   },
