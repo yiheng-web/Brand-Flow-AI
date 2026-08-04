@@ -1,131 +1,125 @@
 /**
  * 个人中心页面
  *
- * 功能说明：
- * - 顶部展示用户个人信息（头像、昵称、邮箱）
- * - 企业/空间切换（从 /org/enterprises 动态加载）
- * - 团队管理（从 /org/teams 加载，支持创建团队）
- * - 底部退出登录
+ * 布局：左侧 Tab 纵向列表 + 右侧内容区
+ * Tab 显隐条件基于用户的团队/企业/角色数据
  */
 
-import { useState, useEffect } from 'react'
-import { Button, Select, Tag, Card, message, Modal, Input as AntInput } from 'antd'
+import { useState, useEffect, useMemo } from 'react'
+import { message } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { LogoutOutlined, PlusOutlined } from '@ant-design/icons'
+import { UserOutlined, TeamOutlined, BankOutlined, AuditOutlined } from '@ant-design/icons'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
-import { getMyEnterprises, switchEnterprise, getTeams, createTeam } from '@/api/org'
-import type { EnterpriseData, TeamData } from '@/api/org'
+import { getMyEnterprises, getTeams } from '@/api/org'
+import BasicInfoTab from './BasicInfoTab'
+import MyTeamTab from './MyTeamTab'
+import MyEnterpriseTab from './MyEnterpriseTab'
+import ApprovalCenterTab from './ApprovalCenterTab'
 import styles from './profile.module.css'
 
-/** 角色标签映射 */
-const ROLE_TAG_MAP: Record<string, { text: string; color: string }> = {
-  owner: { text: '所有者', color: 'gold' },
-  admin: { text: '管理员', color: 'blue' },
-  member: { text: '成员', color: 'default' },
-  viewer: { text: '访客', color: 'default' },
+type TabKey = 'basic' | 'team' | 'enterprise' | 'approval'
+
+interface TabConfig {
+  key: TabKey
+  label: string
+  icon: React.ReactNode
+  visible: boolean
 }
 
 const Profile = () => {
   const navigate = useNavigate()
-  const user = useAuthStore((state) => state.user)
-  const logout = useAuthStore((state) => state.logout)
+  const logout = useAuthStore((s) => s.logout)
 
-  // 企业相关
-  const currentEnterpriseId = useUserStore((state) => state.currentEnterpriseId)
-  const enterprises = useUserStore((state) => state.enterprises)
-  const setCurrentEnterpriseId = useUserStore((state) => state.setCurrentEnterpriseId)
-  const setEnterprises = useUserStore((state) => state.setEnterprises)
+  const enterprises = useUserStore((s) => s.enterprises)
+  const currentEnterpriseId = useUserStore((s) => s.currentEnterpriseId)
+  const currentTeamId = useUserStore((s) => s.currentTeamId)
+  const setEnterprises = useUserStore((s) => s.setEnterprises)
+  const setTeams = useUserStore((s) => s.setTeams)
 
-  // 团队列表
-  const [teams, setTeams] = useState<TeamData[]>([])
-  const [loadingTeams, setLoadingTeams] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabKey>('basic')
 
-  // 创建团队弹窗
-  const [createTeamModalOpen, setCreateTeamModalOpen] = useState(false)
-  const [teamName, setTeamName] = useState('')
-  const [teamDesc, setTeamDesc] = useState('')
-  const [creatingTeam, setCreatingTeam] = useState(false)
+  const currentEnterprise = useMemo(
+    () => enterprises.find((e) => e.enterpriseId === currentEnterpriseId),
+    [enterprises, currentEnterpriseId],
+  )
 
-  /** 当前企业的角色 */
-  const currentRoleTag =
-    enterprises.find((e) => e.enterpriseId === currentEnterpriseId)?.role || 'member'
+  const userRole = currentEnterprise?.role || 'member'
+  const isTeamAdmin = userRole === 'owner' || userRole === 'admin'
+  const isEnterpriseAdmin = userRole === 'owner' || userRole === 'admin'
 
   /* ============================
-      加载企业列表
+      加载企业列表 + 团队列表
    ============================ */
   useEffect(() => {
-    const loadEnterprises = async () => {
+    const loadData = async () => {
       try {
-        const res = await getMyEnterprises()
-        if (Array.isArray(res)) {
-          setEnterprises(res)
+        const entRes = await getMyEnterprises()
+        if (Array.isArray(entRes)) {
+          setEnterprises(entRes)
         }
       } catch {
         message.error('加载企业列表失败')
       }
     }
-    loadEnterprises()
+    loadData()
   }, [setEnterprises])
 
-  /* ============================
-      加载团队列表
-   ============================ */
-  const loadTeams = async () => {
-    if (!currentEnterpriseId) return
-    setLoadingTeams(true)
-    try {
-      const res = await getTeams()
-      if (Array.isArray(res)) {
-        setTeams(res)
-      }
-    } catch {
-      message.error('加载团队列表失败')
-    } finally {
-      setLoadingTeams(false)
-    }
-  }
-
   useEffect(() => {
-    loadTeams()
-  }, [currentEnterpriseId])
-
-  /* ============================
-      切换企业
-   ============================ */
-  const handleSwitchEnterprise = async (enterpriseId: string) => {
-    setCurrentEnterpriseId(enterpriseId)
-    try {
-      await switchEnterprise(enterpriseId)
-    } catch {
-      message.error('切换企业失败')
-    }
-  }
-
-  /* ============================
-      创建团队
-   ============================ */
-  const handleCreateTeam = async () => {
-    const name = teamName.trim()
-    if (!name) {
-      message.warning('请输入团队名称')
+    if (!currentEnterpriseId) {
+      setTeams([])
       return
     }
-
-    setCreatingTeam(true)
-    try {
-      await createTeam({ name, description: teamDesc.trim() || undefined })
-      message.success('团队创建成功')
-      setCreateTeamModalOpen(false)
-      setTeamName('')
-      setTeamDesc('')
-      loadTeams()
-    } catch {
-      message.error('创建团队失败，请稍后重试')
-    } finally {
-      setCreatingTeam(false)
+    const loadTeams = async () => {
+      try {
+        const res = await getTeams()
+        if (Array.isArray(res)) {
+          setTeams(res)
+        }
+      } catch {
+        // TODO: 后端未实现 GET /org/teams 接口
+        console.warn('[MOCK] 使用模拟团队数据，后端接口未实现')
+        setTeams([{ _id: 't1', enterpriseId: currentEnterpriseId, name: '默认团队' }])
+      }
     }
-  }
+    loadTeams()
+  }, [currentEnterpriseId, setTeams])
+
+  /* ============================
+      计算 Tab 显隐
+   ============================ */
+  const visibleTabs: TabConfig[] = useMemo(() => {
+    const hasTeam = !!currentTeamId
+    const hasEnterprise = enterprises.length > 0
+    const canAccessApproval = userRole === 'admin' || userRole === 'owner'
+
+    const tabs: TabConfig[] = [
+      { key: 'basic', label: '基础信息', icon: <UserOutlined />, visible: true },
+      { key: 'team', label: '我的团队', icon: <TeamOutlined />, visible: hasTeam },
+      {
+        key: 'enterprise',
+        label: '我的企业',
+        icon: <BankOutlined />,
+        visible: hasEnterprise,
+      },
+      {
+        key: 'approval',
+        label: '审批中心',
+        icon: <AuditOutlined />,
+        visible: canAccessApproval,
+      },
+    ]
+    return tabs.filter((t) => t.visible)
+  }, [currentTeamId, enterprises.length, userRole])
+
+  /* ============================
+      Tab 切换时确保当前 Tab 可见
+   ============================ */
+  useEffect(() => {
+    if (!visibleTabs.find((t) => t.key === activeTab)) {
+      setActiveTab('basic')
+    }
+  }, [visibleTabs, activeTab])
 
   /* ============================
       退出登录
@@ -136,137 +130,52 @@ const Profile = () => {
   }
 
   /* ============================
-      头像首字
+      渲染 Tab 内容
    ============================ */
-  const avatarChar = user?.name ? user.name.charAt(0).toUpperCase() : '?'
-
-  /* ============================
-      格式化日期
-   ============================ */
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString('zh-CN')
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'basic':
+        return <BasicInfoTab />
+      case 'team':
+        return <MyTeamTab isAdmin={isTeamAdmin} />
+      case 'enterprise':
+        return <MyEnterpriseTab isAdmin={isEnterpriseAdmin} />
+      case 'approval':
+        return <ApprovalCenterTab />
+      default:
+        return null
+    }
   }
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.container}>
-        {/* ====== 个人信息区 ====== */}
-        <div className={styles.profileCard}>
-          <div className={styles.profileAvatar}>{avatarChar}</div>
-          <div className={styles.profileInfo}>
-            <span className={styles.profileName}>{user?.name || '未设置昵称'}</span>
-            <span className={styles.profileEmail}>{user?.email || '-'}</span>
-          </div>
-        </div>
+        {/* 左侧 Tab 列表 */}
+        <nav className={styles.sideNav}>
+          <div className={styles.navHeader}>个人中心</div>
+          <ul className={styles.navList}>
+            {visibleTabs.map((tab) => (
+              <li
+                key={tab.key}
+                className={`${styles.navItem} ${activeTab === tab.key ? styles.navItemActive : ''}`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                <span className={styles.navIcon}>{tab.icon}</span>
+                <span className={styles.navLabel}>{tab.label}</span>
+              </li>
+            ))}
+          </ul>
 
-        {/* ====== 企业/空间切换区 ====== */}
-        <div className={styles.headerSection}>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>当前所在企业</span>
-            <Select
-              value={currentEnterpriseId}
-              onChange={handleSwitchEnterprise}
-              className={styles.spaceSelect}
-              options={
-                enterprises.length > 0
-                  ? enterprises.map((ent) => ({
-                      value: ent.enterpriseId,
-                      label: ent.name,
-                    }))
-                  : [{ value: '', label: '暂无企业' }]
-              }
-            />
+          <div className={styles.navFooter}>
+            <button className={styles.logoutBtn} onClick={handleLogout}>
+              退出登录
+            </button>
           </div>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>我的角色</span>
-            <Tag color={ROLE_TAG_MAP[currentRoleTag]?.color || 'default'}>
-              {ROLE_TAG_MAP[currentRoleTag]?.text || '成员'}
-            </Tag>
-          </div>
-        </div>
+        </nav>
 
-        {/* ====== 团队管理区 ====== */}
-        <div className={styles.memberSection}>
-          <div className={styles.memberHeader}>
-            <h2 className={styles.memberTitle}>团队列表</h2>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateTeamModalOpen(true)}
-              disabled={!currentEnterpriseId}
-            >
-              创建团队
-            </Button>
-          </div>
-
-          <div className={styles.memberList}>
-            {loadingTeams ? (
-              <div className={styles.loadingText}>加载中...</div>
-            ) : teams.length === 0 ? (
-              <div className={styles.loadingText}>暂无团队，点击上方按钮创建</div>
-            ) : (
-              teams.map((team) => (
-                <Card key={team._id} className={styles.teamItem} size="small">
-                  <div className={styles.teamItemContent}>
-                    <div className={styles.teamItemLeft}>
-                      <span className={styles.teamName}>{team.name}</span>
-                      {team.description && (
-                        <span className={styles.teamDesc}>{team.description}</span>
-                      )}
-                    </div>
-                    <span className={styles.teamDate}>{formatDate(team.createdAt)}</span>
-                  </div>
-                </Card>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* ====== 退出登录 ====== */}
-        <div className={styles.footerSection}>
-          <Button danger icon={<LogoutOutlined />} onClick={handleLogout}>
-            退出登录
-          </Button>
-        </div>
+        {/* 右侧内容区 */}
+        <main className={styles.contentArea}>{renderTabContent()}</main>
       </div>
-
-      {/* 创建团队弹窗 */}
-      <Modal
-        title="创建团队"
-        open={createTeamModalOpen}
-        onCancel={() => {
-          setCreateTeamModalOpen(false)
-          setTeamName('')
-          setTeamDesc('')
-        }}
-        onOk={handleCreateTeam}
-        confirmLoading={creatingTeam}
-        okText="创建"
-        cancelText="取消"
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label className={styles.formLabel}>团队名称 *</label>
-            <AntInput
-              placeholder="请输入团队名称（不超过50字）"
-              value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
-              maxLength={50}
-            />
-          </div>
-          <div>
-            <label className={styles.formLabel}>描述（选填）</label>
-            <AntInput.TextArea
-              placeholder="请输入团队描述（不超过200字）"
-              value={teamDesc}
-              onChange={(e) => setTeamDesc(e.target.value)}
-              maxLength={200}
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }

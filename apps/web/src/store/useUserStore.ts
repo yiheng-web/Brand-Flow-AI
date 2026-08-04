@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand'
-import type { EnterpriseData } from '@/api/org'
+import type { EnterpriseData, TeamData } from '@/api/org'
 
 /** 空间类型 */
 export type SpaceType = 'personal' | 'team' | 'enterprise'
@@ -29,6 +29,12 @@ interface UserState {
   enterprises: EnterpriseData[]
   setCurrentEnterpriseId: (enterpriseId: string) => void
   setEnterprises: (enterprises: EnterpriseData[]) => void
+
+  // ---- 团队相关 ----
+  currentTeamId: string | null
+  teams: TeamData[]
+  setCurrentTeamId: (teamId: string | null) => void
+  setTeams: (teams: TeamData[]) => void
 
   // ---- 空间相关（新增）----
   /** 当前选中的空间 ID */
@@ -55,6 +61,19 @@ export const useUserStore = create<UserState>((set) => ({
     if (enterprises.length > 0) {
       set((state) => ({
         currentEnterpriseId: state.currentEnterpriseId || enterprises[0].enterpriseId,
+      }))
+    }
+  },
+
+  // ---- 团队状态 ----
+  currentTeamId: null,
+  teams: [],
+  setCurrentTeamId: (teamId) => set({ currentTeamId: teamId }),
+  setTeams: (teams) => {
+    set({ teams })
+    if (teams.length > 0) {
+      set((state) => ({
+        currentTeamId: state.currentTeamId || teams[0]._id,
       }))
     }
   },

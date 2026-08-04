@@ -1,7 +1,6 @@
 /* ============================================================
    个人中心页面样式（profile.module.css）
-   使用 CSS Modules 方案，所有类名在编译后自动生成唯一 hash，
-   避免全局样式污染。
+   左侧 Tab 纵向列表 + 右侧内容区布局
    ============================================================ */
 
 /* ---- 最外层容器 ---- */
@@ -14,202 +13,548 @@
   overflow-y: auto;
 }
 
-/* ---- 内容容器 ---- */
+/* ---- 内容容器：左侧导航 + 右侧内容 ---- */
 .container {
   width: 100%;
-  max-width: 640px;
+  max-width: 960px;
   display: flex;
-  flex-direction: column;
-  gap: 24px;
+  gap: 0;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  min-height: 600px;
 }
 
-/* ====== 个人信息卡片 ====== */
-.profileCard {
+/* ============================
+   左侧导航
+   ============================ */
+.sideNav {
+  width: 200px;
+  flex-shrink: 0;
+  background: #f9fafb;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+}
+
+.navHeader {
+  padding: 20px 16px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1d26;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.navList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  flex: 1;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 14px;
+  color: #4b5563;
+  user-select: none;
+}
+
+.navItem:hover {
+  background: #e5e7eb;
+}
+
+.navItemActive {
+  background: #4f6ff7 !important;
+  color: #fff !important;
+}
+
+.navItemActive:hover {
+  background: #3d5ae0 !important;
+}
+
+.navIcon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.navLabel {
+  font-weight: 500;
+}
+
+.navFooter {
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.logoutBtn:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
+
+/* ============================
+   右侧内容区
+   ============================ */
+.contentArea {
+  flex: 1;
+  padding: 24px 28px;
+  overflow-y: auto;
+  min-height: 500px;
+}
+
+/* ---- 通用 Tab 内容 ---- */
+.tabContent {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.loadingText {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  color: #9ca3af;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #d1d5db;
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* ============================
+   Tab 1：基础信息
+   ============================ */
+.avatarSection {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px 24px;
-  background: #fff;
-  border-radius: var(--radius-md, 12px);
-  border: 1px solid var(--border-color, #e5e7eb);
+  padding: 16px 0;
+  border-bottom: 1px solid #f3f4f6;
 }
 
-.profileAvatar {
-  width: 52px;
-  height: 52px;
+.avatarLarge {
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #4f6ff7, #7c3aed);
   color: #fff;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   flex-shrink: 0;
 }
 
-.profileInfo {
+.userMeta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
-.profileName {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-main, #1a1d26);
-}
-
-.profileEmail {
-  font-size: 13px;
-  color: var(--text-secondary, #6b7280);
-}
-
-/* ---- 企业切换区 ---- */
-.headerSection {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
-  background: #fff;
-  border-radius: var(--radius-md, 12px);
-  border: 1px solid var(--border-color, #e5e7eb);
-}
-
-.infoRow {
+.nicknameRow {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 6px;
 }
 
-.infoLabel {
+.nickname {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1d26;
+}
+
+.editBtn {
+  padding: 0 4px !important;
+  height: auto !important;
+  color: #6b7280 !important;
+}
+
+.accountLine {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.accountLabel {
+  color: #9ca3af;
+}
+
+.accountValue {
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* ---- 组织关系 ---- */
+.orgSection {
+  padding: 12px 0;
+}
+
+.orgRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.orgLabel {
+  font-size: 13px;
+  color: #9ca3af;
+  min-width: 64px;
+}
+
+.orgValue {
   font-size: 14px;
-  font-weight: 600;
-  color: var(--text-main, #1a1d26);
-  white-space: nowrap;
-  min-width: 90px;
+  color: #1a1d26;
 }
 
-.spaceSelect {
-  flex: 1;
-}
-
-.roleTag {
-  padding: 4px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: var(--radius-sm, 8px);
-  margin: 0;
-  width: fit-content;
-}
-
-/* ---- 团队管理区 ---- */
-.memberSection {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
-  background: #fff;
-  border-radius: var(--radius-md, 12px);
-  border: 1px solid var(--border-color, #e5e7eb);
-}
-
-.memberHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.memberTitle {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.inviteBtn,
-.memberHeader button {
-  border-radius: 8px;
+.orgTeamName {
   font-weight: 500;
 }
 
-.memberList {
+.orgSep {
+  color: #d1d5db;
+  margin: 0 4px;
+}
+
+.orgRole {
+  color: #6b7280;
+}
+
+.orgEmpty {
+  color: #9ca3af;
+}
+
+/* ---- 底部按钮 ---- */
+.bottomBtns {
+  display: flex;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.bottomBtns .ant-btn {
+  flex: 1;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ============================
+   Tab 2：我的团队
+   ============================ */
+.teamInfoSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #f3f4f6;
+}
+
+.teamInfoRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teamInfoLabel {
+  font-size: 13px;
+  color: #9ca3af;
+  min-width: 64px;
+}
+
+.teamInfoValue {
+  font-size: 14px;
+  color: #1a1d26;
+  font-weight: 500;
+}
+
+.adminActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.memberListSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d26;
+  margin: 0;
+}
+
+.memberCards {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
 }
 
-.loadingText {
-  text-align: center;
-  color: var(--text-tertiary, #9ca3af);
-  font-size: 13px;
-  padding: 20px 0;
-}
-
-/* ---- 团队列表项 ---- */
-.teamItem {
-  border-radius: var(--radius-sm, 8px) !important;
-  transition: box-shadow 0.2s;
-}
-
-.teamItem:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.teamItemContent {
+.memberCard {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+  transition: border-color 0.15s;
 }
 
-.teamItemLeft {
+.memberCard:hover {
+  border-color: #e5e7eb;
+}
+
+.memberAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #4f6ff7, #7c3aed);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.memberAvatarSmall {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #4f6ff7, #7c3aed);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.memberInfo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memberName {
+  font-size: 14px;
+  color: #1a1d26;
+  font-weight: 500;
+}
+
+.memberRoleTag {
+  margin: 0;
+}
+
+.memberActions {
+  display: flex;
+  gap: 6px;
+}
+
+.memberActions .ant-btn {
+  font-size: 12px;
+}
+
+/* ============================
+   Tab 3：我的企业
+   ============================ */
+.teamList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  gap: 10px;
 }
 
-.teamName {
+.enterpriseTeamCard {
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.enterpriseTeamCard:hover {
+  border-color: #e5e7eb;
+}
+
+.enterpriseTeamHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #f9fafb;
+}
+
+.enterpriseTeamInfo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.enterpriseTeamIcon {
+  color: #6b7280;
+  font-size: 16px;
+}
+
+.enterpriseTeamName {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-main, #1a1d26);
+  color: #1a1d26;
 }
 
-.teamDesc {
+.enterpriseTeamCount {
   font-size: 12px;
-  color: var(--text-secondary, #6b7280);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 280px;
+  color: #9ca3af;
 }
 
-.teamDate {
+.expandIcon {
   font-size: 12px;
-  color: var(--text-tertiary, #9ca3af);
-  flex-shrink: 0;
-  white-space: nowrap;
+  color: #6b7280;
 }
 
-/* ---- 表单标签 ---- */
-.formLabel {
-  display: block;
+.teamMembersExpand {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.expandedMemberRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.expandedMemberName {
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text-main, #1a1d26);
-  margin-bottom: 6px;
+  color: #4b5563;
 }
 
-/* ---- 底部操作区 ---- */
-.footerSection {
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color, #e5e7eb);
+.enterpriseTeamActions {
+  padding: 8px 14px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
   display: flex;
   justify-content: flex-end;
 }
 
-.logoutButton {
+.adminManagementSection {
+  margin-top: 20px;
+  padding: 16px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
   border-radius: 10px;
-  font-weight: 600;
+}
+
+.adminManagementHint {
+  font-size: 13px;
+  color: #92400e;
+  margin-top: 8px;
+}
+
+/* ============================
+   Tab 4：审批中心
+   ============================ */
+.approvalList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.approvalCard {
+  padding: 16px;
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.15s;
+}
+
+.approvalCard:hover {
+  border-color: #e5e7eb;
+}
+
+.approvalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.approvalTypeTag {
+  margin: 0;
+}
+
+.approvalTime {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.approvalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.approvalInfoRow {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.approvalInfoLabel {
+  color: #9ca3af;
+}
+
+.approvalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
 }
