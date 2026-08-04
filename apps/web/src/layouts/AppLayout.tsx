@@ -8,16 +8,18 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ScheduleOutlined,
+  PictureOutlined,
 } from '@ant-design/icons'
 import styles from './AppLayout.module.css'
 
-type NavKey = 'home' | 'workspace' | 'brand' | 'tasks' | 'profile'
+type NavKey = 'home' | 'workspace' | 'brand' | 'tasks' | 'works' | 'profile'
 
 const iconMap: Record<NavKey, React.ReactNode> = {
   home: <HomeOutlined />,
   workspace: <ToolOutlined />,
   brand: <FolderOutlined />,
   tasks: <ScheduleOutlined />,
+  works: <PictureOutlined />,
   profile: <UserOutlined />,
 }
 
@@ -26,6 +28,7 @@ const navItems: Array<{ key: NavKey; label: string; path: string }> = [
   { key: 'workspace', label: '工作台', path: '/workspace' },
   { key: 'brand', label: '品牌档案', path: '/brand' },
   { key: 'tasks', label: '任务空间', path: '/tasks' },
+  { key: 'works', label: '作品空间', path: '/works' },
 ]
 
 const AppLayout = () => {
@@ -39,9 +42,11 @@ const AppLayout = () => {
       ? 'brand'
       : location.pathname.includes('tasks')
         ? 'tasks'
-        : location.pathname.includes('profile')
-          ? 'profile'
-          : 'home'
+        : location.pathname.includes('works')
+          ? 'works'
+          : location.pathname.includes('profile')
+            ? 'profile'
+            : 'home'
   const [activeKey, setActiveKey] = useState<NavKey>(initialKey)
 
   const handleNavClick = (item: (typeof navItems)[number]) => {

@@ -11,8 +11,10 @@
  *     - /workspace → 工作台
  *     - /brand     → 品牌档案
  *     - /tasks     → 任务空间（列表页）
- *     - /tasks/:id → 任务详情
- *     - /profile   → 个人中心
+ *     - /tasks/:id  → 任务详情
+ *     - /works      → 作品空间（列表页）
+ *     - /works/:id  → 作品详情
+ *     - /profile    → 个人中心
  */
 
 import { createBrowserRouter, Navigate } from 'react-router-dom'
@@ -27,6 +29,8 @@ import RegisterPage from '@/pages/login/register'
 import ProfilePage from '@/pages/profile/profile'
 import TasksPage from '@/pages/tasks/tasks'
 import TaskDetailPage from '@/pages/tasks/TaskDetail'
+import WorksPage from '@/pages/works/works'
+import WorkDetailPage from '@/pages/works/WorkDetail'
 
 export const router = createBrowserRouter([
   /* 公开路由：无需登录即可访问 */
@@ -55,6 +59,8 @@ export const router = createBrowserRouter([
           { path: 'brand', element: <BrandPage /> },
           { path: 'tasks', element: <TasksPage /> },
           { path: 'tasks/:taskId', element: <TaskDetailPage /> },
+          { path: 'works', element: <WorksPage /> },
+          { path: 'works/:workId', element: <WorkDetailPage /> },
           { path: 'profile', element: <ProfilePage /> },
         ],
       },
