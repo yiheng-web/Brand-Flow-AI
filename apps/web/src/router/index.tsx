@@ -14,6 +14,7 @@
  *     - /tasks/:id  → 任务详情
  *     - /works      → 作品空间（列表页）
  *     - /works/:id  → 作品详情
+ *     - /notifications → 消息通知
  *     - /profile    → 个人中心
  */
 
@@ -31,6 +32,7 @@ import TasksPage from '@/pages/tasks/tasks'
 import TaskDetailPage from '@/pages/tasks/TaskDetail'
 import WorksPage from '@/pages/works/works'
 import WorkDetailPage from '@/pages/works/WorkDetail'
+import NotificationsPage from '@/pages/notifications/notifications'
 
 export const router = createBrowserRouter([
   /* 公开路由：无需登录即可访问 */
@@ -61,6 +63,7 @@ export const router = createBrowserRouter([
           { path: 'tasks/:taskId', element: <TaskDetailPage /> },
           { path: 'works', element: <WorksPage /> },
           { path: 'works/:workId', element: <WorkDetailPage /> },
+          { path: 'notifications', element: <NotificationsPage /> },
           { path: 'profile', element: <ProfilePage /> },
         ],
       },

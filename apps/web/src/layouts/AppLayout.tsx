@@ -9,10 +9,13 @@ import {
   MenuUnfoldOutlined,
   ScheduleOutlined,
   PictureOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
+import { Badge } from 'antd'
+import NotificationBell from '@/pages/notifications/NotificationBell'
 import styles from './AppLayout.module.css'
 
-type NavKey = 'home' | 'workspace' | 'brand' | 'tasks' | 'works' | 'profile'
+type NavKey = 'home' | 'workspace' | 'brand' | 'tasks' | 'works' | 'notifications' | 'profile'
 
 const iconMap: Record<NavKey, React.ReactNode> = {
   home: <HomeOutlined />,
@@ -20,6 +23,7 @@ const iconMap: Record<NavKey, React.ReactNode> = {
   brand: <FolderOutlined />,
   tasks: <ScheduleOutlined />,
   works: <PictureOutlined />,
+  notifications: <BellOutlined />,
   profile: <UserOutlined />,
 }
 
@@ -29,6 +33,7 @@ const navItems: Array<{ key: NavKey; label: string; path: string }> = [
   { key: 'brand', label: '品牌档案', path: '/brand' },
   { key: 'tasks', label: '任务空间', path: '/tasks' },
   { key: 'works', label: '作品空间', path: '/works' },
+  { key: 'notifications', label: '消息通知', path: '/notifications' },
 ]
 
 const AppLayout = () => {
@@ -44,9 +49,11 @@ const AppLayout = () => {
         ? 'tasks'
         : location.pathname.includes('works')
           ? 'works'
-          : location.pathname.includes('profile')
-            ? 'profile'
-            : 'home'
+          : location.pathname.includes('notifications')
+            ? 'notifications'
+            : location.pathname.includes('profile')
+              ? 'profile'
+              : 'home'
   const [activeKey, setActiveKey] = useState<NavKey>(initialKey)
 
   const handleNavClick = (item: (typeof navItems)[number]) => {
@@ -111,6 +118,9 @@ const AppLayout = () => {
       </aside>
 
       <main className={styles.mainContent}>
+        <div className={styles.topBar}>
+          <NotificationBell />
+        </div>
         <Outlet context={{ activeKey }} />
       </main>
     </div>
