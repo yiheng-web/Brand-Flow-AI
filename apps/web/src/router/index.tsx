@@ -9,6 +9,9 @@
  *   - 已登录  → AppLayout 壳层
  *     - /home      → 首页
  *     - /workspace → 工作台
+ *     - /brand     → 品牌档案
+ *     - /tasks     → 任务空间（列表页）
+ *     - /tasks/:id → 任务详情
  *     - /profile   → 个人中心
  */
 
@@ -22,6 +25,8 @@ import Home from '@/pages/home/home'
 import LoginPage from '@/pages/login/login'
 import RegisterPage from '@/pages/login/register'
 import ProfilePage from '@/pages/profile/profile'
+import TasksPage from '@/pages/tasks/tasks'
+import TaskDetailPage from '@/pages/tasks/TaskDetail'
 
 export const router = createBrowserRouter([
   /* 公开路由：无需登录即可访问 */
@@ -48,6 +53,8 @@ export const router = createBrowserRouter([
           { path: 'home', element: <Home /> },
           { path: 'workspace', element: <Workspace /> },
           { path: 'brand', element: <BrandPage /> },
+          { path: 'tasks', element: <TasksPage /> },
+          { path: 'tasks/:taskId', element: <TaskDetailPage /> },
           { path: 'profile', element: <ProfilePage /> },
         ],
       },

@@ -1,0 +1,432 @@
+/* ============================================================
+   任务空间页面样式（tasks.module.css）
+   ============================================================ */
+
+/* ============================
+   通用布局
+   ============================ */
+.wrapper {
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1d26;
+  margin: 0;
+}
+
+.loadingText {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+  padding: 60px 0;
+}
+
+.emptyState {
+  padding: 60px 0;
+}
+
+/* ============================
+   状态筛选 Tab
+   ============================ */
+.filterTabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.filterTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: -1px;
+}
+
+.filterTab:hover {
+  color: #1a1d26;
+}
+
+.filterTabActive {
+  color: #4f6ff7 !important;
+  border-bottom-color: #4f6ff7 !important;
+}
+
+.filterTabIcon {
+  font-size: 14px;
+}
+
+.filterTabCount {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* ============================
+   任务列表 & 卡片
+   ============================ */
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.taskCard {
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.taskCard:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.taskCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.taskTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1d26;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskMetaRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tagIcon {
+  margin-right: 4px;
+}
+
+.taskDate {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.taskCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.taskInfoRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.taskInfoLabel {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.taskInfoValue {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.taskInfoSep {
+  color: #d1d5db;
+  margin: 0 2px;
+}
+
+.taskCardActions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+
+/* ============================
+   任务详情页
+   ============================ */
+.detailWrapper {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.backBtn {
+  align-self: flex-start;
+}
+
+.detailHeader {
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detailTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1d26;
+  margin: 0;
+  flex: 1;
+}
+
+.detailMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.metaItem {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.metaLabel {
+  color: #9ca3af;
+}
+
+.detailSection {
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d26;
+  margin: 0;
+}
+
+.taskContent {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.attachmentList {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.attachmentLabel {
+  color: #9ca3af;
+}
+
+.attachmentLink {
+  color: #4f6ff7;
+  text-decoration: none;
+}
+
+.attachmentLink:hover {
+  text-decoration: underline;
+}
+
+/* ============================
+   时间线
+   ============================ */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 4px;
+}
+
+.timelineItem {
+  position: relative;
+  padding-bottom: 20px;
+  padding-left: 24px;
+  border-left: 2px solid #e5e7eb;
+}
+
+.timelineItemLast {
+  border-left-color: transparent;
+}
+
+.timelineDot {
+  position: absolute;
+  left: -5px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4f6ff7;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #e5e7eb;
+}
+
+.timelineContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timelineHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.timelineUser {
+  font-weight: 600;
+  color: #1a1d26;
+}
+
+.timelineAction {
+  color: #6b7280;
+}
+
+.timelineTime {
+  color: #9ca3af;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.timelineBody {
+  font-size: 14px;
+  color: #4b5563;
+  background: #f9fafb;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+.timelineReject {
+  font-size: 13px;
+  color: #ef4444;
+  background: #fef2f2;
+  padding: 6px 12px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.timelineAttachments {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.timelineAttachment {
+  font-size: 12px;
+  color: #4f6ff7;
+  background: #eff6ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ============================
+   评论区
+   ============================ */
+.commentSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.commentActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ============================
+   操作区
+   ============================ */
+.actionBar {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  border-radius: 10px;
+}
+
+/* ============================
+   弹窗
+   ============================ */
+.rejectModalBody {
+  padding: 8px 0;
+}
+
+.submitModalBody {
+  padding: 8px 0;
+}
+
+/* ============================
+   创建任务表单
+   ============================ */
+.createForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.formRow {
+  display: flex;
+  gap: 12px;
+}
+
+.formRowItem {
+  flex: 1;
+}
