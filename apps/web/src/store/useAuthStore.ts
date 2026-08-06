@@ -16,8 +16,10 @@ import type { AuthResult } from '@/api/auth'
 
 /** 用户基本信息 */
 interface AuthUser {
+  id?: string // 用户 ID
   name: string // 用户显示名称
   email: string // 用户邮箱
+  role?: string // 当前角色（owner / admin / member）
 }
 
 /** Store 状态与 action 类型定义 */

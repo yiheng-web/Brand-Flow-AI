@@ -7,15 +7,23 @@ import {
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  ScheduleOutlined,
+  PictureOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
+import { Badge } from 'antd'
+import NotificationBell from '@/pages/notifications/NotificationBell'
 import styles from './AppLayout.module.css'
 
-type NavKey = 'home' | 'workspace' | 'brand' | 'profile'
+type NavKey = 'home' | 'workspace' | 'brand' | 'tasks' | 'works' | 'notifications' | 'profile'
 
 const iconMap: Record<NavKey, React.ReactNode> = {
   home: <HomeOutlined />,
   workspace: <ToolOutlined />,
   brand: <FolderOutlined />,
+  tasks: <ScheduleOutlined />,
+  works: <PictureOutlined />,
+  notifications: <BellOutlined />,
   profile: <UserOutlined />,
 }
 
@@ -23,6 +31,9 @@ const navItems: Array<{ key: NavKey; label: string; path: string }> = [
   { key: 'home', label: '首页', path: '/home' },
   { key: 'workspace', label: '工作台', path: '/workspace' },
   { key: 'brand', label: '品牌档案', path: '/brand' },
+  { key: 'tasks', label: '任务空间', path: '/tasks' },
+  { key: 'works', label: '作品空间', path: '/works' },
+  { key: 'notifications', label: '消息通知', path: '/notifications' },
 ]
 
 const AppLayout = () => {
@@ -34,9 +45,15 @@ const AppLayout = () => {
     ? 'workspace'
     : location.pathname.includes('brand')
       ? 'brand'
-      : location.pathname.includes('profile')
-        ? 'profile'
-        : 'home'
+      : location.pathname.includes('tasks')
+        ? 'tasks'
+        : location.pathname.includes('works')
+          ? 'works'
+          : location.pathname.includes('notifications')
+            ? 'notifications'
+            : location.pathname.includes('profile')
+              ? 'profile'
+              : 'home'
   const [activeKey, setActiveKey] = useState<NavKey>(initialKey)
 
   const handleNavClick = (item: (typeof navItems)[number]) => {
@@ -55,12 +72,14 @@ const AppLayout = () => {
 
   const renderNavItem = (
     item: (typeof navItems)[number] | { key: 'profile'; label: string; onClick: () => void },
-    isActive: boolean
+    isActive: boolean,
   ) => (
     <button
       key={item.key}
       type="button"
-      onClick={'onClick' in item ? item.onClick : () => handleNavClick(item as (typeof navItems)[number])}
+      onClick={
+        'onClick' in item ? item.onClick : () => handleNavClick(item as (typeof navItems)[number])
+      }
       title={item.label}
       className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
     >
@@ -87,20 +106,21 @@ const AppLayout = () => {
             {!sidebarCollapsed && <span className={styles.navLabel}>收起</span>}
           </button>
 
-          {navItems.map((item) =>
-            renderNavItem(item, item.key === activeKey)
-          )}
+          {navItems.map((item) => renderNavItem(item, item.key === activeKey))}
         </div>
 
         <div className={styles.navBottom}>
           {renderNavItem(
             { key: 'profile', label: '个人中心', onClick: handleProfileClick },
-            activeKey === 'profile'
+            activeKey === 'profile',
           )}
         </div>
       </aside>
 
       <main className={styles.mainContent}>
+        <div className={styles.topBar}>
+          <NotificationBell />
+        </div>
         <Outlet context={{ activeKey }} />
       </main>
     </div>

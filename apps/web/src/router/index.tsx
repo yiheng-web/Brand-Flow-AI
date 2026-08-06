@@ -9,7 +9,13 @@
  *   - 已登录  → AppLayout 壳层
  *     - /home      → 首页
  *     - /workspace → 工作台
- *     - /profile   → 个人中心
+ *     - /brand     → 品牌档案
+ *     - /tasks     → 任务空间（列表页）
+ *     - /tasks/:id  → 任务详情
+ *     - /works      → 作品空间（列表页）
+ *     - /works/:id  → 作品详情
+ *     - /notifications → 消息通知
+ *     - /profile    → 个人中心
  */
 
 import { createBrowserRouter, Navigate } from 'react-router-dom'
@@ -22,6 +28,11 @@ import Home from '@/pages/home/home'
 import LoginPage from '@/pages/login/login'
 import RegisterPage from '@/pages/login/register'
 import ProfilePage from '@/pages/profile/profile'
+import TasksPage from '@/pages/tasks/tasks'
+import TaskDetailPage from '@/pages/tasks/TaskDetail'
+import WorksPage from '@/pages/works/works'
+import WorkDetailPage from '@/pages/works/WorkDetail'
+import NotificationsPage from '@/pages/notifications/notifications'
 
 export const router = createBrowserRouter([
   /* 公开路由：无需登录即可访问 */
@@ -48,6 +59,11 @@ export const router = createBrowserRouter([
           { path: 'home', element: <Home /> },
           { path: 'workspace', element: <Workspace /> },
           { path: 'brand', element: <BrandPage /> },
+          { path: 'tasks', element: <TasksPage /> },
+          { path: 'tasks/:taskId', element: <TaskDetailPage /> },
+          { path: 'works', element: <WorksPage /> },
+          { path: 'works/:workId', element: <WorkDetailPage /> },
+          { path: 'notifications', element: <NotificationsPage /> },
           { path: 'profile', element: <ProfilePage /> },
         ],
       },
