@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { CreateArtTextCandidatesDto } from './dto/create-art-text-candidates.dto'
-import { CreateWorkflowDto } from './dto/create-workflow.dto'
+import { CreateWorkflowDto, StartWorkflowDto } from './dto/create-workflow.dto'
 import { OptimizeWorkflowDto, UpdateBriefDto } from './dto/brief-review.dto'
 import {
   CreatePlacementPlanDto,
@@ -44,12 +44,22 @@ export class WorkflowController {
   constructor(private readonly workflowService: WorkflowService) {}
 
   @Post('create')
-  @ApiOperation({ summary: '创建并启动工作流' })
+  @ApiOperation({ summary: '创建待启动工作流' })
   create(
     @Body() dto: CreateWorkflowDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<WorkflowResponse> {
     return this.workflowService.create(dto, req.user.sub)
+  }
+
+  @Post(':id/start')
+  @ApiOperation({ summary: '确认图文分离设置并启动工作流' })
+  start(
+    @Param('id') id: string,
+    @Body() dto: StartWorkflowDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<WorkflowResponse> {
+    return this.workflowService.start(id, dto, req.user.sub, req.user.entId)
   }
 
   @Get(':id')

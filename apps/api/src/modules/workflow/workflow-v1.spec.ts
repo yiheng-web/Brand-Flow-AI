@@ -4,7 +4,7 @@ import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 
 import { OptimizeWorkflowDto } from './dto/brief-review.dto'
-import { CreateWorkflowDto } from './dto/create-workflow.dto'
+import { CreateWorkflowDto, StartWorkflowDto } from './dto/create-workflow.dto'
 
 describe('Workflow V1 DTO', () => {
   it('接受完整结构化品牌需求', async () => {
@@ -49,5 +49,13 @@ describe('Workflow V1 DTO', () => {
       sourceCandidateId: 'candidate-1',
     })
     expect((await validate(dto)).length).toBeGreaterThan(0)
+  })
+
+  it('启动工作流必须明确传入图文分离选项', async () => {
+    const validDto = plainToInstance(StartWorkflowDto, { needsComposition: false })
+    const invalidDto = plainToInstance(StartWorkflowDto, {})
+
+    expect(await validate(validDto)).toHaveLength(0)
+    expect((await validate(invalidDto)).length).toBeGreaterThan(0)
   })
 })

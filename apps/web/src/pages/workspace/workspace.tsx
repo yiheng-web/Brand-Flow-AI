@@ -5,7 +5,6 @@ import {
   ExportOutlined,
   HeartOutlined,
   PlayCircleFilled,
-  SaveOutlined,
 } from '@ant-design/icons'
 import type {
   CandidateImage,
@@ -36,7 +35,7 @@ import {
   getWorkflowDetail,
   optimizeWorkflow,
   rerunNode,
-  submitPrompt,
+  startWorkflow,
   updateNodeOutput,
 } from '@/api/workflow'
 import { StatusBadge, type SemanticStatus } from '@/design-system/components'
@@ -80,7 +79,6 @@ export default function Workspace() {
   const navigate = useNavigate()
   const navState = location.state as { prompt?: string; workflowId?: string } | null
   const currentSpaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
-  const currentSpaceType = useUserStore((state) => state.currentSpaceType)
   const workflowId = useWorkflowStore((state) => state.workflowId)
   const workflowStatus = useWorkflowStore((state) => state.status)
   const workflowPrompt = useWorkflowStore((state) => state.prompt)
@@ -102,13 +100,15 @@ export default function Workspace() {
   const [awaitingAction, setAwaitingAction] = useState<string | undefined>()
   const [previewCandidateId, setPreviewCandidateId] = useState<string>('')
   const [promptOpen, setPromptOpen] = useState(false)
+  const [completionOpen, setCompletionOpen] = useState(false)
+  const [autoSaveFailed, setAutoSaveFailed] = useState(false)
   const [feedbackCategories, setFeedbackCategories] = useState<string[]>([])
   const [feedbackInstruction, setFeedbackInstruction] = useState('')
   const connectionRef = useRef<{ close: () => void } | null>(null)
   const recoverRef = useRef<(workflowId: string) => Promise<void>>(async () => undefined)
   const recoveryTimerRef = useRef<number | null>(null)
   const initializedWorkflowRef = useRef<string | null>(null)
-  const autoStartedRef = useRef(false)
+  const autoSaveWorkflowRef = useRef<string | null>(null)
   const userPrompt = navState?.prompt || workflowPrompt
 
   const connect = useCallback(
@@ -205,8 +205,7 @@ export default function Workspace() {
         })
         setNodeExecStatuses(statuses)
         setNodeStreamData(outputs)
-        if (detail.workflow.status === 'pending' || detail.workflow.status === 'running')
-          connect(workflowId)
+        if (detail.workflow.status === 'running') connect(workflowId)
       } catch (reason) {
         setStatus('failed')
         setError(reason instanceof Error ? reason.message : '无法恢复工作流')
@@ -215,41 +214,40 @@ export default function Workspace() {
     [connect, setError, setNodeExecStatuses, setNodeStreamData, setPrompt, setResult, setStatus],
   )
 
-  const start = useCallback(async () => {
-    if (!userPrompt.trim() || submitting) return
-    setSubmitting(true)
-    setError(null)
-    setNodeExecStatuses({ ...INITIAL_NODE_EXEC_STATUSES })
-    setPrompt(userPrompt)
-    try {
-      const workflow = await submitPrompt({
-        prompt: userPrompt,
-        spaceId: currentSpaceId,
-        spaceType: currentSpaceType,
-      })
-      initializedWorkflowRef.current = workflow.id
-      setWorkflowId(workflow.id)
-      setWorkflowSpaceId(workflow.spaceId)
-      setStatus('running')
-      connect(workflow.id)
-    } catch (reason) {
-      setStatus('failed')
-      setError(reason instanceof Error ? reason.message : '创建工作流失败')
-    } finally {
-      setSubmitting(false)
-    }
-  }, [
-    connect,
-    currentSpaceId,
-    currentSpaceType,
-    setError,
-    setNodeExecStatuses,
-    setPrompt,
-    setStatus,
-    setWorkflowId,
-    submitting,
-    userPrompt,
-  ])
+  const runWorkflow = useCallback(
+    async (needsComposition: boolean) => {
+      if (!workflowId || submitting) return
+      setSubmitting(true)
+      setError(null)
+      setNodeExecStatuses({ ...INITIAL_NODE_EXEC_STATUSES })
+      try {
+        const workflow = await startWorkflow(workflowId, needsComposition)
+        setWorkflowSpaceId(workflow.spaceId)
+        setStatus('running')
+        connect(workflowId)
+      } catch (reason) {
+        setStatus('pending')
+        setError(reason instanceof Error ? reason.message : '启动工作流失败')
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [connect, setError, setNodeExecStatuses, setStatus, submitting, workflowId],
+  )
+
+  const handleStart = useCallback(() => {
+    if (!workflowId || workflowStatus !== 'pending') return
+    Modal.confirm({
+      title: '是否需要图文分离处理？',
+      content: '开启后先生成无文字底图，再由排版工具准确添加中文内容，避免乱码。',
+      okText: '需要',
+      cancelText: '不需要',
+      closable: false,
+      maskClosable: false,
+      onOk: () => runWorkflow(true),
+      onCancel: () => runWorkflow(false),
+    })
+  }, [runWorkflow, workflowId, workflowStatus])
 
   useEffect(() => {
     recoverRef.current = recover
@@ -262,20 +260,9 @@ export default function Workspace() {
         initializedWorkflowRef.current = id
         setWorkflowId(id)
         void recover(id)
-      } else if (!id && navState?.prompt && workflowStatus === 'idle' && !autoStartedRef.current) {
-        autoStartedRef.current = true
-        void start()
       }
     })
-  }, [
-    navState?.prompt,
-    navState?.workflowId,
-    recover,
-    setWorkflowId,
-    start,
-    workflowId,
-    workflowStatus,
-  ])
+  }, [navState?.prompt, navState?.workflowId, recover, setWorkflowId, workflowId])
 
   useEffect(
     () => () => {
@@ -347,7 +334,7 @@ export default function Workspace() {
     setStatus('running')
     connect(workflowId)
   }
-  const saveWork = async (): Promise<string | null> => {
+  const saveWork = useCallback(async (): Promise<string | null> => {
     if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return null
     if (savedWorkId) {
       await createTrustedWorkVersion(savedWorkId, workflowId)
@@ -372,7 +359,29 @@ export default function Workspace() {
     setSavedWorkId(work._id)
     message.success('作品与初始版本已保存')
     return work._id
-  }
+  }, [nodeStreamData, result, savedWorkId, userPrompt, workflowId, workflowSpaceId])
+
+  useEffect(() => {
+    if (
+      workflowStatus !== 'completed' ||
+      !workflowId ||
+      !result?.finalEvaluation?.passed ||
+      autoSaveWorkflowRef.current === workflowId
+    ) {
+      return
+    }
+    autoSaveWorkflowRef.current = workflowId
+    setAutoSaveFailed(false)
+    void saveWork()
+      .then((workId) => {
+        if (workId) setCompletionOpen(true)
+      })
+      .catch(() => {
+        autoSaveWorkflowRef.current = null
+        setAutoSaveFailed(true)
+        message.error('工作流已完成，但作品自动保存失败，请重试')
+      })
+  }, [result?.finalEvaluation?.passed, saveWork, workflowId, workflowStatus])
   const formalExport = async () => {
     if (!savedWorkId) return
     const exported = await exportWork(savedWorkId)
@@ -443,13 +452,25 @@ export default function Workspace() {
           )}
         </div>
         <div className={styles.workspaceActions}>
-          <Button
-            icon={<SaveOutlined />}
-            disabled={!result?.finalImageUrl || !result.finalEvaluation?.passed}
-            onClick={saveWork}
-          >
-            保存作品
-          </Button>
+          {autoSaveFailed && !savedWorkId && (
+            <Button
+              onClick={() => {
+                autoSaveWorkflowRef.current = workflowId
+                setAutoSaveFailed(false)
+                void saveWork()
+                  .then((workId) => {
+                    if (workId) setCompletionOpen(true)
+                  })
+                  .catch(() => {
+                    autoSaveWorkflowRef.current = null
+                    setAutoSaveFailed(true)
+                    message.error('作品保存失败，请稍后重试')
+                  })
+              }}
+            >
+              重试保存
+            </Button>
+          )}
           <Button
             onClick={() => savedWorkId && navigate(`/works/${savedWorkId}`)}
             disabled={!savedWorkId}
@@ -463,8 +484,8 @@ export default function Workspace() {
             type="primary"
             icon={<PlayCircleFilled />}
             loading={submitting}
-            disabled={!userPrompt.trim() || workflowStatus === 'running'}
-            onClick={start}
+            disabled={!workflowId || workflowStatus !== 'pending'}
+            onClick={handleStart}
           >
             运行工作流
           </Button>
@@ -678,10 +699,26 @@ export default function Workspace() {
         </div>
         <div className={styles.executionProgress}>
           <span>整体进度</span>
-          <Progress percent={Math.round((completed / 7) * 100)} showInfo={false} />
-          <strong>{completed}/7</strong>
+          <Progress percent={Math.round((completed / FLOW_NODES.length) * 100)} showInfo={false} />
+          <strong>
+            {completed}/{FLOW_NODES.length}
+          </strong>
         </div>
       </footer>
+      <Modal
+        open={completionOpen}
+        title="本次创作已完成"
+        cancelText="关闭"
+        okText="查看作品"
+        onCancel={() => setCompletionOpen(false)}
+        onOk={() => savedWorkId && navigate(`/works/${savedWorkId}`)}
+      >
+        <p>最终作品已经自动保存到你的作品空间。</p>
+        {result?.finalImageUrl && <Image src={result.finalImageUrl} alt="最终作品" />}
+        <Button icon={<DownloadOutlined />} onClick={() => void downloadResult()}>
+          下载 PNG
+        </Button>
+      </Modal>
     </div>
   )
 }

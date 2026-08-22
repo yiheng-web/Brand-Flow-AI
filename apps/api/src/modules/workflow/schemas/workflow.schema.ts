@@ -37,6 +37,9 @@ export class Workflow {
   @Prop({ type: Object })
   requirements?: BrandRequirementInput
 
+  @Prop({ type: Boolean })
+  needsComposition?: boolean
+
   @Prop({ type: Number, default: 0 })
   retryCount!: number
 

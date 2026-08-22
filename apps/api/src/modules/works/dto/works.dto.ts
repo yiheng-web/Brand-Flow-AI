@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsBoolean, IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
-import { OwnerType, Visibility } from '@/common/enums'
+import { IsBoolean, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
 
 export class CreateWorkDto {
   @ApiProperty({ description: '作品所属 Space ID' })
@@ -38,23 +37,6 @@ export class CreateWorkDto {
   @IsNotEmpty({ message: '来源工作流 ID 不能为空' })
   @IsString()
   workflowId!: string
-
-  @ApiProperty({
-    description:
-      '作品归属方 ID。ownerType=user 时为用户 ID，team 时为团队 ID，enterprise 时为企业 ID',
-  })
-  @IsOptional()
-  ownerId?: string
-
-  @ApiProperty({ enum: OwnerType, description: '作品归属范围' })
-  @IsOptional()
-  @IsEnum(OwnerType, { message: '不正确的归属类型' })
-  ownerType?: OwnerType
-
-  @ApiProperty({ enum: Visibility, description: '作品可见性，决定作品中心列表查询范围' })
-  @IsOptional()
-  @IsEnum(Visibility, { message: '不正确的可见性级别' })
-  visibility?: Visibility
 
   @ApiPropertyOptional({
     description: '最终品牌质检报告，作品详情页展示',

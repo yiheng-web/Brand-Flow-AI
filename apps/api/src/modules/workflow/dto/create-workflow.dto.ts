@@ -2,6 +2,7 @@ import { Type } from 'class-transformer'
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsOptional,
@@ -63,4 +64,9 @@ export class CreateWorkflowDto {
   @ValidateNested()
   @Type(() => BrandRequirementInputDto)
   requirements?: BrandRequirementInputDto
+}
+
+export class StartWorkflowDto {
+  @IsBoolean({ message: '图文分离选项必须是布尔值' })
+  needsComposition!: boolean
 }

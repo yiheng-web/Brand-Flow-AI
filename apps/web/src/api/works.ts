@@ -25,9 +25,6 @@ export interface CreateWorkParams {
   finalImageUrl: string
   workflowId: string
   objectKey?: string
-  ownerId?: string
-  ownerType?: 'user' | 'team' | 'enterprise'
-  visibility?: 'private' | 'team' | 'enterprise' | 'public'
   qualityReport?: FinalEvaluationResult
   nodesSnapshot: Record<string, unknown>
   metadata?: Record<string, unknown>

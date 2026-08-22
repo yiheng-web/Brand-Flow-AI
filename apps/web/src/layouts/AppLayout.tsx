@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BellOutlined,
-  BulbOutlined,
-  CheckSquareOutlined,
   DatabaseOutlined,
   FolderOpenOutlined,
   HomeOutlined,
   PictureOutlined,
-  QuestionOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { message } from 'antd'
@@ -28,21 +24,16 @@ interface NavigationItem {
 
 const NAVIGATION_ITEMS: NavigationItem[] = [
   { key: 'home', label: '首页', path: '/home', icon: <HomeOutlined /> },
-  { key: 'workspace', label: '工作台', path: '/workspace', icon: <BulbOutlined /> },
   { key: 'knowledge', label: '知识库', path: '/knowledge', icon: <DatabaseOutlined /> },
   { key: 'brand', label: '品牌资产', path: '/brand', icon: <FolderOpenOutlined /> },
-  { key: 'tasks', label: '任务空间', path: '/tasks', icon: <CheckSquareOutlined /> },
   { key: 'works', label: '作品空间', path: '/works', icon: <PictureOutlined /> },
-  { key: 'notifications', label: '消息通知', path: '/notifications', icon: <BellOutlined /> },
 ]
 
 const PAGE_TITLES: Record<string, string> = {
   '/workspace': '创作工作台',
   '/knowledge': '知识库',
   '/brand': '品牌资产',
-  '/tasks': '任务空间',
   '/works': '作品空间',
-  '/notifications': '消息通知',
   '/profile': '个人中心',
   '/organization': '组织详情',
 }
@@ -219,18 +210,6 @@ const AppLayout = () => {
       <section className={styles.mainPanel}>
         <header className={styles.topbar}>
           <h2>{pageTitle}</h2>
-          <div className={styles.topActions}>
-            <button type="button" aria-label="消息通知" onClick={() => navigate('/notifications')}>
-              <BellOutlined />
-            </button>
-            <button
-              type="button"
-              aria-label="帮助中心"
-              onClick={() => message.info('帮助中心即将开放')}
-            >
-              <QuestionOutlined />
-            </button>
-          </div>
         </header>
         <main className={styles.mainContent}>
           <Outlet />

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document } from 'mongoose'
 import {
   WORKFLOW_NODE_ORDER,
   type WorkflowError,
@@ -17,7 +17,7 @@ export type WorkflowNodeDocument = WorkflowNode &
 
 @Schema({ timestamps: true })
 export class WorkflowNode {
-  @Prop({ type: Types.ObjectId, required: true, index: true, ref: 'Workflow' })
+  @Prop({ type: String, required: true, index: true })
   workflowId!: string
 
   @Prop({

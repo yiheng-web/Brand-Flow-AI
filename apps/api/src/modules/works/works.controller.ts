@@ -47,7 +47,7 @@ export class WorksController {
   @Get()
   @ApiOperation({
     summary: '获取作品列表',
-    description: '返回当前用户在当前企业下可访问的作品，包括本人私有、团队、企业和公开作品。',
+    description: '返回当前用户在指定 Space 中创建的私有作品。',
   })
   @ApiSuccessArrayResponse(WorkResponseDto, '返回封装后的作品列表。')
   async findAll(@Req() req: AuthenticatedRequest, @Query('spaceId') spaceId = 'personal') {
@@ -69,7 +69,7 @@ export class WorksController {
   @Delete(':id')
   @ApiOperation({
     summary: '删除作品',
-    description: '删除作品及其版本记录。非创建者需要对应范围管理员权限。',
+    description: '删除本人作品及其版本记录。',
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')

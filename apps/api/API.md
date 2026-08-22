@@ -7,6 +7,7 @@
 
 ## V1 闭环新增接口
 
+- `POST /workflow/:id/start`：确认是否图文分离并启动已创建的待运行工作流。
 - `POST /workflow/:id/brief/confirm`：确认 Brief，并从品牌约束节点继续。
 - `PUT /workflow/:id/brief`：修改并确认 Brief。
 - `POST /workflow/:id/brief/regenerate`：重新生成 Brief，并再次等待用户确认。
@@ -16,7 +17,8 @@
 - `POST /works/:id/versions/from-workflow`：从已完成且质检通过的可信 Workflow 创建作品版本。
 - `POST /works/:id/favorite`：设置作品收藏状态。
 
-创建 Workflow 可附带 `requirements`，包含品牌名称、产品类别、产品描述、目标用户、使用场景、
+创建 Workflow 只落库并初始化节点，不会自动调用 AI；工作台必须调用 `/workflow/:id/start` 后才会
+入队执行。创建时可附带 `requirements`，包含品牌名称、产品类别、产品描述、目标用户、使用场景、
 最多三个视觉风格、色彩偏好和图片比例。Brief 完成后 Workflow 进入
 `awaiting_user + confirm_brief`，确认前不会执行下游节点。
 
@@ -188,14 +190,14 @@ interface UserInfo {
 ### 智能图文工作流模块 (/workflow)
 
 - **`POST /workflow/create`**
-  - **说明**: 触发异步 AI 执行，返回状态为 `pending`。
+  - **说明**: 创建待运行工作流和初始节点，返回状态为 `pending`，不会触发 AI 执行。
   - **权限拦截**: 该模块下所有接口（包括查询和更新）将严格校验企业边界（`entId`）与空间归属（`spaceId === 'personal'` 时严格校验 `userId`），越权访问将返回 `403 Forbidden`。
   - **Body**:
     ```typescript
     {
       prompt: string,       // 用户的原始设计意图或提示词
       spaceId: string,      // 当前工作流关联的前端空间或画布 ID
-      knowledgeId?: string  // 关联的专属知识库 ID（选填，提供后大模型会基于该知识库生成）
+      selectedKnowledgeBaseIds?: string[] // 本次主动选择的知识库 ID，最多 3 个
     }
     ```
   - **返回 Data**:
@@ -212,14 +214,24 @@ interface UserInfo {
     }
     ```
 
+- **`POST /workflow/:id/start`**
+  - **说明**: 工作台确认图文分离设置后启动 `pending` 工作流。重复调用不会重复创建任务。
+  - **Body**:
+    ```typescript
+    {
+      needsComposition: boolean // true 使用图文分离与排版；false 直接使用候选图
+    }
+    ```
+  - **返回 Data**: `WorkflowResponse`，首次启动时状态为 `running`。
+
 - **`GET /workflow/:id`**
-  - **说明**: 获取工作流的详细信息以及挂载的 6 个节点数据。
+  - **说明**: 获取工作流详情及内部七节点执行数据；前端合并质检，仅展示六个业务节点。
   - **路径参数**: `id` (目标工作流的实例 ID)
   - **返回 Data**:
     ```typescript
     {
       workflow: WorkflowResponse,
-      nodes: Array<WorkflowNode> // 按时间顺序列出的 6 个真实图文生成节点（intentNode 等）的状态与产物
+      nodes: Array<WorkflowNode> // 按顺序返回内部执行节点状态与产物
     }
     ```
 
@@ -425,7 +437,7 @@ interface UserInfo {
 ### 作品与导出模块 (/works)
 
 - **`POST /works`**
-  - **说明**: 将工作流最终生成结果保存为作品，并自动创建第 1 个作品版本。
+  - **说明**: 将本人已完成且质检通过的工作流结果保存为私有作品，并自动创建第 1 个作品版本。
   - **Body**:
     ```typescript
     {
@@ -433,10 +445,7 @@ interface UserInfo {
       description?: string,
       finalImageUrl: string,
       objectKey?: string,
-      workflowId?: string,
-      ownerId: string,
-      ownerType: OwnerType,
-      visibility: Visibility,
+      workflowId: string,
       qualityReport?: Record<string, any>,
       nodesSnapshot?: Record<string, any>,
       metadata?: Record<string, any>
@@ -445,7 +454,7 @@ interface UserInfo {
   - **返回 Data**: `Work & { versions: WorkVersion[] }`
 
 - **`GET /works`**
-  - **说明**: 获取当前用户在当前企业下可见的作品列表。
+  - **说明**: 获取当前用户在指定 Space 中创建的私有作品列表。
   - **返回 Data**: `Array<Work>`
 
 - **`GET /works/:id`**

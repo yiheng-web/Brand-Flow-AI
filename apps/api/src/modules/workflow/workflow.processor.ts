@@ -230,11 +230,15 @@ export class WorkflowProcessor extends WorkerHost {
     result: WorkflowResult,
   ): Promise<{ result: WorkflowResult; nodeOutput: Record<string, unknown> }> {
     if (nodeType === 'brief') {
-      const brief = await this.executeWithRetry(
+      const generatedBrief = await this.executeWithRetry(
         nodeType,
         () => createCreativeBrief(workflow.prompt, workflow.requirements),
         3,
       )
+      const brief = {
+        ...generatedBrief,
+        needsComposition: workflow.needsComposition ?? generatedBrief.needsComposition,
+      }
       const briefReview = {
         status: 'pending' as const,
         source: 'generated' as const,

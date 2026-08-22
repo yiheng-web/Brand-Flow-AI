@@ -2,8 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import type { WorkflowResult } from '@brand-flow/contracts'
-import { OwnerType, Role, Visibility } from '@/common/enums'
-import { User, UserDocument } from '@/modules/org/schemas/user.schema'
+import { OwnerType, Visibility } from '@/common/enums'
 import { OrgService } from '@/modules/org/org.service'
 import { StorageService } from '@/modules/storage/storage.service'
 import { CreateWorkDto, CreateWorkVersionDto, ExportWorkDto } from './dto/works.dto'
@@ -21,7 +20,6 @@ export class WorksService {
     private readonly workVersionModel: Model<WorkVersionDocument>,
     @InjectModel(ExportLog.name)
     private readonly exportLogModel: Model<ExportLogDocument>,
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Workflow.name) private readonly workflowModel: Model<WorkflowDocument>,
     @InjectModel(WorkflowNode.name)
     private readonly workflowNodeModel: Model<WorkflowNodeDocument>,
@@ -63,9 +61,9 @@ export class WorksService {
     const space = await this.orgService.getAccessibleSpace(userId, dto.spaceId)
     const existing = await this.workModel.findOne({ workflowId: workflow._id })
     if (existing) return this.findOne(userId, existing._id.toString())
-    const nodes = await this.workflowNodeModel
-      .find({ workflowId: workflow._id })
-      .sort({ createdAt: 1 })
+    const nodes = await this.workflowNodeModel.find({ workflowId: dto.workflowId }).sort({
+      createdAt: 1,
+    })
     const nodesSnapshot = Object.fromEntries(
       nodes.map((node) => [node.type, { status: node.status, output: node.output }]),
     )
@@ -83,20 +81,6 @@ export class WorksService {
       metadata: { workflowId: dto.workflowId, sourceObjectKey: trustedObjectKey },
     })
     const trustedImageUrl = await this.storageService.getSignedUrl(workObjectKey)
-    const ownerType =
-      space.spaceType === 'personal'
-        ? OwnerType.USER
-        : space.spaceType === 'team'
-          ? OwnerType.TEAM
-          : OwnerType.ENTERPRISE
-    const ownerId = space.spaceType === 'personal' ? userId : dto.spaceId
-    const visibility =
-      space.spaceType === 'personal'
-        ? Visibility.PRIVATE
-        : space.spaceType === 'team'
-          ? Visibility.TEAM
-          : Visibility.ENTERPRISE
-
     let work: WorkDocument
     try {
       work = await this.workModel.create({
@@ -111,9 +95,9 @@ export class WorksService {
         selectedCandidateId: result.generate?.selectedCandidateId || undefined,
         qualityReport: result.finalEvaluation,
         nodesSnapshot,
-        ownerId: new Types.ObjectId(ownerId),
-        ownerType,
-        visibility,
+        ownerId: new Types.ObjectId(userId),
+        ownerType: OwnerType.USER,
+        visibility: Visibility.PRIVATE,
         creatorId: new Types.ObjectId(userId),
         enterpriseId: space.enterpriseId ? new Types.ObjectId(space.enterpriseId) : undefined,
         metadata: {
@@ -162,7 +146,7 @@ export class WorksService {
   async findAll(userId: string, spaceId: string) {
     await this.orgService.getAccessibleSpace(userId, spaceId)
     const works = await this.workModel
-      .find({ spaceId })
+      .find({ spaceId, creatorId: new Types.ObjectId(userId) })
       .populate('creatorId', 'email profile')
       .sort({ createdAt: -1 })
     return Promise.all(
@@ -199,15 +183,6 @@ export class WorksService {
   async remove(userId: string, id: string) {
     const work = await this.findAccessibleWork(userId, id)
 
-    if (work.creatorId.toString() !== userId) {
-      await this.assertAdminForScope(
-        userId,
-        work.enterpriseId?.toString() || '',
-        work.ownerId.toString(),
-        work.ownerType,
-      )
-    }
-
     const versions = await this.workVersionModel.find({ workId: work._id }, { objectKey: 1 })
     const objectKeys = new Set(
       [work.objectKey, ...versions.map((version) => version.objectKey)].filter(
@@ -223,15 +198,6 @@ export class WorksService {
 
   async createVersion(userId: string, id: string, dto: CreateWorkVersionDto) {
     const work = await this.findAccessibleWork(userId, id)
-
-    if (work.creatorId.toString() !== userId) {
-      await this.assertAdminForScope(
-        userId,
-        work.enterpriseId?.toString() || '',
-        work.ownerId.toString(),
-        work.ownerType,
-      )
-    }
 
     const latest = await this.workVersionModel.findOne({ workId: work._id }).sort({ versionNo: -1 })
 
@@ -390,25 +356,11 @@ export class WorksService {
     if (!work) {
       throw new NotFoundException('作品不存在或无权访问')
     }
+    if (work.creatorId.toString() !== userId) {
+      throw new NotFoundException('作品不存在或无权访问')
+    }
     await this.orgService.getAccessibleSpace(userId, work.spaceId)
-
-    if (work.creatorId.toString() === userId || work.visibility === Visibility.PUBLIC) {
-      return work
-    }
-
-    if (work.visibility === Visibility.ENTERPRISE) return work
-
-    if (work.visibility === Visibility.TEAM && work.ownerType === OwnerType.TEAM) {
-      const user = await this.userModel.findById(userId)
-      const membership = user?.memberships.find(
-        (m) => m.teamId?.toString() === work.ownerId.toString(),
-      )
-      if (membership) {
-        return work
-      }
-    }
-
-    throw new NotFoundException('作品不存在或无权访问')
+    return work
   }
 
   private async assertPngExport(objectKey: string | undefined, imageUrl: string) {
@@ -432,48 +384,6 @@ export class WorksService {
       !bytes.equals(pngSignature)
     ) {
       throw new BadRequestException('作品地址未返回有效 PNG，无法导出')
-    }
-  }
-
-  private async assertCanCreate(
-    userId: string,
-    enterpriseId: string,
-    ownerId: string,
-    ownerType: OwnerType,
-    visibility: Visibility,
-  ) {
-    if (visibility === Visibility.PRIVATE && ownerType === OwnerType.USER && ownerId === userId) {
-      return
-    }
-
-    if (visibility === Visibility.TEAM || visibility === Visibility.ENTERPRISE) {
-      await this.assertAdminForScope(userId, enterpriseId, ownerId, ownerType)
-      return
-    }
-
-    if (visibility === Visibility.PUBLIC) {
-      await this.assertAdminForScope(userId, enterpriseId, ownerId, ownerType)
-      return
-    }
-
-    throw new BadRequestException('无权创建该归属范围的作品')
-  }
-
-  private async assertAdminForScope(
-    userId: string,
-    enterpriseId: string,
-    ownerId: string,
-    ownerType: OwnerType,
-  ) {
-    const user = await this.userModel.findById(userId)
-    const membership = user?.memberships.find(
-      (m) =>
-        m.enterpriseId.toString() === enterpriseId &&
-        (!m.teamId || (ownerType === OwnerType.TEAM && m.teamId.toString() === ownerId)),
-    )
-
-    if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-      throw new BadRequestException('您无权操作该归属范围的作品')
     }
   }
 

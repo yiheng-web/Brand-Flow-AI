@@ -43,7 +43,7 @@ import {
   SaveCompositionDto,
   SelectArtTextCandidateDto,
 } from './dto/composition.dto'
-import { CreateWorkflowDto } from './dto/create-workflow.dto'
+import { CreateWorkflowDto, StartWorkflowDto } from './dto/create-workflow.dto'
 import { OptimizeWorkflowDto, UpdateBriefDto } from './dto/brief-review.dto'
 import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
 import { Workflow, WorkflowDocument, WorkflowStatus } from './schemas/workflow.schema'
@@ -66,6 +66,7 @@ export interface WorkflowResponse {
   errorMessage?: string
   awaitingAction?: WorkflowAwaitingAction
   requirements?: BrandRequirementInput
+  needsComposition?: boolean
 }
 
 @Injectable()
@@ -169,17 +170,49 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       })),
     )
 
-    await this.workflowQueue.add(
-      RUN_WORKFLOW_JOB,
+    return this.toResponse(workflow)
+  }
+
+  async start(
+    id: string,
+    dto: StartWorkflowDto,
+    userId: string,
+    entId?: string,
+  ): Promise<WorkflowResponse> {
+    const accessibleWorkflow = await this.verifyWorkflowAccess(id, userId, entId)
+    if (accessibleWorkflow.status !== 'pending') {
+      return this.toResponse(accessibleWorkflow)
+    }
+
+    const workflow = await this.workflowModel.findOneAndUpdate(
+      { _id: accessibleWorkflow._id, status: 'pending' },
       {
-        workflowId: workflow._id.toString(),
+        $set: { needsComposition: dto.needsComposition, status: 'running' },
+        $unset: { errorMessage: 1 },
       },
-      {
-        jobId: `${workflow._id.toString()}-main-v1`,
-        removeOnComplete: 100,
-        removeOnFail: 100,
-      },
+      { new: true },
     )
+    if (!workflow) {
+      return this.toResponse(await this.verifyWorkflowAccess(id, userId, entId))
+    }
+
+    try {
+      await this.workflowQueue.add(
+        RUN_WORKFLOW_JOB,
+        { workflowId: workflow._id.toString() },
+        {
+          jobId: `${workflow._id.toString()}-main-v1`,
+          removeOnComplete: 100,
+          removeOnFail: 100,
+        },
+      )
+    } catch (error) {
+      await this.workflowModel.updateOne(
+        { _id: workflow._id, status: 'running' },
+        { $set: { status: 'pending' }, $unset: { needsComposition: 1 } },
+      )
+      throw error
+    }
 
     return this.toResponse(workflow)
   }
@@ -958,6 +991,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       errorMessage: workflow.errorMessage,
       awaitingAction: workflow.awaitingAction,
       requirements: workflow.requirements,
+      needsComposition: workflow.needsComposition,
     }
   }
 

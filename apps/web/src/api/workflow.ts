@@ -22,29 +22,6 @@ import apiClient from './index'
 
 export type StreamEvent = WorkflowSseEvent
 
-// 旧面板暂时保留的只读类型；新 Workflow 主链路使用共享 V1 契约。
-export interface IntentOutput {
-  intent: string
-  confidence: number
-  reason: string
-  suggestedAction: string
-}
-export interface PromptChainOutput {
-  systemPrompt: string
-  userPrompt: string
-  finalPrompt: string
-  negativePrompt?: string
-  purpose: string
-}
-export interface EvaluationResult {
-  overallScore: number
-  intentEvaluation: { score: number; comment: string }
-  promptEvaluation: { score: number; comment: string }
-  complianceEvaluation: { score: number; comment: string }
-  suggestions: string[]
-  status: 'success' | 'failed'
-}
-
 export interface SubmitPromptParams extends CreateWorkflowRequest {
   spaceType?: 'personal' | 'team' | 'enterprise'
 }
@@ -60,6 +37,7 @@ export interface WorkflowData {
   errorMessage?: string
   awaitingAction?: WorkflowAwaitingAction
   requirements?: BrandRequirementInput
+  needsComposition?: boolean
 }
 
 export interface WorkflowDetailResponse {
@@ -69,6 +47,15 @@ export interface WorkflowDetailResponse {
 
 export async function submitPrompt(params: SubmitPromptParams): Promise<WorkflowData> {
   return apiClient.post<unknown, WorkflowData>('/workflow/create', params)
+}
+
+export async function startWorkflow(
+  workflowId: string,
+  needsComposition: boolean,
+): Promise<WorkflowData> {
+  return apiClient.post<unknown, WorkflowData>(`/workflow/${workflowId}/start`, {
+    needsComposition,
+  })
 }
 
 export async function getWorkflowDetail(workflowId: string): Promise<WorkflowDetailResponse> {

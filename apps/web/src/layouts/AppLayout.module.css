@@ -298,29 +298,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.topActions {
-  display: flex;
-  gap: 7px;
-}
-
-.topActions button {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  font-size: var(--font-size-lg);
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-}
-
-.topActions button:hover {
-  background: var(--color-bg-container);
-}
-
-.topActions button:last-child {
-  border: 1px solid var(--color-border);
-}
-
 .mainContent {
   min-height: calc(100vh - var(--layout-topbar-height));
 }
