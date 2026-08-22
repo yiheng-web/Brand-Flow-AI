@@ -1,0 +1,50 @@
+.header {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.content {
+  min-width: 0;
+}
+
+.eyebrow,
+.description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+}
+
+.eyebrow {
+  margin-bottom: 6px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: var(--font-size-page-title);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  letter-spacing: -1.3px;
+}
+
+.description {
+  margin-top: 9px;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+@media (max-width: 620px) {
+  .header {
+    align-items: flex-start;
+  }
+
+  .header h1 {
+    font-size: var(--font-size-display);
+  }
+}

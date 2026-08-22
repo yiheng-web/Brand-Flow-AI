@@ -1,0 +1,22 @@
+.state {
+  display: grid;
+  min-height: 240px;
+  padding: var(--space-8);
+  place-items: center;
+}
+
+.loading {
+  width: min(520px, 100%);
+  text-align: center;
+}
+
+.loadingLabel {
+  margin-left: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+}
+
+.skeleton {
+  margin-top: var(--space-5);
+  text-align: left;
+}

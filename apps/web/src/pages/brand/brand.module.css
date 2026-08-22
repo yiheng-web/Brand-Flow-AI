@@ -1,62 +1,77 @@
 .wrapper {
   width: 100%;
-  height: 100%;
-  display: flex;
-  overflow: hidden;
+  min-height: calc(100vh - var(--layout-topbar-height));
+  padding: 44px 56px 70px;
+  background: var(--color-bg-surface);
+}
+
+.assetLayout {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 32px;
+  margin-top: 30px;
 }
 
 .sidebar {
-  width: 180px;
-  flex-shrink: 0;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  padding: 20px 0;
-  gap: 2px;
+  gap: 4px;
+  align-self: start;
+  padding: 8px;
+  background: var(--color-bg-navigation);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
 }
 
 .sidebarItem {
-  display: block;
   width: 100%;
-  padding: 10px 24px;
-  border: none;
-  background: transparent;
-  color: #555b66;
-  font-size: 14px;
-  font-weight: 500;
+  min-height: 40px;
+  padding: 0 14px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-medium);
   text-align: left;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  transition:
+    color var(--motion-fast),
+    background var(--motion-fast);
 }
 
 .sidebarItem:hover {
-  background: #f1f3f5;
-  color: #2d2f33;
+  color: var(--color-text-primary);
+  background: var(--color-bg-container);
 }
 
 .sidebarItemActive {
-  background: #eef3ff;
-  color: #4f6ff7;
-  font-weight: 700;
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+  background: var(--color-primary-container-soft);
 }
 
 .main {
-  flex: 1;
   min-width: 0;
-  padding: 32px 40px;
-  background: var(--bg-app);
 }
 
-.pageTitle {
-  margin: 0 0 16px;
-  font-size: 20px;
-  font-weight: 700;
-  color: #2d2f33;
-}
+@media (max-width: 800px) {
+  .wrapper {
+    padding: 32px 20px 48px;
+  }
 
-.pagePlaceholder {
-  color: #b0b7c7;
-  font-size: 14px;
-  font-weight: 500;
+  .assetLayout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .sidebar {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .sidebarItem {
+    width: auto;
+    padding-inline: 16px;
+    white-space: nowrap;
+  }
 }

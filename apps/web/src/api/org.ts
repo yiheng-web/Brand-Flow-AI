@@ -52,6 +52,19 @@ export interface SpaceData {
   description?: string
 }
 
+export interface SpaceMemberData {
+  userId: string
+  email: string
+  nickname?: string
+  avatar?: string
+  role: Role
+}
+
+export interface InviteSpaceMemberParams {
+  email: string
+  role?: Role
+}
+
 // 创建企业
 export async function createEnterprise(params: CreateEnterpriseParams) {
   return apiClient.post('/org/enterprise', params)
@@ -70,6 +83,17 @@ export async function switchEnterprise(enterpriseId: string): Promise<SwitchEnte
 // 获取当前用户可访问的空间列表
 export async function getMySpaces(): Promise<SpaceData[]> {
   return apiClient.get('/org/spaces')
+}
+
+export async function getSpaceMembers(spaceId: string): Promise<SpaceMemberData[]> {
+  return apiClient.get(`/org/spaces/${spaceId}/members`)
+}
+
+export async function inviteSpaceMember(
+  spaceId: string,
+  params: InviteSpaceMemberParams,
+): Promise<{ success: boolean; spaceId: string; userId: string; email: string; role: Role }> {
+  return apiClient.post(`/org/spaces/${spaceId}/invitations`, params)
 }
 
 // 创建团队

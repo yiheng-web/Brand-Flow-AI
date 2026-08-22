@@ -91,6 +91,7 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('horizontal', nodeExecStatuses))
   const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges(nodeExecStatuses))
   const [showMiniMap, setShowMiniMap] = useState(true)
+  const [zoom, setZoom] = useState(0.78)
   const { fitView, zoomIn, zoomOut } = useReactFlow()
 
   const toggleLayout = useCallback(() => {
@@ -145,16 +146,18 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
   return (
     <div className={styles.wrapper}>
       <div className={styles.toolbar} aria-label="画布工具栏">
-        <IconButton
-          label="放大画布"
-          icon={<PlusOutlined />}
-          onClick={() => zoomIn()}
-          size="small"
-        />
+        <span className={styles.toolbarTitle}>画布预览</span>
         <IconButton
           label="缩小画布"
           icon={<MinusOutlined />}
           onClick={() => zoomOut()}
+          size="small"
+        />
+        <span className={styles.zoomValue}>{Math.round(zoom * 100)}%</span>
+        <IconButton
+          label="放大画布"
+          icon={<PlusOutlined />}
+          onClick={() => zoomIn()}
           size="small"
         />
         <IconButton
@@ -185,9 +188,9 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         onNodeClick={handleNodeClick}
+        onMove={(_event, viewport) => setZoom(viewport.zoom)}
         nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.22 }}
+        defaultViewport={{ x: 32, y: 36, zoom: 0.78 }}
         minZoom={0.3}
         maxZoom={1.5}
         nodesDraggable
@@ -203,7 +206,7 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
             nodeStrokeColor={colorTokens.primary}
             nodeColor={colorTokens.primaryContainer}
             nodeBorderRadius={12}
-            maskColor="rgba(95, 99, 104, 0.08)"
+            maskColor="var(--color-overlay-soft)"
             className={styles.miniMap}
           />
         )}

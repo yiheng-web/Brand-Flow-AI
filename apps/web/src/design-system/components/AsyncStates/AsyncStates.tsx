@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react'
 import { Button, Empty, Result, Skeleton, Spin } from 'antd'
 
+import styles from './AsyncStates.module.css'
+
 export const LoadingState = ({ label = '正在加载…' }: { label?: string }) => (
-  <div aria-live="polite" style={{ padding: 40, textAlign: 'center' }}>
-    <Spin /> <span>{label}</span>
-    <Skeleton active paragraph={{ rows: 3 }} style={{ marginTop: 20 }} />
+  <div className={styles.state} aria-live="polite">
+    <div className={styles.loading}>
+      <Spin />
+      <span className={styles.loadingLabel}>{label}</span>
+      <Skeleton active paragraph={{ rows: 3 }} className={styles.skeleton} />
+    </div>
   </div>
 )
 export const EmptyState = ({
@@ -13,7 +18,11 @@ export const EmptyState = ({
 }: {
   description: ReactNode
   action?: ReactNode
-}) => <Empty description={description}>{action}</Empty>
+}) => (
+  <div className={styles.state}>
+    <Empty description={description}>{action}</Empty>
+  </div>
+)
 export const ErrorState = ({ message, onRetry }: { message: string; onRetry?: () => void }) => (
   <Result
     status="error"

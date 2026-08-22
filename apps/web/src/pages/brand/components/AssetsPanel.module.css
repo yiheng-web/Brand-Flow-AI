@@ -1,0 +1,120 @@
+.panel {
+  min-width: 0;
+}
+
+.panelHeader {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.panelHeader h2 {
+  margin: 0 0 4px;
+  font-size: var(--font-size-section-title);
+}
+
+.panelHeader p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.panelHeader :global(.ant-btn) {
+  border-radius: var(--radius-pill);
+}
+
+.assetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.assetCard {
+  overflow: hidden;
+  border-color: var(--color-border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.assetCard:hover {
+  border-color: var(--color-primary-border);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.assetCard :global(.ant-card-body) {
+  padding: 12px;
+}
+
+.thumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 150px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  background: var(--color-bg-container);
+  border-radius: 11px;
+}
+
+.thumbnail :global(.ant-image) {
+  width: 100%;
+  height: 100%;
+}
+
+.thumbnailImage {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+
+.typeIcon {
+  font-size: var(--font-size-page-title);
+}
+
+.assetInfo {
+  margin-bottom: 8px;
+}
+
+.assetName {
+  overflow: hidden;
+  margin-bottom: 4px;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetInfo :global(.ant-tag) {
+  margin: 0;
+  font-size: var(--font-size-micro);
+  border-radius: var(--radius-pill);
+}
+
+.fileSize {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.cardActions {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.cardActions :global(.ant-btn) {
+  padding-inline: 4px;
+  font-size: var(--font-size-caption);
+}
+
+@media (max-width: 620px) {
+  .panelHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

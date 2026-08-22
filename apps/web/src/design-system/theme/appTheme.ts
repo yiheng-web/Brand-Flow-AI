@@ -1,6 +1,6 @@
 import type { ThemeConfig } from 'antd'
 
-import { colorTokens, motionTokens } from '../tokens'
+import { colorTokens, motionTokens, radiusTokens, typographyTokens } from '../tokens'
 
 export const appTheme: ThemeConfig = {
   token: {
@@ -14,33 +14,33 @@ export const appTheme: ThemeConfig = {
     colorBorder: colorTokens.border,
     colorBgBase: colorTokens.pageBackground,
     colorBgContainer: colorTokens.surface,
-    borderRadius: 10,
-    borderRadiusLG: 16,
+    borderRadius: radiusTokens.control,
+    borderRadiusLG: radiusTokens.card,
     controlHeight: 40,
-    fontSize: 14,
+    fontSize: typographyTokens.body,
     fontFamily:
-      'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+      'Inter, "Google Sans", "Noto Sans SC", Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
     motionDurationFast: `${motionTokens.fast / 1000}s`,
     motionDurationMid: `${motionTokens.normal / 1000}s`,
     motionDurationSlow: `${motionTokens.slow / 1000}s`,
   },
   components: {
     Button: {
-      borderRadius: 10,
+      borderRadius: radiusTokens.control,
       controlHeight: 40,
       fontWeight: 500,
       primaryShadow: 'none',
     },
     Card: {
-      borderRadiusLG: 16,
+      borderRadiusLG: radiusTokens.card,
       boxShadowTertiary: 'none',
     },
     Input: {
-      borderRadius: 10,
+      borderRadius: radiusTokens.control,
       activeShadow: '0 0 0 3px rgba(11, 87, 208, 0.14)',
     },
     Modal: {
-      borderRadiusLG: 20,
+      borderRadiusLG: radiusTokens.panel,
     },
     Tooltip: {
       borderRadius: 8,

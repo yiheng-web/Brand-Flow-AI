@@ -22,6 +22,7 @@ export const IconButton = ({
     <Button
       aria-label={label}
       icon={icon}
+      shape="circle"
       onClick={onClick}
       disabled={disabled}
       type={type}

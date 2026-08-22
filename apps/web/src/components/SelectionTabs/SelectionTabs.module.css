@@ -13,8 +13,8 @@
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-semibold);
   padding: 0;
   cursor: pointer;
   white-space: nowrap;

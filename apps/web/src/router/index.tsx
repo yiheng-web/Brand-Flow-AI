@@ -30,6 +30,9 @@ const KnowledgeListPage = lazy(() => import('@/pages/knowledge'))
 const KnowledgeDetailPage = lazy(() => import('@/pages/knowledge/detail'))
 const WorksPage = lazy(() => import('@/pages/works'))
 const WorkDetailPage = lazy(() => import('@/pages/works/detail'))
+const TasksPage = lazy(() => import('@/pages/tasks'))
+const NotificationsPage = lazy(() => import('@/pages/notifications'))
+const OrganizationPage = lazy(() => import('@/pages/organization'))
 const deferred = (node: ReactNode) => <Suspense fallback={<LoadingState />}>{node}</Suspense>
 
 export const router = createBrowserRouter([
@@ -59,9 +62,12 @@ export const router = createBrowserRouter([
           { path: 'brand', element: deferred(<BrandPage />) },
           { path: 'knowledge', element: deferred(<KnowledgeListPage />) },
           { path: 'knowledge/:id', element: deferred(<KnowledgeDetailPage />) },
+          { path: 'tasks', element: deferred(<TasksPage />) },
           { path: 'works', element: deferred(<WorksPage />) },
           { path: 'works/:id', element: deferred(<WorkDetailPage />) },
+          { path: 'notifications', element: deferred(<NotificationsPage />) },
           { path: 'profile', element: deferred(<ProfilePage />) },
+          { path: 'organization', element: deferred(<OrganizationPage />) },
         ],
       },
     ],

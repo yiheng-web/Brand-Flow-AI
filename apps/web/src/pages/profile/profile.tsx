@@ -1,270 +1,148 @@
-/**
- * 个人中心页面
- *
- * 功能说明：
- * - 顶部展示用户个人信息（头像、昵称、邮箱）
- * - 企业/空间切换（从 /org/enterprises 动态加载）
- * - 团队管理（从 /org/teams 加载，支持创建团队）
- * - 底部退出登录
- */
-
-import { useCallback, useEffect, useState } from 'react'
-import { Button, Select, Tag, Card, message, Modal, Input as AntInput } from 'antd'
+import { useEffect, useState } from 'react'
+import {
+  ApartmentOutlined,
+  LogoutOutlined,
+  MailOutlined,
+  SafetyCertificateOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from '@ant-design/icons'
+import { Button, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { LogoutOutlined, PlusOutlined } from '@ant-design/icons'
+
+import { getMyEnterprises } from '@/api/org'
+import { PageHeader } from '@/design-system/components'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
-import { getMyEnterprises, switchEnterprise, getTeams, createTeam } from '@/api/org'
-import type { TeamData } from '@/api/org'
-import styles from './profile.module.css'
 
-/** 角色标签映射 */
-const ROLE_TAG_MAP: Record<string, { text: string; color: string }> = {
-  owner: { text: '所有者', color: 'gold' },
-  admin: { text: '管理员', color: 'blue' },
-  member: { text: '成员', color: 'default' },
-  viewer: { text: '访客', color: 'default' },
-}
+import styles from './profile.module.css'
 
 const Profile = () => {
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
-  const setToken = useAuthStore((state) => state.setToken)
-
-  // 企业相关
-  const currentEnterpriseId = useUserStore((state) => state.currentEnterpriseId)
+  const spaces = useUserStore((state) => state.spaces)
+  const currentSpaceName = useUserStore((state) => state.currentSpaceName)
   const enterprises = useUserStore((state) => state.enterprises)
-  const setCurrentEnterpriseId = useUserStore((state) => state.setCurrentEnterpriseId)
   const setEnterprises = useUserStore((state) => state.setEnterprises)
+  const [loadingOrganizations, setLoadingOrganizations] = useState(true)
+  const enterpriseCount = new Set(enterprises.map((enterprise) => enterprise.enterpriseId)).size
 
-  // 团队列表
-  const [teams, setTeams] = useState<TeamData[]>([])
-  const [loadingTeams, setLoadingTeams] = useState(false)
-
-  // 创建团队弹窗
-  const [createTeamModalOpen, setCreateTeamModalOpen] = useState(false)
-  const [teamName, setTeamName] = useState('')
-  const [teamDesc, setTeamDesc] = useState('')
-  const [creatingTeam, setCreatingTeam] = useState(false)
-
-  /** 当前企业的角色 */
-  const currentRoleTag =
-    enterprises.find((e) => e.enterpriseId === currentEnterpriseId)?.role || 'member'
-
-  /* ============================
-      加载企业列表
-   ============================ */
   useEffect(() => {
-    const loadEnterprises = async () => {
-      try {
-        const enterpriseList = await getMyEnterprises()
-        setEnterprises(enterpriseList)
-      } catch {
-        message.error('加载企业列表失败')
-      }
+    let active = true
+    getMyEnterprises()
+      .then((data) => {
+        if (active) setEnterprises(data)
+      })
+      .catch(() => {
+        if (active) message.error('加载组织信息失败')
+      })
+      .finally(() => {
+        if (active) setLoadingOrganizations(false)
+      })
+    return () => {
+      active = false
     }
-    loadEnterprises()
   }, [setEnterprises])
 
-  /* ============================
-      加载团队列表
-   ============================ */
-  const loadTeams = useCallback(async () => {
-    if (!currentEnterpriseId) return
-    setLoadingTeams(true)
-    try {
-      const teamList = await getTeams()
-      setTeams(teamList)
-    } catch {
-      message.error('加载团队列表失败')
-    } finally {
-      setLoadingTeams(false)
-    }
-  }, [currentEnterpriseId])
-
-  useEffect(() => {
-    queueMicrotask(() => void loadTeams())
-  }, [loadTeams])
-
-  /* ============================
-      切换企业
-   ============================ */
-  const handleSwitchEnterprise = async (enterpriseId: string) => {
-    try {
-      const result = await switchEnterprise(enterpriseId)
-      setToken(result.access_token)
-      setCurrentEnterpriseId(enterpriseId)
-    } catch {
-      message.error('切换企业失败')
-    }
-  }
-
-  /* ============================
-      创建团队
-   ============================ */
-  const handleCreateTeam = async () => {
-    const name = teamName.trim()
-    if (!name) {
-      message.warning('请输入团队名称')
-      return
-    }
-
-    setCreatingTeam(true)
-    try {
-      await createTeam({ name, description: teamDesc.trim() || undefined })
-      message.success('团队创建成功')
-      setCreateTeamModalOpen(false)
-      setTeamName('')
-      setTeamDesc('')
-      loadTeams()
-    } catch {
-      message.error('创建团队失败，请稍后重试')
-    } finally {
-      setCreatingTeam(false)
-    }
-  }
-
-  /* ============================
-      退出登录
-   ============================ */
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
-  /* ============================
-      头像首字
-   ============================ */
-  const avatarChar = user?.name ? user.name.charAt(0).toUpperCase() : '?'
-
-  /* ============================
-      格式化日期
-   ============================ */
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString('zh-CN')
-  }
+  const avatarChar = user?.name?.slice(0, 1).toUpperCase() || '?'
 
   return (
-    <div className={styles.wrapper}>
-      <div className={styles.container}>
-        {/* ====== 个人信息区 ====== */}
-        <div className={styles.profileCard}>
-          <div className={styles.profileAvatar}>{avatarChar}</div>
-          <div className={styles.profileInfo}>
-            <span className={styles.profileName}>{user?.name || '未设置昵称'}</span>
-            <span className={styles.profileEmail}>{user?.email || '-'}</span>
-          </div>
+    <div className={styles.page}>
+      <PageHeader title="个人中心" description="管理账号信息、所属组织和登录状态" />
+
+      <section className={styles.profileHero}>
+        <span className={styles.avatar}>{avatarChar}</span>
+        <div>
+          <small>BrandFlow 账号</small>
+          <h2>{user?.name || '未设置昵称'}</h2>
+          <p>{user?.email || '未绑定邮箱'}</p>
         </div>
+        <span className={styles.accountStatus}>
+          <i /> 已登录
+        </span>
+      </section>
 
-        {/* ====== 企业/空间切换区 ====== */}
-        <div className={styles.headerSection}>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>当前所在企业</span>
-            <Select
-              value={currentEnterpriseId}
-              onChange={handleSwitchEnterprise}
-              className={styles.spaceSelect}
-              options={
-                enterprises.length > 0
-                  ? enterprises.map((ent) => ({
-                      value: ent.enterpriseId,
-                      label: ent.name,
-                    }))
-                  : [{ value: '', label: '暂无企业' }]
-              }
-            />
+      <div className={styles.contentGrid}>
+        <section className={styles.panel}>
+          <div className={styles.panelTitle}>
+            <UserOutlined />
+            <div>
+              <h2>账号信息</h2>
+              <p>资料来自当前登录账号</p>
+            </div>
           </div>
-          <div className={styles.infoRow}>
-            <span className={styles.infoLabel}>我的角色</span>
-            <Tag color={ROLE_TAG_MAP[currentRoleTag]?.color || 'default'}>
-              {ROLE_TAG_MAP[currentRoleTag]?.text || '成员'}
-            </Tag>
-          </div>
-        </div>
+          <dl className={styles.infoList}>
+            <div>
+              <dt>
+                <UserOutlined /> 姓名
+              </dt>
+              <dd>{user?.name || '未设置'}</dd>
+            </div>
+            <div>
+              <dt>
+                <MailOutlined /> 邮箱
+              </dt>
+              <dd>{user?.email || '未绑定'}</dd>
+            </div>
+            <div>
+              <dt>
+                <SafetyCertificateOutlined /> 账号 ID
+              </dt>
+              <dd className={styles.userId}>{user?.id || '—'}</dd>
+            </div>
+          </dl>
+          <p className={styles.readonlyNotice}>当前版本暂不支持在线修改账号资料。</p>
+        </section>
 
-        {/* ====== 团队管理区 ====== */}
-        <div className={styles.memberSection}>
-          <div className={styles.memberHeader}>
-            <h2 className={styles.memberTitle}>团队列表</h2>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateTeamModalOpen(true)}
-              disabled={!currentEnterpriseId}
-            >
-              创建团队
-            </Button>
+        <section className={styles.panel}>
+          <div className={styles.panelTitle}>
+            <ApartmentOutlined />
+            <div>
+              <h2>组织与空间</h2>
+              <p>当前使用：{currentSpaceName}</p>
+            </div>
           </div>
-
-          <div className={styles.memberList}>
-            {loadingTeams ? (
-              <div className={styles.loadingText}>加载中...</div>
-            ) : teams.length === 0 ? (
-              <div className={styles.loadingText}>暂无团队，点击上方按钮创建</div>
-            ) : (
-              teams.map((team) => (
-                <Card key={team._id} className={styles.teamItem} size="small">
-                  <div className={styles.teamItemContent}>
-                    <div className={styles.teamItemLeft}>
-                      <span className={styles.teamName}>{team.name}</span>
-                      {team.description && (
-                        <span className={styles.teamDesc}>{team.description}</span>
-                      )}
-                    </div>
-                    <span className={styles.teamDate}>{formatDate(team.createdAt)}</span>
-                  </div>
-                </Card>
-              ))
-            )}
+          <div className={styles.organizationSummary}>
+            <div>
+              <span>
+                <ApartmentOutlined />
+              </span>
+              <p>
+                <b>{loadingOrganizations ? '—' : enterpriseCount}</b>
+                <small>所属企业</small>
+              </p>
+            </div>
+            <div>
+              <span>
+                <TeamOutlined />
+              </span>
+              <p>
+                <b>{spaces.length}</b>
+                <small>可用空间</small>
+              </p>
+            </div>
           </div>
-        </div>
-
-        {/* ====== 退出登录 ====== */}
-        <div className={styles.footerSection}>
-          <Button danger icon={<LogoutOutlined />} onClick={handleLogout}>
-            退出登录
+          <Button type="primary" block onClick={() => navigate('/organization')}>
+            查看组织详情
           </Button>
-        </div>
+        </section>
       </div>
 
-      {/* 创建团队弹窗 */}
-      <Modal
-        title="创建团队"
-        open={createTeamModalOpen}
-        onCancel={() => {
-          setCreateTeamModalOpen(false)
-          setTeamName('')
-          setTeamDesc('')
-        }}
-        onOk={handleCreateTeam}
-        confirmLoading={creatingTeam}
-        okText="创建"
-        cancelText="取消"
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label className={styles.formLabel}>团队名称 *</label>
-            <AntInput
-              placeholder="请输入团队名称（不超过50字）"
-              value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
-              maxLength={50}
-            />
-          </div>
-          <div>
-            <label className={styles.formLabel}>描述（选填）</label>
-            <AntInput.TextArea
-              placeholder="请输入团队描述（不超过200字）"
-              value={teamDesc}
-              onChange={(e) => setTeamDesc(e.target.value)}
-              maxLength={200}
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </div>
+      <section className={styles.dangerZone}>
+        <div>
+          <h2>退出当前账号</h2>
+          <p>退出后需要重新登录才能访问个人空间与企业内容。</p>
         </div>
-      </Modal>
+        <Button danger icon={<LogoutOutlined />} onClick={handleLogout}>
+          退出登录
+        </Button>
+      </section>
     </div>
   )
 }

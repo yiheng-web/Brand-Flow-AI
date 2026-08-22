@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   DownloadOutlined,
+  ExperimentOutlined,
   ExportOutlined,
   HeartOutlined,
   PlayCircleFilled,
@@ -432,7 +433,10 @@ export default function Workspace() {
     <div className={styles.wrapper}>
       <header className={styles.workspaceTopBar}>
         <div className={styles.workflowIdentity}>
-          <span className={styles.eyebrow}>AI 创作工作流</span>
+          <span className={styles.eyebrow}>
+            <i className={styles.liveDot} />
+            AI 创作工作流
+          </span>
           <strong className={styles.workflowTitle}>{userPrompt || '未命名工作流'}</strong>
           {import.meta.env.VITE_BRAND_FLOW_DEMO_MODE === 'true' && (
             <Tag color="orange">演示模式</Tag>
@@ -466,31 +470,32 @@ export default function Workspace() {
           </Button>
         </div>
       </header>
+      <nav className={styles.nodeStepper} aria-label="工作流节点">
+        {FLOW_NODES.map((node) => {
+          const nodeStatus = nodeExecStatuses[node.id]
+          const completedNode = ['done', 'skipped'].includes(nodeStatus)
+          return (
+            <button
+              key={node.id}
+              type="button"
+              className={[
+                styles.libraryNode,
+                selectedNodeId === node.id ? styles.libraryNodeActive : '',
+                completedNode ? styles.libraryNodeDone : '',
+              ].join(' ')}
+              aria-current={selectedNodeId === node.id ? 'step' : undefined}
+              onClick={() => setSelectedNodeId(node.id)}
+            >
+              <span className={styles.libraryStep}>{completedNode ? '✓' : node.step}</span>
+              <span className={styles.libraryText}>
+                <strong>{node.title}</strong>
+                <small>{node.subtitle}</small>
+              </span>
+            </button>
+          )
+        })}
+      </nav>
       <div className={styles.workspaceBody}>
-        <aside className={styles.resourcePanel}>
-          <div className={styles.resourceHeader}>
-            <div>
-              <span className={styles.eyebrow}>资源与节点</span>
-              <h2>七节点工作流</h2>
-            </div>
-          </div>
-          <div className={styles.nodeLibrary}>
-            {FLOW_NODES.map((node) => (
-              <button
-                key={node.id}
-                type="button"
-                className={`${styles.libraryNode} ${selectedNodeId === node.id ? styles.libraryNodeActive : ''}`}
-                onClick={() => setSelectedNodeId(node.id)}
-              >
-                <span className={styles.libraryStep}>{node.step}</span>
-                <span className={styles.libraryText}>
-                  <strong>{node.title}</strong>
-                  <small>{node.subtitle}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </aside>
         <section className={styles.center}>
           <div className={styles.canvasArea}>
             <ReactFlowProvider>
@@ -514,14 +519,17 @@ export default function Workspace() {
         </section>
         <aside className={styles.right}>
           <div className={styles.rightHeader}>
-            <div>
-              <span className={styles.eyebrow}>Inspector</span>
+            <span className={styles.aiMark}>
+              <ExperimentOutlined />
+            </span>
+            <div className={styles.aiHeading}>
+              <span className={styles.eyebrow}>AI 工作栏</span>
               <span className={styles.panelTitle}>
                 {FLOW_NODES.find((node) => node.id === selectedNodeId)?.title}
               </span>
             </div>
           </div>
-          <div style={{ padding: 16, overflow: 'auto' }}>
+          <div className={styles.inspectorContent}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <StatusBadge
                 status={NODE_STATUS_MAP[nodeExecStatuses[selectedNodeId]] ?? 'unconfigured'}
@@ -579,7 +587,7 @@ export default function Workspace() {
                     </Card>
                   )}
                   <Radio.Group value={generate.selectedCandidateId}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div className={styles.candidateGrid}>
                       {generate.candidates.map((candidate) => {
                         const evaluation = generate.evaluations.find(
                           (item) => item.candidateId === candidate.id,
@@ -649,7 +657,7 @@ export default function Workspace() {
                   </Modal>
                 </>
               ) : (
-                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                <pre className={styles.outputPreview}>
                   {JSON.stringify(selectedOutput || {}, null, 2)}
                 </pre>
               )}

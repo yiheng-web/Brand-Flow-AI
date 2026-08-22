@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, Empty, Space, Tag, Image, message, Spin } from 'antd'
+import { Button, Card, Space, Tag, Image, message } from 'antd'
 import {
   PlusOutlined,
   UploadOutlined,
@@ -16,6 +16,9 @@ import SaveToKnowledgeModal from './SaveToKnowledgeModal'
 import { deleteAsset, getAssets, type AssetData } from '@/api/assets'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
+import { EmptyState, ErrorState, LoadingState } from '@/design-system/components'
+import type { AssetFilter } from '..'
+import styles from './AssetsPanel.module.css'
 
 /** 资产对象结构（与后端约定） */
 interface AssetItem {
@@ -30,10 +33,10 @@ interface AssetItem {
 }
 
 const TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
-  image: { icon: <PictureOutlined />, color: '#1677ff' },
-  document: { icon: <FileOutlined />, color: '#52c41a' },
-  video: { icon: <VideoCameraOutlined />, color: '#722ed1' },
-  other: { icon: <QuestionCircleOutlined />, color: '#999' },
+  image: { icon: <PictureOutlined />, color: 'var(--color-primary)' },
+  document: { icon: <FileOutlined />, color: 'var(--color-success)' },
+  video: { icon: <VideoCameraOutlined />, color: 'var(--color-accent-purple)' },
+  other: { icon: <QuestionCircleOutlined />, color: 'var(--color-text-tertiary)' },
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -43,12 +46,13 @@ const TYPE_LABELS: Record<string, string> = {
   other: '其他',
 }
 
-const AssetsPanel = () => {
+const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
   const userId = useAuthStore((state) => state.user?.id)
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const currentSpaceType = useUserStore((state) => state.currentSpaceType)
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   /* 弹窗状态 */
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -73,7 +77,9 @@ const AssetsPanel = () => {
         data.map((asset) => ({
           id: asset._id,
           name: asset.name,
-          type: asset.type === 'image' ? 'image' : 'other',
+          type: ['image', 'document', 'video'].includes(asset.type)
+            ? (asset.type as AssetItem['type'])
+            : 'other',
           description:
             typeof asset.metadata?.description === 'string'
               ? asset.metadata.description
@@ -86,7 +92,9 @@ const AssetsPanel = () => {
           createdAt: asset.createdAt || '',
         })),
       )
+      setError(null)
     } catch (err) {
+      setError(err instanceof Error ? err.message : '无法加载品牌资产')
       if (err instanceof Error) {
         message.error(err.message)
       }
@@ -94,6 +102,7 @@ const AssetsPanel = () => {
       setLoading(false)
     }
   }, [currentSpaceId])
+  const visibleAssets = filter === 'all' ? assets : assets.filter((asset) => asset.type === filter)
 
   useEffect(() => {
     queueMicrotask(() => void fetchAssets())
@@ -126,66 +135,33 @@ const AssetsPanel = () => {
       : null
 
     return (
-      <Card
-        key={asset.id}
-        className="asset-card"
-        hoverable
-        styles={{
-          body: { padding: 16 },
-        }}
-      >
-        {/* 缩略图 */}
-        <div
-          style={{
-            width: '100%',
-            height: 140,
-            background: '#f5f5f5',
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 12,
-            overflow: 'hidden',
-          }}
-        >
+      <Card key={asset.id} className={styles.assetCard} hoverable>
+        <div className={styles.thumbnail}>
           {asset.type === 'image' && asset.thumbnailUrl ? (
             <Image
               src={asset.thumbnailUrl}
               alt={asset.name}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              className={styles.thumbnailImage}
               preview={{ mask: null }}
             />
           ) : (
-            <span style={{ fontSize: 36, color: typeCfg.color }}>{typeCfg.icon}</span>
+            <span className={styles.typeIcon} style={{ color: typeCfg.color }}>
+              {typeCfg.icon}
+            </span>
           )}
         </div>
 
-        {/* 信息 */}
-        <div style={{ marginBottom: 8 }}>
-          <div
-            style={{
-              fontWeight: 600,
-              fontSize: 14,
-              lineHeight: '20px',
-              marginBottom: 4,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title={asset.name}
-          >
+        <div className={styles.assetInfo}>
+          <div className={styles.assetName} title={asset.name}>
             {asset.name}
           </div>
           <Space size={4}>
-            <Tag color={typeCfg.color} style={{ margin: 0, fontSize: 11 }}>
-              {TYPE_LABELS[asset.type] || asset.type}
-            </Tag>
-            {sizeStr && <span style={{ fontSize: 12, color: '#999' }}>{sizeStr}</span>}
+            <Tag color={typeCfg.color}>{TYPE_LABELS[asset.type] || asset.type}</Tag>
+            {sizeStr && <span className={styles.fileSize}>{sizeStr}</span>}
           </Space>
         </div>
 
-        {/* 操作按钮 */}
-        <Space>
+        <Space className={styles.cardActions}>
           <Button
             type="link"
             size="small"
@@ -209,17 +185,12 @@ const AssetsPanel = () => {
   }
 
   return (
-    <div>
-      {/* 顶栏：标题 + 操作按钮 */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>素材资产</h2>
+    <div className={styles.panel}>
+      <div className={styles.panelHeader}>
+        <div>
+          <h2>{filter === 'all' ? '全部内容' : TYPE_LABELS[filter]}</h2>
+          <p>{visibleAssets.length} 项内容</p>
+        </div>
         <Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
             创建
@@ -230,20 +201,16 @@ const AssetsPanel = () => {
         </Space>
       </div>
 
-      {/* 资产列表 */}
-      <Spin spinning={loading}>
-        {assets.length > 0 ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: 16,
-            }}
-          >
-            {assets.map(renderAssetCard)}
-          </div>
-        ) : (
-          <Empty description="暂无素材资产" style={{ marginTop: 60 }}>
+      {loading ? (
+        <LoadingState label="正在加载品牌资产…" />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => void fetchAssets()} />
+      ) : visibleAssets.length > 0 ? (
+        <div className={styles.assetGrid}>{visibleAssets.map(renderAssetCard)}</div>
+      ) : (
+        <EmptyState
+          description={filter === 'all' ? '当前空间暂无品牌资产' : `暂无${TYPE_LABELS[filter]}`}
+          action={
             <Space>
               <Button
                 type="primary"
@@ -256,9 +223,9 @@ const AssetsPanel = () => {
                 上传素材
               </Button>
             </Space>
-          </Empty>
-        )}
-      </Spin>
+          }
+        />
+      )}
 
       {/* 弹窗 */}
       <CreateAssetModal

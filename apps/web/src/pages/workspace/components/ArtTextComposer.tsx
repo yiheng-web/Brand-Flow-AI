@@ -18,6 +18,7 @@ import {
   saveComposition,
   selectArtTextCandidate,
 } from '@/api/workflow'
+import { colorTokens } from '@/design-system/tokens'
 
 import styles from './ArtTextComposer.module.css'
 
@@ -32,6 +33,11 @@ const DISPLAY_MAX_WIDTH = 760
 const DISPLAY_MAX_HEIGHT = 560
 const MIN_REGION_WIDTH = 0.08
 const MIN_REGION_HEIGHT = 0.05
+
+const getThemeColor = (name: string, fallback: string) => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
 
 function createTextObject(candidate: ArtTextCandidate, width: number, height: number): Textbox {
   const spec = candidate.vectorSpec
@@ -242,7 +248,7 @@ export default function ArtTextComposer({
         width: canvas.getWidth() * 0.9,
         height: canvas.getHeight() * 0.9,
         fill: 'transparent',
-        stroke: '#FFFFFF',
+        stroke: getThemeColor('--color-white', colorTokens.white),
         strokeWidth: 1,
         strokeDashArray: [5, 5],
         opacity: 0.7,
@@ -266,8 +272,8 @@ export default function ArtTextComposer({
         top: point.y,
         width: 1,
         height: 1,
-        fill: 'rgba(79,111,247,0.14)',
-        stroke: '#4F6FF7',
+        fill: getThemeColor('--color-primary-shadow-soft', colorTokens.primaryOverlaySoft),
+        stroke: getThemeColor('--color-primary', colorTokens.primary),
         strokeWidth: 2,
         strokeDashArray: [8, 6],
         lockRotation: true,
@@ -352,8 +358,8 @@ export default function ArtTextComposer({
       top: region.y * canvas.getHeight(),
       width: region.width * canvas.getWidth(),
       height: region.height * canvas.getHeight(),
-      fill: 'rgba(79,111,247,0.14)',
-      stroke: '#4F6FF7',
+      fill: getThemeColor('--color-primary-shadow-soft', colorTokens.primaryOverlaySoft),
+      stroke: getThemeColor('--color-primary', colorTokens.primary),
       strokeWidth: 2,
       strokeDashArray: [8, 6],
       lockRotation: true,

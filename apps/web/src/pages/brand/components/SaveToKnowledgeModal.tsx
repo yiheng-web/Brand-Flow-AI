@@ -5,6 +5,8 @@ import { saveAssetToKnowledge } from '@/api/assets'
 import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
 import { useUserStore } from '@/store/useUserStore'
 
+import styles from './SaveToKnowledgeModal.module.css'
+
 interface SaveToKnowledgeModalProps {
   open: boolean
   onClose: () => void
@@ -53,14 +55,12 @@ const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowl
       cancelText="取消"
       destroyOnClose
     >
-      <p style={{ margin: 0, lineHeight: 1.6, color: '#333' }}>
+      <p className={styles.description}>
         确认将资产「<strong>{assetName}</strong>」保存为知识库知识项吗？
       </p>
-      <p style={{ margin: '8px 0 0', fontSize: 13, color: '#999' }}>
-        保存后可在知识库中引用该素材。
-      </p>
+      <p className={styles.hint}>保存后可在知识库中引用该素材。</p>
       <Select
-        style={{ width: '100%', marginTop: 16 }}
+        className={styles.select}
         placeholder="选择目标知识库"
         value={knowledgeId}
         onChange={setKnowledgeId}

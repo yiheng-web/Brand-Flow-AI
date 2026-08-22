@@ -5,15 +5,15 @@
   min-height: 24px;
   padding: 2px 8px;
   border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
   line-height: 18px;
   white-space: nowrap;
 }
 
 .icon {
   display: inline-flex;
-  font-size: 12px;
+  font-size: var(--font-size-label);
 }
 
 .unconfigured,

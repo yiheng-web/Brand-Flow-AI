@@ -1,6 +1,6 @@
 .container {
   display: flex;
-  background: #f0f4f9;
+  background: var(--color-bg-container);
   border-radius: 20px;
   padding: 4px;
 }
@@ -11,8 +11,8 @@
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-body-sm);
+  font-weight: var(--font-weight-medium);
   padding: 0 16px;
   border-radius: 16px;
   cursor: pointer;
@@ -23,6 +23,6 @@
 .tabActive {
   background: var(--bg-panel);
   color: var(--primary);
-  font-weight: 500;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  font-weight: var(--font-weight-medium);
+  box-shadow: 0 2px 5px var(--color-overlay-soft);
 }

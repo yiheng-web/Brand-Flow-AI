@@ -1,22 +1,63 @@
 :root {
-  --color-bg-page: #f7f8fa;
+  --color-bg-page: #ffffff;
   --color-bg-surface: #ffffff;
+  --color-bg-navigation: #f7f9fc;
   --color-bg-container: #f0f4f9;
   --color-bg-container-high: #e9eef6;
+  --color-bg-subtle: #f5f6f8;
+  --color-bg-elevated: #fcfcfd;
+  --color-bg-canvas: #f7f9fc;
   --color-primary: #0b57d0;
   --color-primary-hover: #0842a0;
   --color-primary-container: #d3e3fd;
+  --color-primary-container-soft: #dfe9f8;
+  --color-primary-soft: #f5f8fe;
+  --color-primary-border: #9bbcf3;
+  --color-primary-tonal: #7ca8ef;
   --color-text-primary: #1f1f1f;
-  --color-text-secondary: #5f6368;
-  --color-text-tertiary: #80868b;
+  --color-text-secondary: #4d5156;
+  --color-text-tertiary: #5f6368;
   --color-border: #dadce0;
-  --color-success: #137333;
+  --color-border-card: #d9e0ea;
+  --color-border-subtle: #dfe3e8;
+  --color-border-strong: #c8cdd7;
+  --color-success: #188038;
   --color-success-container: #c4eed0;
-  --color-warning: #b06000;
+  --color-success-border: #b7e4c7;
+  --color-warning: #f9ab00;
   --color-warning-container: #ffe1b3;
-  --color-error: #b3261e;
+  --color-warning-border: #fbbc04;
+  --color-error: #d93025;
   --color-error-container: #f9dedc;
+  --color-error-border: #f5c6c2;
   --color-info: #0b57d0;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-text-disabled: #b0b7c7;
+  --color-overlay-soft: rgb(0 0 0 / 5%);
+  --color-overlay: rgb(0 0 0 / 45%);
+  --color-overlay-strong: rgb(0 0 0 / 85%);
+  --color-primary-shadow: rgb(11 87 208 / 18%);
+  --color-primary-shadow-soft: rgb(11 87 208 / 12%);
+  --color-error-shadow: rgb(179 38 30 / 25%);
+  --color-shadow-resting: rgb(31 35 40 / 5%);
+  --color-shadow-hover: rgb(60 64 67 / 10%);
+  --color-shadow-primary: rgb(66 133 244 / 13%);
+  --color-white-alpha-15: rgb(255 255 255 / 15%);
+  --color-white-alpha-30: rgb(255 255 255 / 30%);
+  --color-white-alpha-65: rgb(255 255 255 / 65%);
+  --color-white-alpha-75: rgb(255 255 255 / 75%);
+  --color-white-alpha-88: rgb(255 255 255 / 88%);
+  --color-white-alpha-90: rgb(255 255 255 / 90%);
+  --color-white-alpha-92: rgb(255 255 255 / 92%);
+  --color-accent-purple: #6f42c1;
+  --color-accent-purple-container: #f8e8fa;
+  --color-accent-blue-muted: #557aa6;
+  --color-accent-blue-soft: #b8cbe3;
+  --color-accent-green-muted: #668473;
+  --color-accent-green-soft: #c4d8ca;
+  --color-accent-sand: #9a755d;
+  --color-accent-sand-soft: #ead2bf;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -27,16 +68,50 @@
   --space-8: 40px;
   --space-9: 48px;
   --space-10: 64px;
+  --font-family-base:
+    Inter, 'Google Sans', 'Noto Sans SC', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  --font-size-micro: 10px;
+  --font-size-caption: 11px;
+  --font-size-label: 12px;
+  --font-size-body-sm: 13px;
+  --font-size-body: 14px;
+  --font-size-lg: 16px;
+  --font-size-section-title: 18px;
+  --font-size-title: 20px;
+  --font-size-heading: 24px;
+  --font-size-display: 32px;
+  --font-size-page-title: 34px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-heavy: 800;
+  --line-height-tight: 1.25;
+  --line-height-compact: 1.4;
+  --line-height-heading: 1.35;
+  --line-height-body: 1.6;
+  --line-height-relaxed: 1.7;
   --radius-control: 10px;
+  --radius-card-sm: 14px;
   --radius-card: 16px;
   --radius-node: 18px;
   --radius-panel: 20px;
+  --radius-xl: 24px;
   --radius-pill: 999px;
+  --shadow-resting: 0 1px 2px rgb(31 35 40 / 5%);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 3%);
+  --shadow-card: 0 6px 22px rgb(60 64 67 / 8%);
+  --shadow-hover: 0 7px 18px rgb(60 64 67 / 10%);
   --shadow-float: 0 8px 24px rgba(31, 31, 31, 0.12);
   --shadow-selected: 0 0 0 3px rgba(11, 87, 208, 0.18);
   --motion-fast: 140ms;
   --motion-normal: 200ms;
   --motion-slow: 280ms;
+  --layout-sidebar-width: 248px;
+  --layout-sidebar-collapsed-width: 76px;
+  --layout-topbar-height: 68px;
+  --layout-content-max-width: 1260px;
 
   /* 兼容现有页面，迁移完成后删除。 */
   --primary: var(--color-primary);
@@ -49,19 +124,12 @@
   --border-color: var(--color-border);
   --shadow-sm: var(--shadow-float);
   --shadow-md: var(--shadow-float);
-  --radius-xl: var(--radius-panel);
   --radius-lg: var(--radius-card);
   --radius-md: var(--radius-control);
   --radius-sm: 8px;
 
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'PingFang SC',
-    'Microsoft YaHei',
-    sans-serif;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
   color: var(--color-text-primary);
   background: var(--color-bg-page);
   font-synthesis: none;
@@ -93,6 +161,14 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 a {

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Empty, Modal, Input, Form, Select, message } from 'antd'
+import { Button, Card, Modal, Input, Form, Select, message } from 'antd'
 import {
-  FolderOutlined,
   PlusOutlined,
   DeleteOutlined,
   EditOutlined,
   InboxOutlined,
+  SearchOutlined,
 } from '@ant-design/icons'
 import {
   getKnowledgeList,
@@ -15,6 +15,7 @@ import {
   updateKnowledge,
 } from '@/api/knowledge'
 import type { KnowledgeData } from '@/api/knowledge'
+import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/design-system/components'
 import { useUserStore } from '@/store/useUserStore'
 import styles from './knowledge.module.css'
 
@@ -22,22 +23,32 @@ const KnowledgeListPage = () => {
   const navigate = useNavigate()
   const [list, setList] = useState<KnowledgeData[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameTarget, setRenameTarget] = useState<KnowledgeData | null>(null)
   const [renameName, setRenameName] = useState('')
+  const [query, setQuery] = useState('')
   const [form] = Form.useForm()
   const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
   const spaceType = useUserStore((state) => state.currentSpaceType)
+  const spaceName = useUserStore((state) => state.currentSpaceName)
+  const filteredList = list.filter((item) =>
+    `${item.name} ${item.description || ''}`
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase()),
+  )
 
   const fetchList = useCallback(async () => {
     setLoading(true)
     try {
       const res = (await getKnowledgeList(spaceId)) as unknown as KnowledgeData[]
       setList(res)
-    } catch {
+      setError(null)
+    } catch (reason) {
       setList([])
+      setError(reason instanceof Error ? reason.message : '无法加载知识库')
     } finally {
       setLoading(false)
     }
@@ -101,28 +112,56 @@ const KnowledgeListPage = () => {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <FolderOutlined className={styles.headerIcon} />
-          <h1 className={styles.headerTitle}>知识库</h1>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          新建知识库
-        </Button>
+      <PageHeader
+        title="知识库"
+        description="组织共用的品牌资料、创作素材与规则中心"
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            新建知识库
+          </Button>
+        }
+      />
+
+      <div className={styles.scopeNotice}>
+        <span>{spaceName.slice(0, 1)}</span>
+        <p>
+          <b>{spaceName}的知识范围</b>
+          <small>知识库只用于当前空间创作，切换空间后会刷新可用范围。</small>
+        </p>
+      </div>
+
+      <div className={styles.toolbar}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索知识库"
+        />
+        <span>{filteredList.length} 个知识库</span>
       </div>
 
       <div className={styles.content}>
         {loading ? (
-          <div className={styles.loading}>加载中...</div>
-        ) : list.length === 0 ? (
-          <Empty description="暂无知识库" className={styles.empty}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-              新建知识库
-            </Button>
-          </Empty>
+          <LoadingState label="正在加载知识库…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => void fetchList()} />
+        ) : filteredList.length === 0 ? (
+          <EmptyState
+            description={query ? '没有匹配的知识库' : '当前空间暂无知识库'}
+            action={
+              query ? (
+                <Button onClick={() => setQuery('')}>清除搜索</Button>
+              ) : (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                  新建知识库
+                </Button>
+              )
+            }
+          />
         ) : (
           <div className={styles.cardGrid}>
-            {list.map((kb) => (
+            {filteredList.map((kb, index) => (
               <Card
                 key={kb._id}
                 className={styles.card}
@@ -146,11 +185,16 @@ const KnowledgeListPage = () => {
                   />,
                 ]}
               >
-                <Card.Meta
-                  avatar={<InboxOutlined className={styles.cardIcon} />}
-                  title={kb.name}
-                  description={kb.description || '暂无描述'}
-                />
+                <span className={`${styles.libraryCover} ${styles[`cover${index % 4}`]}`}>
+                  <InboxOutlined />
+                </span>
+                <Card.Meta title={kb.name} description={kb.description || '暂无描述'} />
+                <div className={styles.cardMeta}>
+                  <span>{kb.isRequired ? '企业规则' : '可用于创作'}</span>
+                  <span>
+                    {kb.updatedAt ? new Date(kb.updatedAt).toLocaleDateString('zh-CN') : '时间未知'}
+                  </span>
+                </div>
               </Card>
             ))}
           </div>

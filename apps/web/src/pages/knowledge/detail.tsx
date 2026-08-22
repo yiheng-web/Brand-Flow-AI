@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Card, Empty, Input, Modal, Form, Select, Tag, message, Spin } from 'antd'
+import { Button, Card, Input, Modal, Form, Select, Tag, message } from 'antd'
 import {
   ArrowLeftOutlined,
   PlusOutlined,
@@ -15,6 +15,7 @@ import {
   ingestKnowledge,
 } from '@/api/knowledge'
 import type { KnowledgeData, KnowledgeItemData } from '@/api/knowledge'
+import { EmptyState, LoadingState } from '@/design-system/components'
 import styles from './knowledge.module.css'
 
 const { TextArea } = Input
@@ -115,11 +116,8 @@ const KnowledgeDetailPage = () => {
   if (loading) {
     return (
       <div className={styles.detailWrapper}>
-        <div
-          className={styles.detailContent}
-          style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Spin tip="加载中..." />
+        <div className={styles.detailContent}>
+          <LoadingState label="正在加载知识库…" />
         </div>
       </div>
     )
@@ -129,9 +127,10 @@ const KnowledgeDetailPage = () => {
     return (
       <div className={styles.detailWrapper}>
         <div className={styles.detailContent}>
-          <Empty description="知识库不存在">
-            <Button onClick={() => navigate('/knowledge')}>返回列表</Button>
-          </Empty>
+          <EmptyState
+            description="知识库不存在或已被删除"
+            action={<Button onClick={() => navigate('/knowledge')}>返回列表</Button>}
+          />
         </div>
       </div>
     )
@@ -143,10 +142,11 @@ const KnowledgeDetailPage = () => {
         <button type="button" className={styles.backBtn} onClick={() => navigate('/knowledge')}>
           <ArrowLeftOutlined />
         </button>
-        <h2 className={styles.detailTitle}>{kb.name}</h2>
-        {kb.description && (
-          <span style={{ color: '#999', fontSize: 13, marginLeft: 8 }}>{kb.description}</span>
-        )}
+        <div className={styles.detailHeading}>
+          <span>知识库详情</span>
+          <h2 className={styles.detailTitle}>{kb.name}</h2>
+          {kb.description && <p>{kb.description}</p>}
+        </div>
         <div className={styles.detailActions}>
           <Button icon={<FileTextOutlined />} onClick={() => setIngestOpen(true)}>
             批量导入文本
@@ -159,11 +159,16 @@ const KnowledgeDetailPage = () => {
 
       <div className={styles.detailContent}>
         {items.length === 0 ? (
-          <Empty description="暂无知识项，点击上方按钮添加">
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-              新增知识项
-            </Button>
-          </Empty>
+          <div className={styles.detailEmpty}>
+            <EmptyState
+              description="暂无知识项，添加后即可用于 AI 检索"
+              action={
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                  新增知识项
+                </Button>
+              }
+            />
+          </div>
         ) : (
           <div className={styles.itemList}>
             {items.map((item) => (
@@ -186,12 +191,7 @@ const KnowledgeDetailPage = () => {
                         ? '可选参考'
                         : '推荐约束'}
                   </Tag>
-                  {item.tags?.length > 0 &&
-                    item.tags.map((tag) => (
-                      <Tag key={tag} style={{ fontSize: 11 }}>
-                        {tag}
-                      </Tag>
-                    ))}
+                  {item.tags?.length > 0 && item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
                   <span>来源: {item.sourceType === 'asset' ? '素材' : '手动'}</span>
                   <span>状态: {item.status === 'active' ? '启用' : '归档'}</span>
                   <Button
@@ -270,7 +270,7 @@ const KnowledgeDetailPage = () => {
         destroyOnClose
         width={640}
       >
-        <div style={{ marginBottom: 8, color: '#666', fontSize: 13 }}>
+        <div className={styles.modalHelp}>
           输入大段文本内容，系统会自动切分并写入向量库以便后续 AI 检索。
         </div>
         <TextArea

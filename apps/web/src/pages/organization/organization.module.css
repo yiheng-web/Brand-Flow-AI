@@ -1,0 +1,229 @@
+.page {
+  width: min(1180px, 100%);
+  min-height: calc(100vh - var(--layout-topbar-height));
+  padding: 44px 56px 70px;
+  margin: 0 auto;
+}
+
+.organizationHero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 22px;
+  margin-top: 30px;
+  background: linear-gradient(
+    135deg,
+    var(--color-primary-container-soft),
+    var(--color-bg-elevated)
+  );
+  border: 1px solid var(--color-primary-container-soft);
+  border-radius: var(--radius-panel);
+}
+
+.organizationMark {
+  display: grid;
+  flex: none;
+  width: 54px;
+  height: 54px;
+  color: var(--color-primary);
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-bold);
+  background: var(--color-primary-container);
+  border-radius: var(--radius-card-sm);
+  place-items: center;
+}
+
+.organizationHero > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.organizationHero small,
+.organizationHero p {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-micro);
+}
+
+.organizationHero h2 {
+  margin: 3px 0;
+  font-size: var(--font-size-section-title);
+}
+
+.organizationHero p {
+  margin: 0;
+}
+
+.selectorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.selectorGrid label,
+.modalForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.selectorGrid label > span,
+.modalForm label > span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+.selectorGrid :global(.ant-select),
+.modalForm :global(.ant-select) {
+  width: 100%;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 20px;
+  margin-top: 28px;
+}
+
+.panel {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.panelHeader {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.panelHeader > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.panelHeader > div > :global(.anticon) {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  color: var(--color-primary);
+  background: var(--color-primary-container-soft);
+  border-radius: var(--radius-control);
+  place-items: center;
+}
+
+.panelHeader h2,
+.panelHeader p {
+  margin: 0;
+}
+
+.panelHeader h2 {
+  font-size: var(--font-size-body);
+}
+
+.panelHeader p,
+.panelHeader > small {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-micro);
+}
+
+.memberList,
+.teamList {
+  padding: 6px 20px 12px;
+}
+
+.memberRow,
+.teamList article {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.memberRow:last-child,
+.teamList article:last-child {
+  border-bottom: 0;
+}
+
+.memberRow > div,
+.teamList article > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memberRow b,
+.teamList b {
+  overflow: hidden;
+  font-size: var(--font-size-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberRow small,
+.teamList small {
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberRow :global(.ant-tag) {
+  margin-inline-end: 0;
+}
+
+.teamList article > span {
+  display: grid;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  color: var(--color-primary);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-bold);
+  background: var(--color-bg-container);
+  border-radius: 50%;
+  place-items: center;
+}
+
+.teamList article > :global(.anticon) {
+  color: var(--color-success);
+}
+
+.modalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 32px 20px 48px;
+  }
+
+  .selectorGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .organizationHero {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
