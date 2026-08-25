@@ -46,10 +46,15 @@ import { createAuthEventSource } from '@/utils/sse'
 import FlowView from './components/FlowView'
 import ArtTextComposer from './components/ArtTextComposer'
 import BriefReviewPanel from './components/BriefReviewPanel'
-import { FLOW_NODES, type FlowNodeId, type NodeExecStatus } from './workspace.const'
+import CreativeDirectionPanel from './components/CreativeDirectionPanel'
+import {
+  FLOW_NODES,
+  getVisibleFlowNodes,
+  type FlowNodeId,
+  type NodeExecStatus,
+} from './workspace.const'
 import styles from './workspace.module.css'
 
-const NODE_ORDER = FLOW_NODES.map((node) => node.id)
 const STATUS_MAP: Record<WorkflowNodeStatus, NodeExecStatus> = {
   pending: 'pending',
   queued: 'queued',
@@ -97,6 +102,7 @@ export default function Workspace() {
   const [submitting, setSubmitting] = useState(false)
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
   const [workflowSpaceId, setWorkflowSpaceId] = useState(currentSpaceId)
+  const [needsComposition, setNeedsComposition] = useState<boolean | undefined>()
   const [awaitingAction, setAwaitingAction] = useState<string | undefined>()
   const [previewCandidateId, setPreviewCandidateId] = useState<string>('')
   const [promptOpen, setPromptOpen] = useState(false)
@@ -183,6 +189,9 @@ export default function Workspace() {
         const detail = await getWorkflowDetail(workflowId)
         setStatus(detail.workflow.status)
         setWorkflowSpaceId(detail.workflow.spaceId)
+        setNeedsComposition(
+          detail.workflow.result?.brief?.needsComposition ?? detail.workflow.needsComposition,
+        )
         setPrompt(detail.workflow.prompt)
         setResult(detail.workflow.result || null)
         setAwaitingAction(detail.workflow.awaitingAction)
@@ -215,24 +224,38 @@ export default function Workspace() {
   )
 
   const runWorkflow = useCallback(
-    async (needsComposition: boolean) => {
+    async (enableComposition: boolean) => {
       if (!workflowId || submitting) return
+      const previousNeedsComposition = needsComposition
+      setNeedsComposition(enableComposition)
+      if (!enableComposition && selectedNodeId === 'compose') setSelectedNodeId('generate')
       setSubmitting(true)
       setError(null)
       setNodeExecStatuses({ ...INITIAL_NODE_EXEC_STATUSES })
       try {
-        const workflow = await startWorkflow(workflowId, needsComposition)
+        const workflow = await startWorkflow(workflowId, enableComposition)
         setWorkflowSpaceId(workflow.spaceId)
+        setNeedsComposition(workflow.needsComposition ?? enableComposition)
         setStatus('running')
         connect(workflowId)
       } catch (reason) {
+        setNeedsComposition(previousNeedsComposition)
         setStatus('pending')
         setError(reason instanceof Error ? reason.message : '启动工作流失败')
       } finally {
         setSubmitting(false)
       }
     },
-    [connect, setError, setNodeExecStatuses, setStatus, submitting, workflowId],
+    [
+      connect,
+      needsComposition,
+      selectedNodeId,
+      setError,
+      setNodeExecStatuses,
+      setStatus,
+      submitting,
+      workflowId,
+    ],
   )
 
   const handleStart = useCallback(() => {
@@ -278,7 +301,7 @@ export default function Workspace() {
     generate?.candidates.find((candidate) => candidate.id === previewCandidateId) ||
     generate?.candidates.find((candidate) => candidate.id === generate.selectedCandidateId) ||
     generate?.candidates[0]
-  const selectDirection = async (direction: CreativeDirection) => {
+  const confirmDirection = async (direction: CreativeDirection) => {
     if (!workflowId || !result?.creativeDirection) return
     const nextCreativeDirection = {
       ...result.creativeDirection,
@@ -390,7 +413,9 @@ export default function Workspace() {
     a.download = exported.fileName
     a.click()
   }
-  const completed = NODE_ORDER.filter((id) =>
+  const visibleFlowNodes = getVisibleFlowNodes(needsComposition !== false)
+  const visibleNodeOrder = visibleFlowNodes.map((node) => node.id)
+  const completed = visibleNodeOrder.filter((id) =>
     ['done', 'skipped'].includes(nodeExecStatuses[id]),
   ).length
   const semantic: SemanticStatus =
@@ -492,7 +517,7 @@ export default function Workspace() {
         </div>
       </header>
       <nav className={styles.nodeStepper} aria-label="工作流节点">
-        {FLOW_NODES.map((node) => {
+        {visibleFlowNodes.map((node) => {
           const nodeStatus = nodeExecStatuses[node.id]
           const completedNode = ['done', 'skipped'].includes(nodeStatus)
           return (
@@ -523,6 +548,7 @@ export default function Workspace() {
               <FlowView
                 onNodeClick={(id) => setSelectedNodeId(id as FlowNodeId)}
                 nodeExecStatuses={nodeExecStatuses}
+                showCompose={needsComposition !== false}
               />
             </ReactFlowProvider>
             {selectedNodeId === 'compose' && workflowId && baseCandidate && (
@@ -551,7 +577,7 @@ export default function Workspace() {
             </div>
           </div>
           <div className={styles.inspectorContent}>
-            <Space direction="vertical" style={{ width: '100%' }}>
+            <div className={styles.inspectorPanel}>
               <StatusBadge
                 status={NODE_STATUS_MAP[nodeExecStatuses[selectedNodeId]] ?? 'unconfigured'}
               />
@@ -562,36 +588,15 @@ export default function Workspace() {
                   brief={result.brief}
                   awaitingConfirmation={awaitingAction === 'confirm_brief'}
                   onChanged={() => recover(workflowId)}
+                  onRerun={rerun}
                 />
               ) : selectedNodeId === 'creativeDirection' && result?.creativeDirection ? (
-                <Radio.Group value={result.creativeDirection.selectedDirectionId}>
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    {result.creativeDirection.directions.map((direction) => (
-                      <Card key={direction.id} size="small">
-                        <Radio
-                          value={direction.id}
-                          onChange={() => void selectDirection(direction)}
-                        >
-                          {direction.name || direction.title}
-                        </Radio>
-                        <p>{direction.concept || direction.summary}</p>
-                        <p>
-                          <strong>推荐：</strong>
-                          {direction.reason}
-                        </p>
-                        <p>
-                          <strong>风险：</strong>
-                          {direction.risk}
-                        </p>
-                        <Space wrap>
-                          {(direction.visualKeywords || [direction.visualStyle]).map((keyword) => (
-                            <Tag key={keyword}>{keyword}</Tag>
-                          ))}
-                        </Space>
-                      </Card>
-                    ))}
-                  </Space>
-                </Radio.Group>
+                <CreativeDirectionPanel
+                  key={result.creativeDirection.directions.map((direction) => direction.id).join()}
+                  creativeDirection={result.creativeDirection}
+                  awaitingConfirmation={awaitingAction === 'select_direction'}
+                  onConfirm={confirmDirection}
+                />
               ) : selectedNodeId === 'generate' && generate ? (
                 <>
                   {previewCandidate?.imageUrl && (
@@ -685,10 +690,11 @@ export default function Workspace() {
               <Button
                 onClick={() => void rerun()}
                 disabled={!workflowId || workflowStatus === 'running'}
+                className={selectedNodeId === 'brief' ? styles.hiddenAction : undefined}
               >
                 从此节点重跑
               </Button>
-            </Space>
+            </div>
           </div>
         </aside>
       </div>
@@ -699,9 +705,12 @@ export default function Workspace() {
         </div>
         <div className={styles.executionProgress}>
           <span>整体进度</span>
-          <Progress percent={Math.round((completed / FLOW_NODES.length) * 100)} showInfo={false} />
+          <Progress
+            percent={Math.round((completed / visibleFlowNodes.length) * 100)}
+            showInfo={false}
+          />
           <strong>
-            {completed}/{FLOW_NODES.length}
+            {completed}/{visibleFlowNodes.length}
           </strong>
         </div>
       </footer>

@@ -4,11 +4,14 @@ import { Button, Input, Select, Space, Switch, message } from 'antd'
 
 import { confirmBrief, regenerateBrief, updateBrief } from '@/api/workflow'
 
+import styles from './BriefReviewPanel.module.css'
+
 interface BriefReviewPanelProps {
   workflowId: string
   brief: CreativeBrief
   awaitingConfirmation: boolean
   onChanged: () => Promise<void>
+  onRerun: () => Promise<void>
 }
 
 export default function BriefReviewPanel({
@@ -16,6 +19,7 @@ export default function BriefReviewPanel({
   brief,
   awaitingConfirmation,
   onChanged,
+  onRerun,
 }: BriefReviewPanelProps) {
   const [draft, setDraft] = useState(brief)
   const [loading, setLoading] = useState(false)
@@ -32,47 +36,49 @@ export default function BriefReviewPanel({
   }
 
   return (
-    <Space orientation="vertical" style={{ width: '100%' }}>
-      <Input.TextArea
-        value={draft.normalizedIntent}
-        onChange={(event) => setDraft({ ...draft, normalizedIntent: event.target.value })}
-        autoSize={{ minRows: 3, maxRows: 6 }}
-        disabled={!awaitingConfirmation || loading}
-        aria-label="图片目标"
-      />
-      <Input
-        value={draft.targetAudience}
-        onChange={(event) => setDraft({ ...draft, targetAudience: event.target.value })}
-        placeholder="用户画像"
-        disabled={!awaitingConfirmation || loading}
-      />
-      <Input
-        value={draft.channel}
-        onChange={(event) => setDraft({ ...draft, channel: event.target.value })}
-        placeholder="使用场景"
-        disabled={!awaitingConfirmation || loading}
-      />
-      <Select
-        value={draft.outputMode}
-        onChange={(outputMode) => setDraft({ ...draft, outputMode })}
-        options={[
-          { value: 'pure_image', label: '纯图片' },
-          { value: 'graphic_design', label: '图文设计' },
-          { value: 'scene_text', label: '场景文字' },
-          { value: 'both', label: '两者都需要' },
-        ]}
-        disabled={!awaitingConfirmation || loading}
-      />
-      <Space>
-        <span>需要后续图文合成</span>
-        <Switch
-          checked={draft.needsComposition}
-          onChange={(needsComposition) => setDraft({ ...draft, needsComposition })}
+    <div className={styles.panel}>
+      <Space orientation="vertical" className={styles.fields}>
+        <Input.TextArea
+          value={draft.normalizedIntent}
+          onChange={(event) => setDraft({ ...draft, normalizedIntent: event.target.value })}
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          disabled={!awaitingConfirmation || loading}
+          aria-label="图片目标"
+        />
+        <Input
+          value={draft.targetAudience}
+          onChange={(event) => setDraft({ ...draft, targetAudience: event.target.value })}
+          placeholder="用户画像"
           disabled={!awaitingConfirmation || loading}
         />
+        <Input
+          value={draft.channel}
+          onChange={(event) => setDraft({ ...draft, channel: event.target.value })}
+          placeholder="使用场景"
+          disabled={!awaitingConfirmation || loading}
+        />
+        <Select
+          value={draft.outputMode}
+          onChange={(outputMode) => setDraft({ ...draft, outputMode })}
+          options={[
+            { value: 'pure_image', label: '纯图片' },
+            { value: 'graphic_design', label: '图文设计' },
+            { value: 'scene_text', label: '场景文字' },
+            { value: 'both', label: '两者都需要' },
+          ]}
+          disabled={!awaitingConfirmation || loading}
+        />
+        <Space>
+          <span>需要后续图文合成</span>
+          <Switch
+            checked={draft.needsComposition}
+            onChange={(needsComposition) => setDraft({ ...draft, needsComposition })}
+            disabled={!awaitingConfirmation || loading}
+          />
+        </Space>
       </Space>
       {awaitingConfirmation && (
-        <Space wrap>
+        <div className={styles.actions}>
           <Button
             type="primary"
             loading={loading}
@@ -92,8 +98,20 @@ export default function BriefReviewPanel({
           >
             重新生成
           </Button>
-        </Space>
+          <Button loading={loading} onClick={() => void execute(onRerun, '正在从需求理解节点重跑')}>
+            从此节点重跑
+          </Button>
+        </div>
       )}
-    </Space>
+      {!awaitingConfirmation && (
+        <Button
+          className={styles.rerunAction}
+          loading={loading}
+          onClick={() => void execute(onRerun, '正在从需求理解节点重跑')}
+        >
+          从此节点重跑
+        </Button>
+      )}
+    </div>
   )
 }

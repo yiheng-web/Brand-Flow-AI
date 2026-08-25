@@ -12,6 +12,9 @@
     "dev:deps:down": "node scripts/dev-deps.mjs down",
     "build:shared": "pnpm --filter @brand-flow/contracts build && pnpm --filter @brand-flow/agent build",
     "build": "turbo run build",
+    "benchmark:all": "pnpm benchmark:resume && pnpm benchmark:report",
+    "benchmark:report": "node benchmarks/generate-report.mjs",
+    "benchmark:resume": "apps\\web\\node_modules\\.bin\\vitest.cmd run --config apps/web/vitest.benchmark.config.ts",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "prepare": "husky"

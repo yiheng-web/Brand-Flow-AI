@@ -3,6 +3,7 @@ import { safeJsonParse } from '../../common'
 import {
   createSiliconFlowChatModel,
   extractChatText,
+  getSiliconFlowVisionTimeoutMs,
   prepareSiliconFlowVisionImage,
   SILICONFLOW_JSON_CALL_OPTIONS,
 } from '../../common/siliconflow-chat'
@@ -33,7 +34,10 @@ export async function evaluateCandidates(
     ],
   })
 
-  const response = await llm.invoke([message], SILICONFLOW_JSON_CALL_OPTIONS)
+  const response = await llm.invoke([message], {
+    ...SILICONFLOW_JSON_CALL_OPTIONS,
+    signal: AbortSignal.timeout(getSiliconFlowVisionTimeoutMs()),
+  })
   const raw = extractChatText(response.content)
 
   const parsed = safeJsonParse<CandidateEvaluationBatch>(raw)

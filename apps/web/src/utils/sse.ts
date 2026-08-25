@@ -17,6 +17,68 @@ interface SSEOptions {
   onError?: (error: unknown) => void
 }
 
+interface WorkflowSseParser {
+  push: (text: string) => StreamEvent[]
+  finish: (text?: string) => StreamEvent[]
+}
+
+/**
+ * 按 SSE 行协议增量解析事件，解析状态必须跨网络 chunk 保留。
+ */
+export function createWorkflowSseParser(): WorkflowSseParser {
+  let buffer = ''
+  let eventType = ''
+  let eventDataLines: string[] = []
+
+  const dispatch = (): StreamEvent[] => {
+    if (eventDataLines.length === 0) return []
+    const eventData = eventDataLines.join('\n')
+    eventDataLines = []
+    try {
+      const parsed = JSON.parse(eventData) as Record<string, unknown>
+      const event = parseWorkflowSseEvent({ ...parsed, type: eventType || parsed.type })
+      eventType = ''
+      return event ? [event as StreamEvent] : []
+    } catch {
+      eventType = ''
+      return []
+    }
+  }
+
+  const consumeLine = (rawLine: string): StreamEvent[] => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    if (line === '') return dispatch()
+    if (line.startsWith(':')) return []
+    if (line.startsWith('event:')) {
+      eventType = line.slice(6).trimStart()
+    } else if (line.startsWith('data:')) {
+      const value = line.slice(5)
+      eventDataLines.push(value.startsWith(' ') ? value.slice(1) : value)
+    }
+    return []
+  }
+
+  const push = (text: string): StreamEvent[] => {
+    buffer += text
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    return lines.flatMap(consumeLine)
+  }
+
+  return {
+    push,
+    finish: (text = '') => {
+      const events = push(text)
+      if (buffer) {
+        events.push(...consumeLine(buffer))
+        buffer = ''
+      }
+      events.push(...dispatch())
+      return events
+    },
+  }
+}
+
 export function createAuthEventSource(url: string, options?: SSEOptions): { close: () => void } {
   const controller = new AbortController()
   let closed = false
@@ -46,38 +108,17 @@ export function createAuthEventSource(url: string, options?: SSEOptions): { clos
       if (!reader) return
 
       const decoder = new TextDecoder()
-      let buffer = ''
+      const parser = createWorkflowSseParser()
 
       while (!closed) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          for (const event of parser.finish(decoder.decode())) options?.onMessage?.(event)
+          break
+        }
 
-        buffer += decoder.decode(value, { stream: true })
-
-        // 解析 SSE 格式（可能包含多条消息）
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // 最后一段可能不完整
-
-        let eventType = ''
-        let eventData = ''
-
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim()
-          } else if (line.startsWith('data: ')) {
-            eventData = line.slice(6)
-          } else if (line === '' && eventData) {
-            // 空行表示一个事件结束
-            try {
-              const parsed = JSON.parse(eventData)
-              const event = parseWorkflowSseEvent({ ...parsed, type: eventType || parsed.type })
-              if (event) options?.onMessage?.(event as StreamEvent)
-            } catch {
-              // 忽略解析失败
-            }
-            eventType = ''
-            eventData = ''
-          }
+        for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+          options?.onMessage?.(event)
         }
       }
     } catch (err: unknown) {

@@ -2369,10 +2369,23 @@
 }
 
 .inspectorContent {
+  display: flex;
   flex: 1;
   padding: 17px;
   overflow: auto;
   background: var(--color-bg-elevated);
+}
+
+.inspectorPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.hiddenAction {
+  display: none;
 }
 
 .candidateGrid {

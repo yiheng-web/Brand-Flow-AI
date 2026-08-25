@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 1,
+  "phase": "before-fix",
+  "environment": {
+    "capturedAt": "2026-08-24T14:04:17.308Z",
+    "os": "Windows_NT 10.0.26200 x64",
+    "cpu": "Intel(R) Core(TM) i7-14650HX",
+    "logicalCpuCount": 24,
+    "ramGiB": 15.78,
+    "node": "v22.19.0",
+    "packageManager": "pnpm@10.29.3",
+    "browser": "未使用浏览器；SSE 使用 Node 22 fetch/ReadableStream",
+    "benchmarkCommitHash": "272b22f4b4c488d07a85ab5b16a29dd1c65d0508",
+    "branch": "benchmark/resume-performance"
+  },
+  "methodology": {
+    "warmupRuns": 3,
+    "measuredRuns": 20,
+    "percentile": "nearest-rank p95",
+    "standardDeviation": "population",
+    "randomization": "LCG seeded random",
+    "externalServices": "none"
+  },
+  "benchmarks": {
+    "agentStreamingTtfc": [
+      {
+        "durationMs": 4000,
+        "firstContentTargetMs": 400,
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "executionModel": "23 个本地并发连接，共享同一 Mock Server",
+        "streamingTtfcMs": {
+          "mean": 442.3485,
+          "median": 468.252,
+          "p95": 489.9562,
+          "min": 352.777,
+          "max": 512.3073,
+          "standardDeviation": 49.508
+        },
+        "nonStreamingVisibleMs": {
+          "mean": 4028.6422,
+          "median": 4028.0107,
+          "p95": 4029.9763,
+          "min": 4027.8983,
+          "max": 4030.2418,
+          "standardDeviation": 0.863
+        },
+        "medianWaitingReductionPercent": 88.3751
+      },
+      {
+        "durationMs": 8000,
+        "firstContentTargetMs": 600,
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "executionModel": "23 个本地并发连接，共享同一 Mock Server",
+        "streamingTtfcMs": {
+          "mean": 611.8975,
+          "median": 622.6076,
+          "p95": 696.1774,
+          "min": 533.4335,
+          "max": 696.4956,
+          "standardDeviation": 54.9132
+        },
+        "nonStreamingVisibleMs": {
+          "mean": 8020.3375,
+          "median": 8020.3399,
+          "p95": 8020.434,
+          "min": 8020.2348,
+          "max": 8020.4383,
+          "standardDeviation": 0.0666
+        },
+        "medianWaitingReductionPercent": 92.2371
+      },
+      {
+        "durationMs": 12000,
+        "firstContentTargetMs": 750,
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "executionModel": "23 个本地并发连接，共享同一 Mock Server",
+        "streamingTtfcMs": {
+          "mean": 763.3421,
+          "median": 772.3991,
+          "p95": 838.2935,
+          "min": 689.7582,
+          "max": 838.6514,
+          "standardDeviation": 43.5482
+        },
+        "nonStreamingVisibleMs": {
+          "mean": 12011.6081,
+          "median": 12011.7276,
+          "p95": 12011.9576,
+          "min": 12010.9454,
+          "max": 12011.9728,
+          "standardDeviation": 0.3383
+        },
+        "medianWaitingReductionPercent": 93.5696
+      }
+    ],
+    "sseBoundaryRobustness": {
+      "cases": {
+        "split-json": {
+          "expectedEvents": 1,
+          "legacyEvents": 0,
+          "currentEvents": 0,
+          "legacyPass": false,
+          "currentPass": false,
+          "chineseContentMatches": true,
+          "legacyErrors": 0,
+          "currentErrors": 0
+        },
+        "merged-events": {
+          "expectedEvents": 2,
+          "legacyEvents": 2,
+          "currentEvents": 2,
+          "legacyPass": true,
+          "currentPass": true,
+          "chineseContentMatches": true,
+          "legacyErrors": 0,
+          "currentErrors": 0
+        },
+        "utf8-split": {
+          "expectedEvents": 1,
+          "legacyEvents": 1,
+          "currentEvents": 1,
+          "legacyPass": true,
+          "currentPass": true,
+          "chineseContentMatches": true,
+          "legacyErrors": 0,
+          "currentErrors": 0
+        },
+        "eof-no-newline": {
+          "expectedEvents": 1,
+          "legacyEvents": 0,
+          "currentEvents": 0,
+          "legacyPass": false,
+          "currentPass": false,
+          "chineseContentMatches": true,
+          "legacyErrors": 0,
+          "currentErrors": 0
+        },
+        "empty-lines": {
+          "expectedEvents": 1,
+          "legacyEvents": 1,
+          "currentEvents": 1,
+          "legacyPass": true,
+          "currentPass": true,
+          "chineseContentMatches": true,
+          "legacyErrors": 0,
+          "currentErrors": 0
+        },
+        "malformed": {
+          "expectedEvents": 0,
+          "legacyEvents": 0,
+          "currentEvents": 0,
+          "legacyPass": true,
+          "currentPass": true,
+          "chineseContentMatches": true,
+          "legacyErrors": 0,
+          "currentErrors": 0
+        }
+      },
+      "legacyPassed": 4,
+      "currentPassed": 4,
+      "totalCases": 6
+    },
+    "stopLateEventSuppression": {
+      "seededRandomStops": 100,
+      "successfulSuppressions": 100,
+      "successRatePercent": 100,
+      "lateEventsAfterStop": 0,
+      "deliveredBeforeStop": 0
+    },
+    "structuredEventParser": [
+      {
+        "datasetSize": 100,
+        "repeatsPerSample": 10,
+        "eventsPerSample": 1000,
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "totalTimeMs": {
+          "mean": 0.0868,
+          "median": 0.0932,
+          "p95": 0.1547,
+          "min": 0.0421,
+          "max": 0.2054,
+          "standardDeviation": 0.0462
+        },
+        "medianMicrosecondsPerEvent": 0.0932,
+        "expectedAccepted": 600,
+        "observedAccepted": 800,
+        "invalidEventsRejected": false
+      },
+      {
+        "datasetSize": 1000,
+        "repeatsPerSample": 1,
+        "eventsPerSample": 1000,
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "totalTimeMs": {
+          "mean": 0.0492,
+          "median": 0.0502,
+          "p95": 0.0553,
+          "min": 0.0416,
+          "max": 0.0569,
+          "standardDeviation": 0.0045
+        },
+        "medianMicrosecondsPerEvent": 0.0502,
+        "expectedAccepted": 600,
+        "observedAccepted": 800,
+        "invalidEventsRejected": false
+      },
+      {
+        "datasetSize": 10000,
+        "repeatsPerSample": 1,
+        "eventsPerSample": 10000,
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "totalTimeMs": {
+          "mean": 0.5371,
+          "median": 0.4493,
+          "p95": 0.6927,
+          "min": 0.4103,
+          "max": 1.6702,
+          "standardDeviation": 0.269
+        },
+        "medianMicrosecondsPerEvent": 0.0449,
+        "expectedAccepted": 6000,
+        "observedAccepted": 8000,
+        "invalidEventsRejected": false
+      }
+    ],
+    "signedUrlConcurrency": [
+      {
+        "requestCount": 5,
+        "mockLatency": "50ms ± 10ms，固定 seed",
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "serialMs": {
+          "mean": 281.4514,
+          "median": 283.4753,
+          "p95": 301.683,
+          "min": 252.8933,
+          "max": 302.1902,
+          "standardDeviation": 13.0249
+        },
+        "currentPromiseAllMs": {
+          "mean": 63.8347,
+          "median": 63.4563,
+          "p95": 70.0388,
+          "min": 54.0796,
+          "max": 72.3495,
+          "standardDeviation": 4.2329
+        },
+        "limit5PoolMs": {
+          "mean": 66.2287,
+          "median": 64.2166,
+          "p95": 77.9637,
+          "min": 54.6478,
+          "max": 84.9781,
+          "standardDeviation": 6.4304
+        },
+        "currentMedianReductionPercent": 77.6149,
+        "poolMedianReductionPercent": 77.3467
+      },
+      {
+        "requestCount": 10,
+        "mockLatency": "50ms ± 10ms，固定 seed",
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "serialMs": {
+          "mean": 571.6796,
+          "median": 568.663,
+          "p95": 611.4773,
+          "min": 536.5969,
+          "max": 628.4966,
+          "standardDeviation": 22.8153
+        },
+        "currentPromiseAllMs": {
+          "mean": 65.8257,
+          "median": 63.3558,
+          "p95": 78.3745,
+          "min": 54.8102,
+          "max": 82.1187,
+          "standardDeviation": 7.268
+        },
+        "limit5PoolMs": {
+          "mean": 125.2922,
+          "median": 124.0897,
+          "p95": 139.2142,
+          "min": 109.8706,
+          "max": 146.1063,
+          "standardDeviation": 8.8873
+        },
+        "currentMedianReductionPercent": 88.8588,
+        "poolMedianReductionPercent": 78.1787
+      },
+      {
+        "requestCount": 20,
+        "mockLatency": "50ms ± 10ms，固定 seed",
+        "warmupRuns": 3,
+        "measuredRuns": 20,
+        "serialMs": {
+          "mean": 1148.9861,
+          "median": 1148.6931,
+          "p95": 1196.659,
+          "min": 1090.1778,
+          "max": 1202.9569,
+          "standardDeviation": 31.0816
+        },
+        "currentPromiseAllMs": {
+          "mean": 65.1497,
+          "median": 64.3385,
+          "p95": 68.4437,
+          "min": 60.8062,
+          "max": 79.5575,
+          "standardDeviation": 3.8983
+        },
+        "limit5PoolMs": {
+          "mean": 251.6653,
+          "median": 251.2545,
+          "p95": 268.7219,
+          "min": 236.3883,
+          "max": 269.4269,
+          "standardDeviation": 9.1655
+        },
+        "currentMedianReductionPercent": 94.399,
+        "poolMedianReductionPercent": 78.1269
+      }
+    ]
+  }
+}

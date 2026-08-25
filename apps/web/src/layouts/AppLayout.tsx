@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ApartmentOutlined,
   DatabaseOutlined,
   FolderOpenOutlined,
   HomeOutlined,
@@ -24,6 +25,7 @@ interface NavigationItem {
 
 const NAVIGATION_ITEMS: NavigationItem[] = [
   { key: 'home', label: '首页', path: '/home', icon: <HomeOutlined /> },
+  { key: 'workspace', label: '节点流', path: '/workspace', icon: <ApartmentOutlined /> },
   { key: 'knowledge', label: '知识库', path: '/knowledge', icon: <DatabaseOutlined /> },
   { key: 'brand', label: '品牌资产', path: '/brand', icon: <FolderOpenOutlined /> },
   { key: 'works', label: '作品空间', path: '/works', icon: <PictureOutlined /> },

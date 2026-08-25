@@ -11,6 +11,18 @@ export interface SiliconFlowChatSettings {
   embeddingModel: string
 }
 
+const DEFAULT_SILICONFLOW_VISION_TIMEOUT_MS = 60_000
+
+export function getSiliconFlowVisionTimeoutMs(): number {
+  const raw = process.env.SILICONFLOW_VISION_TIMEOUT_MS?.trim()
+  if (!raw) return DEFAULT_SILICONFLOW_VISION_TIMEOUT_MS
+  const timeoutMs = Number(raw)
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error('SILICONFLOW_VISION_TIMEOUT_MS 必须是正数')
+  }
+  return timeoutMs
+}
+
 export const SILICONFLOW_JSON_CALL_OPTIONS = {
   response_format: { type: 'json_object' as const },
 }

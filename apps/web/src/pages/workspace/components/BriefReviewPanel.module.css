@@ -1,0 +1,36 @@
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fields {
+  width: 100%;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 16px;
+  margin-top: auto;
+}
+
+.actions :global(.ant-btn) {
+  min-width: 0;
+  height: auto;
+  min-height: 32px;
+  padding-inline: 6px;
+  white-space: normal;
+}
+
+.rerunAction {
+  margin-top: auto;
+}
+
+@media (max-width: 1100px) {
+  .actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

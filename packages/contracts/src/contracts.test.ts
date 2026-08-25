@@ -74,6 +74,30 @@ test('SSE 解析支持等待用户的可恢复状态', () => {
   assert.equal(event?.type, 'workflow_awaiting_user')
 })
 
+test('SSE 解析拒绝未知事件和缺少必填字段的事件', () => {
+  const timestamp = new Date().toISOString()
+  assert.equal(
+    parseWorkflowSseEvent({
+      type: 'UNKNOWN_EVENT',
+      workflowId: 'wf-1',
+      nodeId: 'node-1',
+      nodeType: 'generate',
+      timestamp,
+    }),
+    null,
+  )
+  assert.equal(
+    parseWorkflowSseEvent({
+      type: 'node_completed',
+      workflowId: 'wf-1',
+      nodeId: 'node-1',
+      nodeType: 'generate',
+      timestamp,
+    }),
+    null,
+  )
+})
+
 test('旧创意方向可以归一化为增强契约', () => {
   const direction = normalizeCreativeDirection({
     id: 'legacy',

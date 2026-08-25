@@ -36,6 +36,7 @@ describe('BriefReviewPanel', () => {
         brief={brief}
         awaitingConfirmation
         onChanged={onChanged}
+        onRerun={vi.fn().mockResolvedValue(undefined)}
       />,
     )
     await userEvent.click(screen.getByText('确认 Brief'))
@@ -43,6 +44,7 @@ describe('BriefReviewPanel', () => {
     expect(onChanged).toHaveBeenCalled()
     expect(screen.getByText('修改并确认')).toBeTruthy()
     expect(screen.getByText('重新生成')).toBeTruthy()
+    expect(screen.getByText('从此节点重跑')).toBeTruthy()
   })
 
   it('非等待态不允许再次提交 Brief', () => {
@@ -52,6 +54,7 @@ describe('BriefReviewPanel', () => {
         brief={brief}
         awaitingConfirmation={false}
         onChanged={vi.fn()}
+        onRerun={vi.fn().mockResolvedValue(undefined)}
       />,
     )
     expect(screen.queryByText('确认 Brief')).toBeNull()

@@ -486,22 +486,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function hasWorkflowError(value: unknown, requireRetryable: boolean): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.code === 'string' &&
+    typeof value.message === 'string' &&
+    (!requireRetryable || typeof value.retryable === 'boolean')
+  )
+}
+
 export function parseWorkflowSseEvent(value: unknown): WorkflowSseEvent | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null
   if (typeof value.workflowId !== 'string' || typeof value.timestamp !== 'string') return null
 
-  const workflowEvents = [
-    'workflow_started',
-    'workflow_awaiting_user',
-    'workflow_completed',
-    'workflow_failed',
-  ]
-  if (workflowEvents.includes(value.type)) return value as unknown as WorkflowSseEvent
+  if (value.type === 'workflow_started') return value as unknown as WorkflowSseEvent
+  if (value.type === 'workflow_awaiting_user') {
+    const actions: readonly WorkflowAwaitingAction[] = [
+      'confirm_brief',
+      'select_direction',
+      'select_candidate',
+      'enter_art_text',
+      'select_art_text',
+      'select_art_text_region',
+    ]
+    return typeof value.action === 'string' &&
+      actions.includes(value.action as WorkflowAwaitingAction)
+      ? (value as unknown as WorkflowSseEvent)
+      : null
+  }
+  if (value.type === 'workflow_completed') {
+    return 'result' in value ? (value as unknown as WorkflowSseEvent) : null
+  }
+  if (value.type === 'workflow_failed') {
+    return hasWorkflowError(value.error, false) ? (value as unknown as WorkflowSseEvent) : null
+  }
 
   const nodeType =
     typeof value.nodeType === 'string' ? normalizeWorkflowNodeType(value.nodeType) : undefined
   if (!nodeType || typeof value.nodeId !== 'string') return null
-  return { ...value, nodeType } as unknown as WorkflowSseEvent
+  const normalized = { ...value, nodeType }
+  if (value.type === 'node_queued' || value.type === 'node_started') {
+    return normalized as unknown as WorkflowSseEvent
+  }
+  if (value.type === 'node_completed') {
+    return 'output' in value ? (normalized as unknown as WorkflowSseEvent) : null
+  }
+  if (value.type === 'node_skipped') {
+    return typeof value.reason === 'string' ? (normalized as unknown as WorkflowSseEvent) : null
+  }
+  if (value.type === 'node_failed') {
+    return hasWorkflowError(value.error, true) ? (normalized as unknown as WorkflowSseEvent) : null
+  }
+  return null
 }
 
 export function isNormalizedArtTextRegion(value: ArtTextRegion): boolean {

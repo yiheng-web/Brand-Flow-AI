@@ -333,7 +333,7 @@ export class WorkflowProcessor extends WorkerHost {
         await this.executeWithRetry(
           nodeType,
           () => evaluateCandidateImages(candidates, result.brandConstraint!),
-          3,
+          2,
         ),
       )
       const generate = {

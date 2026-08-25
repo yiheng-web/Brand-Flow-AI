@@ -5,6 +5,7 @@ import {
   createSiliconFlowChatModel,
   extractChatText,
   getSiliconFlowChatSettings,
+  getSiliconFlowVisionTimeoutMs,
   prepareSiliconFlowVisionImage,
 } from './siliconflow-chat'
 
@@ -40,6 +41,21 @@ test('SiliconFlow 文本与视觉默认使用 Kimi K2.6', () => {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
+  }
+})
+
+test('视觉质检请求默认在 60 秒内结束并校验自定义配置', () => {
+  const previous = process.env.SILICONFLOW_VISION_TIMEOUT_MS
+  delete process.env.SILICONFLOW_VISION_TIMEOUT_MS
+  try {
+    assert.equal(getSiliconFlowVisionTimeoutMs(), 60_000)
+    process.env.SILICONFLOW_VISION_TIMEOUT_MS = '45000'
+    assert.equal(getSiliconFlowVisionTimeoutMs(), 45_000)
+    process.env.SILICONFLOW_VISION_TIMEOUT_MS = 'invalid'
+    assert.throws(() => getSiliconFlowVisionTimeoutMs(), /必须是正数/)
+  } finally {
+    if (previous === undefined) delete process.env.SILICONFLOW_VISION_TIMEOUT_MS
+    else process.env.SILICONFLOW_VISION_TIMEOUT_MS = previous
   }
 })
 

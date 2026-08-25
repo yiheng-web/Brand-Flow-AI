@@ -26,7 +26,7 @@ import { IconButton } from '@/design-system/components'
 import { colorTokens } from '@/design-system/tokens'
 
 import {
-  FLOW_NODES,
+  getVisibleFlowNodes,
   type FlowNodeId,
   type LayoutDir,
   type NodeExecStatus,
@@ -42,8 +42,9 @@ const NODE_GAP = 56
 function buildNodes(
   direction: LayoutDir,
   execStatuses?: Record<FlowNodeId, NodeExecStatus>,
+  showCompose = true,
 ): Node[] {
-  return FLOW_NODES.map((node, index) => ({
+  return getVisibleFlowNodes(showCompose).map((node, index) => ({
     id: node.id,
     type: 'flowNode',
     position:
@@ -58,8 +59,9 @@ function buildNodes(
   }))
 }
 
-function buildEdges(execStatuses?: Record<FlowNodeId, NodeExecStatus>): Edge[] {
-  return FLOW_NODES.slice(0, -1).map((node, index) => {
+function buildEdges(execStatuses?: Record<FlowNodeId, NodeExecStatus>, showCompose = true): Edge[] {
+  const visibleNodes = getVisibleFlowNodes(showCompose)
+  return visibleNodes.slice(0, -1).map((node, index) => {
     const status = execStatuses?.[node.id] ?? node.execStatus
     const isRunningPath = status === 'running'
     const isFailedPath = status === 'failed'
@@ -70,9 +72,9 @@ function buildEdges(execStatuses?: Record<FlowNodeId, NodeExecStatus>): Edge[] {
         : colorTokens.border
 
     return {
-      id: `e-${node.id}-${FLOW_NODES[index + 1].id}`,
+      id: `e-${node.id}-${visibleNodes[index + 1].id}`,
       source: node.id,
-      target: FLOW_NODES[index + 1].id,
+      target: visibleNodes[index + 1].id,
       type: 'smoothstep',
       animated: isRunningPath,
       style: { stroke: color, strokeWidth: isRunningPath || isFailedPath ? 2 : 1.5 },
@@ -84,12 +86,15 @@ function buildEdges(execStatuses?: Record<FlowNodeId, NodeExecStatus>): Edge[] {
 interface FlowViewProps {
   onNodeClick?: (nodeId: string) => void
   nodeExecStatuses?: Record<FlowNodeId, NodeExecStatus>
+  showCompose?: boolean
 }
 
-const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
+const FlowView = ({ onNodeClick, nodeExecStatuses, showCompose = true }: FlowViewProps) => {
   const [layoutDir, setLayoutDir] = useState<LayoutDir>('horizontal')
-  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes('horizontal', nodeExecStatuses))
-  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges(nodeExecStatuses))
+  const [nodes, setNodes, onNodesChange] = useNodesState(
+    buildNodes('horizontal', nodeExecStatuses, showCompose),
+  )
+  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges(nodeExecStatuses, showCompose))
   const [showMiniMap, setShowMiniMap] = useState(true)
   const [zoom, setZoom] = useState(0.78)
   const { fitView, zoomIn, zoomOut } = useReactFlow()
@@ -97,25 +102,34 @@ const FlowView = ({ onNodeClick, nodeExecStatuses }: FlowViewProps) => {
   const toggleLayout = useCallback(() => {
     setLayoutDir((previous) => {
       const next = previous === 'vertical' ? 'horizontal' : 'vertical'
-      setNodes(buildNodes(next, nodeExecStatuses))
+      setNodes(buildNodes(next, nodeExecStatuses, showCompose))
       window.requestAnimationFrame(() => fitView({ padding: 0.22, duration: 240 }))
       return next
     })
-  }, [fitView, nodeExecStatuses, setNodes])
+  }, [fitView, nodeExecStatuses, setNodes, showCompose])
 
   useEffect(() => {
     if (!nodeExecStatuses) return
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => ({
+    const visibleNodeIds = getVisibleFlowNodes(showCompose).map((node) => node.id)
+    setNodes((currentNodes) => {
+      const visibilityChanged =
+        currentNodes.length !== visibleNodeIds.length ||
+        currentNodes.some((node, index) => node.id !== visibleNodeIds[index])
+      if (visibilityChanged) return buildNodes(layoutDir, nodeExecStatuses, showCompose)
+      return currentNodes.map((node) => ({
         ...node,
         data: {
           ...node.data,
           execStatus: nodeExecStatuses[node.id as FlowNodeId] ?? node.data.execStatus,
         },
-      })),
-    )
-    setEdges(buildEdges(nodeExecStatuses))
-  }, [nodeExecStatuses, setEdges, setNodes])
+      }))
+    })
+    setEdges(buildEdges(nodeExecStatuses, showCompose))
+  }, [layoutDir, nodeExecStatuses, setEdges, setNodes, showCompose])
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => fitView({ padding: 0.22, duration: 240 }))
+  }, [fitView, showCompose])
 
   const handleConnect = useCallback(
     (connection: Connection) => {

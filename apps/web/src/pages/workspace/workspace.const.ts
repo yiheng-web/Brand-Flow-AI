@@ -79,4 +79,16 @@ export const FLOW_NODES: FlowNodeDefinition[] = [
     subtitle: '组合文字、Logo 与版式',
     execStatus: 'pending',
   },
+  {
+    id: 'finalEvaluation',
+    type: 'output',
+    step: '7',
+    title: '最终品牌质检',
+    subtitle: '检查品牌一致性与交付质量',
+    execStatus: 'pending',
+  },
 ]
+
+export function getVisibleFlowNodes(showCompose = true): FlowNodeDefinition[] {
+  return FLOW_NODES.filter((node) => showCompose || node.id !== 'compose')
+}

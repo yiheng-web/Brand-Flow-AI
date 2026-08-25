@@ -1,0 +1,21 @@
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.panel > :global(.ant-radio-group) {
+  min-height: 0;
+  overflow: auto;
+}
+
+.options {
+  width: 100%;
+}
+
+.panel > :global(.ant-btn) {
+  flex: none;
+  margin-top: auto;
+}
