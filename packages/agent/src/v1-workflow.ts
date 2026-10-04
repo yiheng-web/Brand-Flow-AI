@@ -17,7 +17,7 @@ import type {
   BrandRequirementInput,
   OptimizationFeedback,
 } from '@brand-flow/contracts'
-import { normalizeCreativeDirection } from '@brand-flow/contracts'
+import { normalizeCreativeDirection, splitBrandConstraintPackage } from '@brand-flow/contracts'
 
 import { safeJsonParse } from './common'
 import { evaluateCandidates, runFinalEvaluation } from './ai-logic/evaluate'
@@ -46,6 +46,101 @@ function normalizeStringArray(value: unknown): string[] {
 
 function hasCompositionIntent(prompt: string): boolean {
   return /海报|广告|封面|宣传|电商|标题|副标题|文案|logo|slogan|cta|加字|写着/i.test(prompt)
+}
+
+// 超长规则逐批规划与质检；原始包留在 Workflow，任何一批不通过都不能视为通过。
+export async function createCreativeDirections(
+  brief: CreativeBrief,
+  constraints: BrandConstraintPackage,
+): Promise<CreativeDirection[]> {
+  let directions: CreativeDirection[] | undefined
+  for (const batch of splitBrandConstraintPackage(constraints))
+    directions = await createCreativeDirectionsForBatch(brief, batch, directions)
+  return directions ?? createDirectionFallbacks(brief)
+}
+
+export async function createPromptPlan(
+  brief: CreativeBrief,
+  direction: CreativeDirection,
+  constraints: BrandConstraintPackage,
+): Promise<PromptPlan> {
+  let prompt: PromptPlan | undefined
+  for (const batch of splitBrandConstraintPackage(constraints))
+    prompt = await createPromptPlanForBatch(brief, direction, batch, prompt)
+  if (!prompt) throw new Error('品牌规则分批规划未返回 Prompt')
+  return prompt
+}
+
+export async function revisePromptPlan(
+  brief: CreativeBrief,
+  direction: CreativeDirection,
+  constraints: BrandConstraintPackage,
+  previousPrompt: PromptPlan,
+  feedback: OptimizationFeedback,
+): Promise<PromptPlan> {
+  let prompt = previousPrompt
+  for (const batch of splitBrandConstraintPackage(constraints))
+    prompt = await revisePromptPlanForBatch(brief, direction, batch, prompt, feedback)
+  return prompt
+}
+
+export async function evaluateCandidateImages(
+  candidates: CandidateImage[],
+  constraints: BrandConstraintPackage,
+): Promise<CandidateEvaluation[]> {
+  const groups: CandidateEvaluation[][] = []
+  for (const batch of splitBrandConstraintPackage(constraints))
+    groups.push(await evaluateCandidateImagesForBatch(candidates, batch))
+  if (groups.length === 1) return groups[0]
+  const merged = groups[0].map((evaluation) => {
+    const matches = groups.map((group) => {
+      const match = group.find((entry) => entry.candidateId === evaluation.candidateId)
+      if (!match) throw new Error('分批候选质检缺少对应候选图')
+      return match
+    })
+    return {
+      ...evaluation,
+      totalScore: Math.min(...matches.map((entry) => entry.totalScore)),
+      scores: {
+        brandConsistency: Math.min(...matches.map((entry) => entry.scores.brandConsistency)),
+        promptAlignment: Math.min(...matches.map((entry) => entry.scores.promptAlignment)),
+        composition: Math.min(...matches.map((entry) => entry.scores.composition)),
+        visualQuality: Math.min(...matches.map((entry) => entry.scores.visualQuality)),
+      },
+      issues: matches.flatMap((entry) => entry.issues),
+      recommended: false,
+      recommendationReason: '按全部规则批次的最低分排序',
+    }
+  })
+  const best = [...merged].sort((a, b) => b.totalScore - a.totalScore)[0]
+  return merged.map((entry) => ({ ...entry, recommended: entry.candidateId === best.candidateId }))
+}
+
+export async function evaluateFinalImage(
+  imageUrl: string,
+  constraints: BrandConstraintPackage,
+  brief: CreativeBrief,
+  composition?: CompositionOutput,
+): Promise<FinalEvaluationResult> {
+  const results: FinalEvaluationResult[] = []
+  for (const batch of splitBrandConstraintPackage(constraints))
+    results.push(await evaluateFinalImageForBatch(imageUrl, batch, brief, composition))
+  if (results.length === 1) return results[0]
+  return {
+    ...results[0],
+    passed: results.every((result) => result.passed),
+    totalScore: Math.min(...results.map((result) => result.totalScore)),
+    scores: {
+      brandConsistency: Math.min(...results.map((result) => result.scores.brandConsistency)),
+      requirementAlignment: Math.min(
+        ...results.map((result) => result.scores.requirementAlignment),
+      ),
+      composition: Math.min(...results.map((result) => result.scores.composition)),
+      visualQuality: Math.min(...results.map((result) => result.scores.visualQuality)),
+    },
+    deductions: results.flatMap((result) => result.deductions),
+    suggestions: [...new Set(results.flatMap((result) => result.suggestions))],
+  }
 }
 
 export function createCreativeBriefFallback(originalRequest: string): CreativeBrief {
@@ -227,14 +322,22 @@ export function ensureThreeDirections(
   return createDirectionFallbacks(brief)
 }
 
-export async function createCreativeDirections(
+async function createCreativeDirectionsForBatch(
   brief: CreativeBrief,
   constraints: BrandConstraintPackage,
+  previousDirections?: CreativeDirection[],
 ): Promise<CreativeDirection[]> {
   if (isDemoMode()) return createDirectionFallbacks(brief)
   const result = await invokeJson<{ directions: CreativeDirection[] } | CreativeDirection[]>(
     '生成恰好 3 个明显不同的 CreativeDirection。返回格式必须是 {"directions":[...]}；每个方案必须包含字符串字段 id、name、concept、reason、risk、title、summary、visualStyle、composition、colorStrategy、visualFocus、mood、copyStyle，以及字符串数组 visualKeywords、applicableScenes、channels。三个方案的 visualStyle、composition、colorStrategy 必须分别互不相同。',
-    { brief, constraints },
+    {
+      brief,
+      constraints,
+      previousDirections,
+      batchInstruction: previousDirections
+        ? '保留此前方案中的品牌要求，并应用本批全部规则'
+        : undefined,
+    },
   )
   const directions = Array.isArray(result) ? result : result?.directions
   const requiredStringFields: Array<keyof CreativeDirection> = [
@@ -318,15 +421,29 @@ export function createPromptPlanFallback(
   }
 }
 
-export async function createPromptPlan(
+async function createPromptPlanForBatch(
   brief: CreativeBrief,
   direction: CreativeDirection,
   constraints: BrandConstraintPackage,
+  previousPrompt?: PromptPlan,
 ): Promise<PromptPlan> {
-  if (isDemoMode()) return createPromptPlanFallback(brief, direction, constraints)
+  if (isDemoMode()) {
+    const prompt = createPromptPlanFallback(brief, direction, constraints)
+    return previousPrompt
+      ? { ...prompt, imagePrompt: `${previousPrompt.imagePrompt}；${prompt.imagePrompt}` }
+      : prompt
+  }
   const result = await invokeJson<PromptPlan>(
     '生成 PromptPlan。needsComposition=false 时不得返回 layoutPlan；needsComposition=true 时必须给出文字安全区，且 imagePrompt 不得要求生图模型直接生成最终标题或 Logo。',
-    { brief, direction, constraints },
+    {
+      brief,
+      direction,
+      constraints,
+      previousPrompt,
+      batchInstruction: previousPrompt
+        ? '必须保留此前 Prompt 中的品牌要求，并应用本批全部规则'
+        : undefined,
+    },
   )
   if (!result?.imagePrompt || (brief.needsComposition && !result.layoutPlan)) {
     throw new Error('Prompt Provider 返回的数据不完整')
@@ -339,7 +456,7 @@ export async function createPromptPlan(
   }
 }
 
-export async function revisePromptPlan(
+async function revisePromptPlanForBatch(
   brief: CreativeBrief,
   direction: CreativeDirection,
   constraints: BrandConstraintPackage,
@@ -490,7 +607,7 @@ function fallbackEvaluations(candidates: CandidateImage[]): CandidateEvaluation[
   }))
 }
 
-export async function evaluateCandidateImages(
+async function evaluateCandidateImagesForBatch(
   candidates: CandidateImage[],
   constraints: BrandConstraintPackage,
 ): Promise<CandidateEvaluation[]> {
@@ -885,7 +1002,7 @@ export function composeFinalImage(
   }
 }
 
-export async function evaluateFinalImage(
+async function evaluateFinalImageForBatch(
   imageUrl: string,
   constraints: BrandConstraintPackage,
   brief: CreativeBrief,

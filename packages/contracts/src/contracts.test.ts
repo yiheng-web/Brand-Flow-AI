@@ -8,7 +8,56 @@ import {
   parseWorkflowSseEvent,
   normalizeCreativeDirection,
   sortCandidateEvaluations,
+  parseKnowledgeImport,
+  splitBrandConstraintPackage,
 } from './index'
+
+test('文本导入保留规则正文、解析级别并拒绝空规则和超量输入', () => {
+  assert.deepEqual(
+    parseKnowledgeImport('[required] 品牌必须为蓝色\n\n参考照片\n[optional] 可用渐变'),
+    [
+      { title: '品牌必须为蓝色', content: '品牌必须为蓝色', constraintLevel: 'required' },
+      { title: '参考照片', content: '参考照片', constraintLevel: 'recommended' },
+      { title: '可用渐变', content: '可用渐变', constraintLevel: 'optional' },
+    ],
+  )
+  assert.throws(() => parseKnowledgeImport('[required]'), /1~5000/)
+  assert.throws(() => parseKnowledgeImport(Array(201).fill('规则').join('\n')), /200/)
+  assert.throws(() => parseKnowledgeImport('x'.repeat(5001)), /5000/)
+})
+
+test('超长约束分批保留全部强制规则和条目来源，包括第 31 条', () => {
+  const required = Array.from({ length: 40 }, (_, index) => ({
+    id: String(index),
+    title: `规则${index}`,
+    description: '完整正文'.repeat(100),
+    sourceKnowledgeBaseId: 'kb',
+    sourceItemId: String(index),
+  }))
+  const batches = splitBrandConstraintPackage({
+    required,
+    recommended: [],
+    optional: [],
+    sources: [],
+  })
+  assert.ok(batches.length > 1)
+  assert.deepEqual(
+    batches.flatMap((batch) => batch.required),
+    required,
+  )
+  assert.equal(batches.flatMap((batch) => batch.sources).length, 40)
+  assert.ok(batches.every((batch) => JSON.stringify(batch).length <= 12000))
+  assert.throws(
+    () =>
+      splitBrandConstraintPackage({
+        required: [{ id: 'huge', title: '过长', description: 'x'.repeat(13000) }],
+        recommended: [],
+        optional: [],
+        sources: [],
+      }),
+    /过长/,
+  )
+})
 
 test('初始化严格生成七个 V1 节点', () => {
   const nodes = createInitialWorkflowNodes()

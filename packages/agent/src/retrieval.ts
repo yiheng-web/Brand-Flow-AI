@@ -66,12 +66,26 @@ export async function ingestDocument(
   const embeddings = createSiliconFlowEmbeddings()
 
   // 5. 调用 LangChain 存入 Pinecone
-  await PineconeStore.fromDocuments(docsWithMetadata, embeddings, {
+  const store = await PineconeStore.fromExistingIndex(embeddings, {
     pineconeIndex,
     namespace: metadata.knowledgeId, // 使用知识库 ID 作为命名空间，提升后续单一库的检索效率
   })
+  await store.addDocuments(docsWithMetadata, {
+    ids:
+      typeof metadata.itemId === 'string'
+        ? docsWithMetadata.map((_, index) => `${metadata.itemId}:${index}`)
+        : undefined,
+  })
 
   return { success: true, chunks: docsWithMetadata.length, vectorized: true }
+}
+
+export async function removeKnowledgeVectors(knowledgeId: string, itemId?: string): Promise<void> {
+  if (!isVectorRetrievalEnabled()) return
+  const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY as string })
+  const namespace = pinecone.Index(process.env.PINECONE_INDEX_NAME as string).namespace(knowledgeId)
+  if (itemId) await namespace.deleteMany({ itemId })
+  else await namespace.deleteAll()
 }
 
 /**

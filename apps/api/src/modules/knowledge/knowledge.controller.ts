@@ -31,8 +31,11 @@ import {
   KnowledgeItemResponseDto,
   KnowledgeRecordResponseDto,
   KnowledgeResponseDto,
+  KnowledgeImportPreviewResponseDto,
 } from './dto/knowledge-response.dto'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
+import { randomUUID } from 'node:crypto'
+import { ConfirmKnowledgeImportDto } from './dto/knowledge.dto'
 
 interface AuthenticatedRequest {
   user: { sub: string }
@@ -90,17 +93,56 @@ export class KnowledgeController {
 
   @Post(':id/ingest')
   @ApiOperation({
-    summary: '将文本写入知识库向量索引',
-    description: '把长文本切片、Embedding 后写入 Pinecone。适合快速导入品牌规范全文。',
+    summary: '导入文本为 Mongo 知识项并按配置同步向量',
+    description: '每个非空行作为一条规则；同一文本重复提交幂等。建议先预览再确认导入。',
   })
   @ApiParam({ name: 'id', description: '知识库 ID' })
-  @ApiCreatedSuccessResponse(KnowledgeIngestResponseDto, '入库成功，返回封装后的切片数量。')
+  @ApiCreatedSuccessResponse(
+    KnowledgeIngestResponseDto,
+    '入库成功，返回 Mongo 导入数量与向量同步状态。',
+  )
   async ingest(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() ingestDto: IngestKnowledgeDto,
   ) {
     return this.knowledgeService.ingestText(req.user.sub, id, ingestDto.content)
+  }
+
+  @Post(':id/import/preview')
+  @ApiOperation({ summary: '解析文本并预览规则，不写入数据库' })
+  @ApiCreatedSuccessResponse(KnowledgeImportPreviewResponseDto)
+  async previewImport(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: IngestKnowledgeDto,
+  ) {
+    return {
+      batchId: randomUUID(),
+      items: await this.knowledgeService.previewImport(req.user.sub, id, dto.content),
+    }
+  }
+
+  @Post(':id/import')
+  @ApiOperation({ summary: '确认预览条目并幂等导入 Mongo 知识库' })
+  @ApiCreatedSuccessResponse(KnowledgeIngestResponseDto)
+  async confirmImport(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: ConfirmKnowledgeImportDto,
+  ) {
+    return this.knowledgeService.importItems(req.user.sub, id, dto.batchId, dto.items)
+  }
+
+  @Post(':id/items/:itemId/vector-sync')
+  @ApiOperation({ summary: '重试知识项语义向量同步，不重复创建 Mongo 条目' })
+  @ApiCreatedSuccessResponse(KnowledgeIngestResponseDto)
+  async retryVectorSync(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.knowledgeService.retryVectorSync(req.user.sub, id, itemId)
   }
 
   @Post(':id/items')
@@ -152,7 +194,8 @@ export class KnowledgeController {
   @Put(':id/items/:itemId')
   @ApiOperation({
     summary: '更新知识项',
-    description: '更新 KnowledgeItem。若更新 content，会重新写入向量库；旧向量清理仍属于后续增强。',
+    description:
+      '更新知识项并清理旧向量；启用时按配置同步，归档时移除向量。失败保留 Mongo 并允许重试。',
   })
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiParam({ name: 'itemId', description: '知识项 ID' })
@@ -169,7 +212,7 @@ export class KnowledgeController {
   @Delete(':id/items/:itemId')
   @ApiOperation({
     summary: '删除知识项',
-    description: '删除 KnowledgeItem 的 MongoDB 记录。底层向量清理仍属于后续增强。',
+    description: '向量模式开启时先移除对应向量，再删除知识项；向量删除失败则保留 Mongo 条目。',
   })
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiParam({ name: 'itemId', description: '知识项 ID' })
@@ -196,7 +239,7 @@ export class KnowledgeController {
   @Delete(':id')
   @ApiOperation({
     summary: '删除知识库',
-    description: '删除知识库及 MongoDB 中的知识项。Pinecone namespace 清理仍属于后续增强。',
+    description: '向量模式开启时先清理 namespace，再删除知识库及知识项。',
   })
   @ApiParam({ name: 'id', description: '知识库 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')

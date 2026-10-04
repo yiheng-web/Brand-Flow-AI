@@ -1,5 +1,11 @@
 // 知识库 API
 import apiClient from './index'
+import type {
+  KnowledgeConstraintLevel,
+  KnowledgeItemStatus,
+  KnowledgeItemSourceType,
+  KnowledgeImportItem,
+} from '@brand-flow/contracts'
 
 // 创建知识库请求参数
 export interface CreateKnowledgeParams {
@@ -40,10 +46,49 @@ export interface KnowledgeItemData {
   title: string
   content: string
   tags: string[]
-  sourceType: 'manual' | 'asset'
-  status: 'active' | 'archived'
-  constraintLevel?: 'required' | 'recommended' | 'optional'
+  sourceType: KnowledgeItemSourceType
+  status: KnowledgeItemStatus
+  constraintLevel?: KnowledgeConstraintLevel
+  assetId?: string
   metadata?: Record<string, unknown>
+}
+
+export interface KnowledgeIngestResult {
+  imported?: number
+  chunks: number
+  vectorized: boolean
+  failed?: boolean
+  message: string
+}
+
+export async function previewKnowledgeImport(
+  id: string,
+  content: string,
+): Promise<{ batchId: string; items: KnowledgeImportItem[] }> {
+  return apiClient.post(`/knowledge/${id}/import/preview`, { content })
+}
+
+export async function confirmKnowledgeImport(
+  id: string,
+  batchId: string,
+  items: KnowledgeImportItem[],
+): Promise<KnowledgeIngestResult> {
+  return apiClient.post(`/knowledge/${id}/import`, { batchId, items })
+}
+
+export async function updateKnowledgeItem(
+  id: string,
+  itemId: string,
+  params: Partial<CreateKnowledgeItemParams> & { status?: KnowledgeItemStatus },
+): Promise<KnowledgeItemData> {
+  return apiClient.put(`/knowledge/${id}/items/${itemId}`, params)
+}
+
+export async function retryKnowledgeVectorSync(
+  id: string,
+  itemId: string,
+): Promise<KnowledgeIngestResult> {
+  return apiClient.post(`/knowledge/${id}/items/${itemId}/vector-sync`)
 }
 
 export interface CreateKnowledgeItemParams {
@@ -92,7 +137,7 @@ export async function updateKnowledge(id: string, params: UpdateKnowledgeParams)
 export async function ingestKnowledge(
   id: string,
   params: IngestKnowledgeParams,
-): Promise<{ chunks: number; message: string }> {
+): Promise<KnowledgeIngestResult> {
   return apiClient.post(`/knowledge/${id}/ingest`, params)
 }
 
@@ -113,7 +158,7 @@ export async function getKnowledgeItems(id: string): Promise<KnowledgeItemData[]
 export async function createKnowledgeItem(
   id: string,
   params: CreateKnowledgeItemParams,
-): Promise<{ item: KnowledgeItemData; ingest: { chunks: number; message: string } }> {
+): Promise<{ item: KnowledgeItemData; ingest: KnowledgeIngestResult }> {
   return apiClient.post(`/knowledge/${id}/items`, params)
 }
 

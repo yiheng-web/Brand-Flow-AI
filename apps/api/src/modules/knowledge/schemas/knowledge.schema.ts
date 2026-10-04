@@ -4,7 +4,7 @@ import { Document, Types } from 'mongoose'
 
 export type KnowledgeDocument = Knowledge & Document
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, autoIndex: false })
 export class Knowledge {
   @Prop({ required: true })
   name!: string
@@ -34,6 +34,18 @@ export class Knowledge {
 
 export const KnowledgeSchema = SchemaFactory.createForClass(Knowledge)
 KnowledgeSchema.index(
+  { spaceId: 1, creatorId: 1, name: 1 },
+  {
+    name: 'knowledge_personal_name_unique',
+    unique: true,
+    partialFilterExpression: { spaceType: 'personal' },
+  },
+)
+KnowledgeSchema.index(
   { spaceId: 1, name: 1 },
-  { unique: true, partialFilterExpression: { spaceId: { $type: 'string' } } },
+  {
+    name: 'knowledge_org_name_unique',
+    unique: true,
+    partialFilterExpression: { spaceType: { $in: ['team', 'enterprise'] } },
+  },
 )

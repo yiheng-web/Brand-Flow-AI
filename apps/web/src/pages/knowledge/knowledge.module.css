@@ -302,6 +302,19 @@
   margin-bottom: 20px;
 }
 
+.importPreview {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.sourceContent {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .addItemInput {
   flex: 1;
 }

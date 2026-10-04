@@ -1,5 +1,41 @@
 export type SpaceType = 'personal' | 'team' | 'enterprise'
 
+export type KnowledgeConstraintLevel = 'required' | 'recommended' | 'optional'
+export type KnowledgeItemStatus = 'active' | 'archived'
+export type KnowledgeItemSourceType = 'manual' | 'asset' | 'import'
+export interface KnowledgeImportItem {
+  title: string
+  content: string
+  constraintLevel: KnowledgeConstraintLevel
+}
+
+export const MAX_KNOWLEDGE_IMPORT_ITEMS = 200
+export const MAX_KNOWLEDGE_IMPORT_CHARS = 100_000
+
+// 每个非空行是一条规则；级别标记在正文中移除，语义正文完整保留。
+export function parseKnowledgeImport(content: string): KnowledgeImportItem[] {
+  if (!content.trim() || content.length > MAX_KNOWLEDGE_IMPORT_CHARS) {
+    throw new Error('请输入非空文本，最多 100000 字符')
+  }
+  const items = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const marker = line.match(/^\[(required|recommended|optional)\]\s*/i)
+      const text = line.slice(marker?.[0].length ?? 0).trim()
+      if (!text || text.length > 5000) throw new Error('每条规则需为 1~5000 字符')
+      const level = marker?.[1].toLowerCase()
+      return {
+        title: text.slice(0, 80),
+        content: text,
+        constraintLevel: level === 'required' || level === 'optional' ? level : 'recommended',
+      } satisfies KnowledgeImportItem
+    })
+  if (items.length > MAX_KNOWLEDGE_IMPORT_ITEMS) throw new Error('一次最多导入 200 条规则')
+  return items
+}
+
 export type WorkflowNodeType =
   | 'brief'
   | 'brandConstraint'
@@ -123,6 +159,42 @@ export interface BrandConstraintPackage {
     itemId?: string
     title?: string
   }>
+}
+
+export const MAX_CONSTRAINT_BATCH_CHARS = 12_000
+
+export function splitBrandConstraintPackage(
+  constraints: BrandConstraintPackage,
+  maxChars = MAX_CONSTRAINT_BATCH_CHARS,
+): BrandConstraintPackage[] {
+  if (JSON.stringify(constraints).length <= maxChars) return [constraints]
+  const batches: BrandConstraintPackage[] = []
+  let batch: BrandConstraintPackage = { required: [], recommended: [], optional: [], sources: [] }
+  for (const level of ['required', 'recommended', 'optional'] as const) {
+    for (const rule of constraints[level]) {
+      const source = {
+        knowledgeBaseId: rule.sourceKnowledgeBaseId ?? '',
+        itemId: rule.sourceItemId,
+        title: rule.title,
+      }
+      batch[level].push(rule)
+      if (source.knowledgeBaseId) batch.sources.push(source)
+      if (JSON.stringify(batch).length > maxChars) {
+        batch[level].pop()
+        if (source.knowledgeBaseId) batch.sources.pop()
+        if (batch.required.length + batch.recommended.length + batch.optional.length > 0)
+          batches.push(batch)
+        batch = { required: [], recommended: [], optional: [], sources: [] }
+        batch[level].push(rule)
+        if (source.knowledgeBaseId) batch.sources.push(source)
+        if (JSON.stringify(batch).length > maxChars)
+          throw new Error('单条品牌规则过长，请拆成多条完整规则后重试')
+      }
+    }
+  }
+  if (batch.required.length + batch.recommended.length + batch.optional.length > 0)
+    batches.push(batch)
+  return batches.length ? batches : [batch]
 }
 
 export interface CreativeDirection {

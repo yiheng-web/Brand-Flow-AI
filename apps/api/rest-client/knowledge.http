@@ -1,6 +1,6 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
+@accessToken = <登录后填写JWT>
 @knowledgeId = 6a22f6a57468d83197c53eec
 @itemId = 6a22f6657468d83197c53ecd
 
@@ -10,6 +10,7 @@ Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
+  "spaceId": "personal",
   "name": "瑞幸咖啡品牌规范库",
   "description": "包含品牌色、Logo 使用规范、禁用词和参考案例"
 }
@@ -32,7 +33,7 @@ Authorization: Bearer {{accessToken}}
   "description": "更新后的知识库描述"
 }
 
-### 将文本写入知识库向量索引
+### 将文本导入 Mongo 知识项（向量按配置同步）
 POST {{baseUrl}}/knowledge/{{knowledgeId}}/ingest
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
@@ -90,3 +91,31 @@ Authorization: Bearer {{accessToken}}
 DELETE {{baseUrl}}/knowledge/{{knowledgeId}}
 Authorization: Bearer {{accessToken}}
 
+
+### 预览文本（复制响应 batchId 到下方，不落库）
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/import/preview
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{ "content": "[required] 主色必须为蓝色\n[optional] 可以使用渐变" }
+
+### 确认导入（重试保持 batchId 和 items 相同）
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/import
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "batchId": "<预览响应中的UUID>",
+  "items": [{ "title": "品牌色", "content": "主色必须为蓝色", "constraintLevel": "required" }]
+}
+
+### 归档知识项；改为 active 即启用
+PUT {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{ "status": "archived" }
+
+### 重试向量同步
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}/vector-sync
+Authorization: Bearer {{accessToken}}

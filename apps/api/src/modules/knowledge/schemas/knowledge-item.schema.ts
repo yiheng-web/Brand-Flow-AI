@@ -2,9 +2,16 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document, Types } from 'mongoose'
 import type { SpaceType } from '@brand-flow/contracts'
 
-export type KnowledgeItemSourceType = 'manual' | 'asset'
-export type KnowledgeItemStatus = 'active' | 'archived'
-export type KnowledgeConstraintLevel = 'required' | 'recommended' | 'optional'
+import type {
+  KnowledgeItemSourceType,
+  KnowledgeItemStatus,
+  KnowledgeConstraintLevel,
+} from '@brand-flow/contracts'
+export type {
+  KnowledgeItemSourceType,
+  KnowledgeItemStatus,
+  KnowledgeConstraintLevel,
+} from '@brand-flow/contracts'
 
 export type KnowledgeItemDocument = KnowledgeItem &
   Document & {
@@ -35,7 +42,7 @@ export class KnowledgeItem {
   @Prop({ type: [String], default: [] })
   tags!: string[]
 
-  @Prop({ type: String, enum: ['manual', 'asset'], default: 'manual' })
+  @Prop({ type: String, enum: ['manual', 'asset', 'import'], default: 'manual' })
   sourceType!: KnowledgeItemSourceType
 
   @Prop({ type: Types.ObjectId, ref: 'Asset', index: true })
@@ -57,7 +64,14 @@ export class KnowledgeItem {
 
   @Prop({ type: Object })
   metadata!: Record<string, unknown>
+
+  @Prop()
+  importKey?: string
 }
 
 export const KnowledgeItemSchema = SchemaFactory.createForClass(KnowledgeItem)
 KnowledgeItemSchema.index({ knowledgeId: 1, createdAt: -1 })
+KnowledgeItemSchema.index(
+  { knowledgeId: 1, importKey: 1 },
+  { unique: true, partialFilterExpression: { importKey: { $type: 'string' } } },
+)

@@ -341,11 +341,11 @@ interface UserInfo {
     ```
 
 - **`DELETE /knowledge/:id`**
-  - **说明**: 删除指定的知识库，不仅删除 MongoDB 记录，后续还会同步清空 Pinecone 中对应的底层向量切片数据。
+  - **说明**: 向量模式开启时先清理 Pinecone namespace，再删除 MongoDB 知识库与知识项；向量清理失败保留 Mongo 数据。
   - **路径参数**: `id` (要删除的知识库 ID)
 
 - **`POST /knowledge/:id/ingest`**
-  - **说明**: 将大段品牌规范/忌讳文本粉碎、切片、Embedding，并打上对应的标签存入 Pinecone 的专属 Namespace 中。
+  - **说明**: 每个非空行解析为 Mongo 知识项（最多 200 条、总文本 100000 字符、单条 5000 字符）；可用 [required]/[recommended]/[optional] 标记级别，默认 recommended。同一文本重复提交幂等。向量同步可关闭，Mongo 仍可用于 Workflow。
   - **路径参数**: `id` (目标知识库 ID)
   - **Body**:
     ```typescript
@@ -357,12 +357,26 @@ interface UserInfo {
     ```typescript
     {
       success: boolean,
-      chunks: number    // 本次成功切出的向量块数量
+      imported: number, // Mongo 导入数量
+      chunks: number,   // 向量切片数量
+      vectorized: boolean,
+      failed: boolean, // 向量部分失败，不代表 Mongo 未保存
+      message: string
     }
     ```
 
+- **`POST /knowledge/:id/import/preview`**
+  - Body：`{ content: string }`，规则解析规则同 ingest。仅预览，不落库。
+  - 返回：`{ batchId: string, items: Array<{ title: string, content: string, constraintLevel: 'required' | 'recommended' | 'optional' }> }`。
+- **`POST /knowledge/:id/import`**
+  - Body：预览结果 `{ batchId, items }`；可在确认前修改条目。标题 1~80 字符，正文 1~5000 字符，总正文最多 100000 字符。
+  - 同知识库、同批次、同序号唯一；失败重试保持 batchId 和条目不变。已写入条目被改动时返回 409，请重新解析生成新批次。
+  - 返回同 ingest。关闭向量时 message 为“已导入到知识库，语义向量未启用”。向量失败不阻止 Mongo 创作，支持条目重试。
+- **`POST /knowledge/:id/items/:itemId/vector-sync`**
+  - 无 Body；重试向量同步，不创建新 Mongo 条目。返回 `{ success, chunks, vectorized, failed, message }`。
+
 - **`POST /knowledge/:id/items`**
-  - **说明**: 在指定知识库下创建一条结构化知识项，并同步写入向量库。
+  - **说明**: 在指定知识库下创建结构化知识项，按配置同步向量；失败时保留 Mongo，metadata.vectorSync 标识重试状态。
   - **路径参数**: `id` (知识库 ID)
   - **Body**:
     ```typescript
@@ -370,7 +384,8 @@ interface UserInfo {
       title: string,
       content: string,
       tags?: string[],
-      metadata?: Record<string, any>
+      constraintLevel?: 'required' | 'recommended' | 'optional',
+      metadata?: Record<string, unknown>
     }
     ```
   - **返回 Data**:
@@ -397,7 +412,7 @@ interface UserInfo {
   - **返回 Data**: `KnowledgeItem`
 
 - **`PUT /knowledge/:id/items/:itemId`**
-  - **说明**: 更新指定知识项。若更新 `content`，会同步重新写入向量库。
+  - **说明**: 更新知识项并移除旧向量；active 按配置重新同步，archived 不参与 Workflow，也不保留向量。
   - **路径参数**:
     - `id`: 知识库 ID
     - `itemId`: 知识项 ID
@@ -414,7 +429,7 @@ interface UserInfo {
   - **返回 Data**: `KnowledgeItem`
 
 - **`DELETE /knowledge/:id/items/:itemId`**
-  - **说明**: 删除指定知识项的 MongoDB 记录。
+  - **说明**: 向量模式开启时先移除条目向量，再删除 Mongo 记录；清理失败保留条目。
   - **路径参数**:
     - `id`: 知识库 ID
     - `itemId`: 知识项 ID

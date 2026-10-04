@@ -1,4 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import type {
+  KnowledgeConstraintLevel,
+  KnowledgeItemStatus,
+  KnowledgeItemSourceType,
+} from '@brand-flow/contracts'
+import { KnowledgeImportItemDto } from './knowledge.dto'
 
 export class KnowledgeResponseDto {
   @ApiProperty({ description: '知识库 ID' })
@@ -30,11 +36,23 @@ export class KnowledgeResponseDto {
 }
 
 export class KnowledgeIngestResponseDto {
-  @ApiProperty({ description: '入库提示信息', example: '成功入库，共生成 3 个向量切片' })
+  @ApiProperty({
+    description: 'Mongo 导入与向量同步提示',
+    example: '已导入到知识库，语义向量未启用',
+  })
   message!: string
 
   @ApiProperty({ description: '生成的向量切片数量', example: 3 })
   chunks!: number
+
+  @ApiPropertyOptional({ description: '确认导入的 Mongo 条目数' })
+  imported?: number
+
+  @ApiProperty({ description: '是否已同步语义向量' })
+  vectorized!: boolean
+
+  @ApiPropertyOptional({ description: '向量同步是否失败；不影响已保存的 Mongo 知识项' })
+  failed?: boolean
 }
 
 export class KnowledgeItemResponseDto {
@@ -62,20 +80,20 @@ export class KnowledgeItemResponseDto {
   @ApiProperty({ description: '知识项标签', type: [String] })
   tags!: string[]
 
-  @ApiProperty({ description: '知识项来源', enum: ['manual', 'asset'] })
-  sourceType!: 'manual' | 'asset'
+  @ApiProperty({ description: '知识项来源', enum: ['manual', 'asset', 'import'] })
+  sourceType!: KnowledgeItemSourceType
 
   @ApiPropertyOptional({ description: '来源素材 ID' })
   assetId?: string
 
   @ApiProperty({ description: '知识项状态', enum: ['active', 'archived'] })
-  status!: 'active' | 'archived'
+  status!: KnowledgeItemStatus
 
   @ApiProperty({
     description: '品牌约束级别',
     enum: ['required', 'recommended', 'optional'],
   })
-  constraintLevel!: 'required' | 'recommended' | 'optional'
+  constraintLevel!: KnowledgeConstraintLevel
 
   @ApiProperty({ description: '创建者用户 ID' })
   creatorId!: string
@@ -101,4 +119,12 @@ export class KnowledgeRecordResponseDto {
 
   @ApiProperty({ description: '向量记录元数据' })
   metadata!: Record<string, unknown>
+}
+
+export class KnowledgeImportPreviewResponseDto {
+  @ApiProperty({ description: '确认导入和重试时使用同一个批次 UUID' })
+  batchId!: string
+
+  @ApiProperty({ type: [KnowledgeImportItemDto] })
+  items!: KnowledgeImportItemDto[]
 }

@@ -402,9 +402,26 @@ export class WorkflowProcessor extends WorkerHost {
     const ids = workflow.selectedKnowledgeBaseIds ?? []
     if (ids.length === 0) return { required: [], recommended: [], optional: [], sources: [] }
 
-    const items = await this.knowledgeItemModel
-      .find({ knowledgeId: { $in: ids.map((id) => new Types.ObjectId(id)) }, status: 'active' })
+    const filter = {
+      knowledgeId: { $in: ids.map((id) => new Types.ObjectId(id)) },
+      status: 'active',
+    }
+    // 强制规则完整读取，普通参考按创建时间和 ID 稳定排序，各最多 30 条。
+    const required = await this.knowledgeItemModel
+      .find({ ...filter, constraintLevel: 'required' })
+      .sort({ createdAt: 1, _id: 1 })
+    const recommended = await this.knowledgeItemModel
+      .find({
+        ...filter,
+        $or: [{ constraintLevel: 'recommended' }, { constraintLevel: { $exists: false } }],
+      })
+      .sort({ createdAt: 1, _id: 1 })
       .limit(30)
+    const optional = await this.knowledgeItemModel
+      .find({ ...filter, constraintLevel: 'optional' })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(30)
+    const items = [...required, ...recommended, ...optional]
     const mapped = items.map((item) => ({
       id: item._id.toString(),
       title: item.title,
@@ -419,7 +436,11 @@ export class WorkflowProcessor extends WorkerHost {
           !items[index].constraintLevel || items[index].constraintLevel === 'recommended',
       ),
       optional: mapped.filter((_, index) => items[index].constraintLevel === 'optional'),
-      sources: ids.map((knowledgeBaseId) => ({ knowledgeBaseId })),
+      sources: mapped.map((item) => ({
+        knowledgeBaseId: item.sourceKnowledgeBaseId,
+        itemId: item.sourceItemId,
+        title: item.title,
+      })),
     }
   }
 

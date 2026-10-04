@@ -7,7 +7,14 @@ import {
   IsString,
   IsOptional,
   IsNotEmpty,
+  MaxLength,
+  ArrayMaxSize,
+  ArrayMinSize,
+  ValidateNested,
+  IsUUID,
 } from 'class-validator'
+import { Type } from 'class-transformer'
+import type { KnowledgeConstraintLevel, KnowledgeItemStatus } from '@brand-flow/contracts'
 
 export class CreateKnowledgeDto {
   @ApiProperty({ description: '知识库所属 Space ID；个人空间固定为 personal' })
@@ -68,6 +75,7 @@ export class IngestKnowledgeDto {
   })
   @IsString()
   @IsNotEmpty({ message: '文本内容不能为空' })
+  @MaxLength(100000)
   content!: string
 }
 
@@ -79,11 +87,12 @@ export class CreateKnowledgeItemDto {
   })
   @IsIn(['required', 'recommended', 'optional'])
   @IsOptional()
-  constraintLevel?: 'required' | 'recommended' | 'optional'
+  constraintLevel?: KnowledgeConstraintLevel
 
   @ApiProperty({ description: '知识项标题，用于知识库详情页展示', example: '品牌色使用规范' })
   @IsString()
   @IsNotEmpty({ message: '知识项标题不能为空' })
+  @MaxLength(80)
   title!: string
 
   @ApiProperty({
@@ -92,6 +101,7 @@ export class CreateKnowledgeItemDto {
   })
   @IsString()
   @IsNotEmpty({ message: '知识项内容不能为空' })
+  @MaxLength(5000)
   content!: string
 
   @ApiPropertyOptional({
@@ -119,15 +129,19 @@ export class UpdateKnowledgeItemDto {
   })
   @IsIn(['required', 'recommended', 'optional'])
   @IsOptional()
-  constraintLevel?: 'required' | 'recommended' | 'optional'
+  constraintLevel?: KnowledgeConstraintLevel
 
   @ApiPropertyOptional({ description: '知识项标题' })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
   @IsOptional()
   title?: string
 
   @ApiPropertyOptional({ description: '知识项正文；更新该字段会再次写入向量库' })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(5000)
   @IsOptional()
   content?: string
 
@@ -140,12 +154,44 @@ export class UpdateKnowledgeItemDto {
     description: '知识项状态。active 为可用，archived 为归档',
     enum: ['active', 'archived'],
   })
-  @IsString()
+  @IsIn(['active', 'archived'])
   @IsOptional()
-  status?: 'active' | 'archived'
+  status?: KnowledgeItemStatus
 
   @ApiPropertyOptional({ description: '扩展信息' })
   @IsObject()
   @IsOptional()
   metadata?: Record<string, unknown>
+}
+
+export class KnowledgeImportItemDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  title!: string
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(5000)
+  content!: string
+
+  @ApiProperty({ enum: ['required', 'recommended', 'optional'] })
+  @IsIn(['required', 'recommended', 'optional'])
+  constraintLevel!: KnowledgeConstraintLevel
+}
+
+export class ConfirmKnowledgeImportDto {
+  @ApiProperty({ description: '本次预览生成的 UUID，重试必须保持不变' })
+  @IsUUID()
+  batchId!: string
+
+  @ApiProperty({ type: [KnowledgeImportItemDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => KnowledgeImportItemDto)
+  items!: KnowledgeImportItemDto[]
 }

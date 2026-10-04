@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, { mock } from 'node:test'
+import { createRequire } from 'node:module'
 
 import {
   composeFinalImage,
@@ -12,9 +13,64 @@ import {
   revisePromptPlan,
   parseCreativeBrief,
   validateArtTextVectorSpec,
+  evaluateFinalImage,
 } from './v1-workflow'
 import { safeJsonParse } from './common'
 import { buildCandidateEvaluationPrompt } from './ai-logic/evaluate/candidate-evaluate.chain'
+
+test('超长强制规则逐批质检，后续批次失败不能被前面通过覆盖', async () => {
+  const evaluateModule = createRequire(__filename)(
+    './ai-logic/evaluate/final-evaluate.chain',
+  ) as typeof import('./ai-logic/evaluate/final-evaluate.chain')
+  const seen: string[] = []
+  const previous = process.env.BRAND_FLOW_DEMO_MODE
+  process.env.BRAND_FLOW_DEMO_MODE = 'false'
+  const evaluator = mock.method(
+    evaluateModule,
+    'runFinalEvaluation',
+    async (_url: string, input: string) => {
+      const payload = JSON.parse(input) as { constraints: { required: Array<{ id: string }> } }
+      seen.push(...payload.constraints.required.map((rule) => rule.id))
+      const failed = payload.constraints.required.some((rule) => rule.id === '39')
+      return {
+        overallScore: failed ? 60 : 90,
+        passed: !failed,
+        dimensionScores: {
+          brandCompliance: failed ? 60 : 90,
+          technicalQuality: 90,
+          compositionQuality: 90,
+          aestheticQuality: 90,
+        },
+        deductions: failed ? [{ dimension: 'brand', deduction: 30, reason: '第40条不满足' }] : [],
+        suggestions: failed ? ['修复第40条'] : [],
+      }
+    },
+  )
+  try {
+    const required = Array.from({ length: 40 }, (_, index) => ({
+      id: String(index),
+      title: `规则${index}`,
+      description: '完整语义'.repeat(100),
+    }))
+    const result = await evaluateFinalImage(
+      'https://example.invalid/image.png',
+      { required, recommended: [], optional: [], sources: [] },
+      createCreativeBriefFallback('风景'),
+    )
+    assert.deepEqual(
+      seen,
+      required.map((rule) => rule.id),
+    )
+    assert.ok(evaluator.mock.callCount() > 1)
+    assert.equal(result.passed, false)
+    assert.equal(result.totalScore, 6)
+    assert.ok(result.suggestions.includes('修复第40条'))
+  } finally {
+    evaluator.mock.restore()
+    if (previous === undefined) delete process.env.BRAND_FLOW_DEMO_MODE
+    else process.env.BRAND_FLOW_DEMO_MODE = previous
+  }
+})
 
 test('结构化解析兼容 JSON 前后的模型说明文字', () => {
   assert.deepEqual(safeJsonParse('分析完成。\n```json\n{"directions":[1,2,3]}\n```\n以上。'), {
