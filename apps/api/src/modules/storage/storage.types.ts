@@ -14,6 +14,7 @@ export interface StoredObject {
 }
 
 export interface SignedUrlOptions {
+  downloadName?: string
   expiresIn?: number
 }
 

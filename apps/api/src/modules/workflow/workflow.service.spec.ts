@@ -43,6 +43,43 @@ const createService = () => {
 }
 
 describe('WorkflowService.start', () => {
+  it('未选择最终候选时仍可下载指定预览候选，拒绝他人和过期候选', async () => {
+    const { service, workflowModel } = createService()
+    const workflow = createWorkflow('awaiting_user')
+    workflow.result = {
+      generate: {
+        selectedCandidateId: '',
+        candidates: [
+          {
+            id: 'candidate-a',
+            metadata: {
+              objectKey: `workflows/${workflow.userId}/${workflow._id}/runs/1/candidates/candidate-a.png`,
+            },
+          },
+        ],
+      },
+    }
+    workflowModel.findOne.mockResolvedValue(workflow)
+    const getSignedUrl = jest.fn().mockResolvedValue('candidate-url')
+    Reflect.set(service, 'storageService', { getSignedUrl })
+    expect(
+      await service.getCandidateDownload(workflow._id.toString(), 'candidate-a', workflow.userId),
+    ).toMatchObject({ downloadUrl: 'candidate-url' })
+    expect(getSignedUrl).toHaveBeenCalledWith(
+      expect.stringContaining('candidate-a.png'),
+      expect.objectContaining({ downloadName: 'candidate-candidate-a.png' }),
+    )
+    await expect(
+      service.getCandidateDownload(workflow._id.toString(), 'old', workflow.userId),
+    ).rejects.toThrow('已过期')
+    await expect(
+      service.getCandidateDownload(
+        workflow._id.toString(),
+        'candidate-a',
+        new Types.ObjectId().toString(),
+      ),
+    ).rejects.toThrow('无权访问')
+  })
   it('通用节点更新拒绝客户端质检、评分和服务端状态', async () => {
     const { service, workflowModel } = createService()
     const workflow = createWorkflow('awaiting_user')

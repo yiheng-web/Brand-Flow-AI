@@ -7,6 +7,22 @@ import { OptimizeWorkflowDto } from './dto/brief-review.dto'
 import { CreateWorkflowDto, StartWorkflowDto } from './dto/create-workflow.dto'
 
 describe('Workflow V1 DTO', () => {
+  it('接受素材 ID 用途和真实生成参数，拒绝伪造用途、外链 ID 与非法尺寸', async () => {
+    const valid = plainToInstance(CreateWorkflowDto, {
+      prompt: '产品图',
+      spaceId: 'personal',
+      references: [{ assetId: '6ac2487dc64e03b39f7e8791', role: 'product' }],
+      generationConfig: { aspectRatio: '16:9', seed: 10 },
+    })
+    expect(await validate(valid)).toHaveLength(0)
+    const invalid = plainToInstance(CreateWorkflowDto, {
+      prompt: '图',
+      spaceId: 'personal',
+      references: [{ assetId: 'https://foreign/image.png', role: 'unknown' }],
+      generationConfig: { width: -1, seed: 0.5 },
+    })
+    expect((await validate(invalid)).length).toBeGreaterThan(0)
+  })
   it('接受完整结构化品牌需求', async () => {
     const dto = plainToInstance(CreateWorkflowDto, {
       prompt: '生成咖啡品牌海报',

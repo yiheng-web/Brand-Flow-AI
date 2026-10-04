@@ -133,6 +133,16 @@ export class WorkflowController {
     return this.workflowService.getResultDownload(id, req.user.sub, req.user.entId)
   }
 
+  @Post(':id/candidates/:candidateId/download')
+  @ApiOperation({ summary: '下载当前预览候选图，不要求最终候选已选择' })
+  getCandidateDownload(
+    @Param('id') id: string,
+    @Param('candidateId') candidateId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.workflowService.getCandidateDownload(id, candidateId, req.user.sub, req.user.entId)
+  }
+
   @Post(':id/composition/art-text/candidates')
   @ApiOperation({ summary: '生成图文合成节点的 4 个艺术字候选' })
   generateArtTextCandidates(

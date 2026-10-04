@@ -81,6 +81,9 @@ export class StorageService {
     const command = new GetObjectCommand({
       Bucket: this.config.bucket,
       Key: key,
+      ResponseContentDisposition: options?.downloadName
+        ? `attachment; filename*=UTF-8''${encodeURIComponent(options.downloadName)}`
+        : undefined,
     })
 
     // Buckets stay private in production; callers receive short-lived URLs

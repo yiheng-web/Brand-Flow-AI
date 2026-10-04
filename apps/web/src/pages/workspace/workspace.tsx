@@ -31,7 +31,6 @@ import { ReactFlowProvider } from 'reactflow'
 
 import { createTrustedWorkVersion, createWork, exportWork, updateWorkFavorite } from '@/api/works'
 import {
-  getResultDownload,
   getWorkflowDetail,
   optimizeWorkflow,
   rerunNode,
@@ -45,6 +44,7 @@ import { createAuthEventSource } from '@/utils/sse'
 
 import FlowView from './components/FlowView'
 import ArtTextComposer from './components/ArtTextComposer'
+import CandidateDownloadButton from './components/CandidateDownloadButton'
 import BriefReviewPanel from './components/BriefReviewPanel'
 import CreativeDirectionPanel from './components/CreativeDirectionPanel'
 import {
@@ -407,14 +407,6 @@ export default function Workspace() {
   const baseCandidate = generate?.candidates.find(
     (candidate) => candidate.id === generate.selectedCandidateId,
   )
-  const downloadResult = async () => {
-    if (!workflowId) return
-    const download = await getResultDownload(workflowId)
-    const link = document.createElement('a')
-    link.href = download.downloadUrl
-    link.download = download.fileName
-    link.click()
-  }
   const favoriteResult = async () => {
     const workId = savedWorkId || (await saveWork())
     if (!workId) return
@@ -583,9 +575,12 @@ export default function Workspace() {
                   {previewCandidate?.imageUrl && (
                     <Card cover={<Image src={previewCandidate.imageUrl} alt="当前预览图片" />}>
                       <Space wrap>
-                        <Button icon={<DownloadOutlined />} onClick={() => void downloadResult()}>
-                          下载
-                        </Button>
+                        {workflowId && (
+                          <CandidateDownloadButton
+                            workflowId={workflowId}
+                            candidateId={previewCandidate.id}
+                          />
+                        )}
                         <Button onClick={() => setPromptOpen(true)}>查看 Prompt</Button>
                         <Button icon={<HeartOutlined />} onClick={() => void favoriteResult()}>
                           收藏
@@ -716,7 +711,12 @@ export default function Workspace() {
       >
         <p>最终作品已经自动保存到你的作品空间。</p>
         {result?.finalImageUrl && <Image src={result.finalImageUrl} alt="最终作品" />}
-        <Button icon={<DownloadOutlined />} onClick={() => void downloadResult()}>
+        <Button
+          aria-label="下载 PNG"
+          icon={<DownloadOutlined aria-hidden />}
+          disabled={!savedWorkId}
+          onClick={() => void formalExport()}
+        >
           下载 PNG
         </Button>
       </Modal>

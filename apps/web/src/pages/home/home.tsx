@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { PlusOutlined, RightOutlined } from '@ant-design/icons'
-import { Button, Checkbox, Input, Popover, Tag, message } from 'antd'
+import { Button, Checkbox, Input, Popover, Select, Tag, message } from 'antd'
+import { IMAGE_ASPECT_RATIOS } from '@brand-flow/contracts'
+import type { ImageAspectRatio, WorkflowReferenceInput } from '@brand-flow/contracts'
+import ReferencePicker from './ReferencePicker'
 import { useNavigate } from 'react-router-dom'
 
 import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
@@ -21,6 +24,8 @@ const Home = () => {
   const currentSpaceType = useUserStore((state) => state.currentSpaceType)
   const setWorkflowId = useWorkflowStore((state) => state.setWorkflowId)
   const [prompt, setPrompt] = useState('')
+  const [references, setReferences] = useState<WorkflowReferenceInput[]>([])
+  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>('1:1')
   const [submitting, setSubmitting] = useState(false)
   const [knowledgeLoading, setKnowledgeLoading] = useState(false)
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeData[]>([])
@@ -35,6 +40,7 @@ const Home = () => {
       if (!active) return
       setKnowledgeLoading(true)
       setSelectedKnowledgeBaseIds([])
+      setReferences([])
     })
     Promise.allSettled([getKnowledgeList(spaceId), getWorks(spaceId)])
       .then(([knowledgeResult, worksResult]) => {
@@ -53,6 +59,7 @@ const Home = () => {
 
   const handleSubmit = async () => {
     const trimmed = prompt.trim()
+    if (submitting) return
     if (!trimmed) {
       message.warning('请先描述你想创作的图片')
       return
@@ -65,6 +72,8 @@ const Home = () => {
         spaceId: currentSpaceId || 'personal',
         spaceType: currentSpaceType,
         selectedKnowledgeBaseIds,
+        references,
+        generationConfig: { aspectRatio },
       })
       if (workflowData?.id) setWorkflowId(workflowData.id)
       message.success('创作已创建，请在工作台运行工作流')
@@ -198,6 +207,24 @@ const Home = () => {
         )}
 
         <div className={styles.creationToolbar}>
+          <Select
+            aria-label="生成画面比例"
+            value={aspectRatio}
+            options={IMAGE_ASPECT_RATIOS.map((ratio) => ({ value: ratio, label: ratio }))}
+            disabled={submitting}
+            onChange={setAspectRatio}
+          />
+          <Popover
+            content={
+              <ReferencePicker value={references} onChange={setReferences} disabled={submitting} />
+            }
+            trigger="click"
+            placement="bottomLeft"
+          >
+            <Button disabled={submitting || currentSpaceType !== 'personal'}>
+              参考素材{references.length ? `（${references.length}）` : ''}
+            </Button>
+          </Popover>
           <Popover
             content={knowledgePicker}
             trigger="click"

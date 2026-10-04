@@ -27,6 +27,8 @@ export interface SubmitPromptParams extends CreateWorkflowRequest {
 }
 
 export interface WorkflowData {
+  references?: WorkflowSnapshot['workflow']['references']
+  generationConfig?: PromptPlan['generationConfig']
   id: string
   status: WorkflowStatus
   prompt: string
@@ -62,6 +64,12 @@ export const cancelWorkflow = (id: string): Promise<WorkflowData> =>
   apiClient.post(`/workflows/${id}/cancel`)
 export const retryWorkflow = (id: string): Promise<{ success: boolean; message: string }> =>
   apiClient.post(`/workflows/${id}/retry`)
+
+export const getCandidateDownload = (
+  id: string,
+  candidateId: string,
+): Promise<{ fileName: string; downloadUrl: string }> =>
+  apiClient.post(`/workflows/${id}/candidates/${encodeURIComponent(candidateId)}/download`)
 
 export async function submitPrompt(params: SubmitPromptParams): Promise<WorkflowData> {
   return apiClient.post<unknown, WorkflowData>('/workflow/create', params)

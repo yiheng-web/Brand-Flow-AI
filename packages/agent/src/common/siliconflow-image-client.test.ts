@@ -5,6 +5,7 @@ import {
   extractSiliconFlowImageUrls,
   generateSiliconFlowImages,
   getSiliconFlowImageSettings,
+  resolveImageGenerationConfig,
 } from './siliconflow-image-client'
 
 test('解析 SiliconFlow 图片 URL 并忽略非法项', () => {
@@ -33,6 +34,7 @@ test('SiliconFlow 使用独立凭据并严格请求四候选', async () => {
   }
   let requestUrl = ''
   let requestBody: Record<string, unknown> = {}
+  const requests: Record<string, unknown>[] = []
 
   process.env.SILICONFLOW_API_KEY = 'siliconflow-test-key'
   process.env.SILICONFLOW_BASE_URL = 'https://siliconflow.example.com/v1/'
@@ -40,21 +42,45 @@ test('SiliconFlow 使用独立凭据并严格请求四候选', async () => {
   globalThis.fetch = (async (input, init) => {
     requestUrl = String(input)
     requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    requests.push(requestBody)
     assert.equal(new Headers(init?.headers).get('authorization'), 'Bearer siliconflow-test-key')
     return new Response(
       JSON.stringify({
-        images: [1, 2, 3, 4].map((index) => ({ url: `https://img/${index}.png` })),
+        images: [{ url: `https://img/${requests.length}.png` }],
       }),
       { status: 200 },
     )
   }) as typeof fetch
 
   try {
-    assert.equal((await generateSiliconFlowImages({ prompt: '品牌底图', count: 4 })).length, 4)
+    assert.equal(
+      (
+        await generateSiliconFlowImages({
+          prompt: '品牌底图',
+          count: 4,
+          negativePrompt: '畸变',
+          generationConfig: { aspectRatio: '16:9', seed: 10 },
+        })
+      ).length,
+      4,
+    )
     assert.equal(requestUrl, 'https://siliconflow.example.com/v1/images/generations')
     assert.equal(requestBody.model, 'Kwai-Kolors/Kolors')
-    assert.equal(requestBody.batch_size, 4)
+    assert.equal(requests.length, 4)
+    assert.equal(requestBody.batch_size, undefined)
+    assert.equal(requestBody.image_size, '1280x720')
+    assert.equal(requestBody.negative_prompt, '畸变')
+    assert.deepEqual(
+      requests.map((request) => request.seed),
+      [10, 11, 12, 13],
+    )
     assert.equal(requestBody.prompt, '品牌底图')
+    await generateSiliconFlowImages({
+      prompt: '品牌底图',
+      count: 1,
+      generationConfig: { aspectRatio: '1:1', seed: 20 },
+    })
+    assert.equal(requests[4].image_size, '1024x1024')
   } finally {
     globalThis.fetch = previous.fetch
     for (const [key, value] of Object.entries({
@@ -73,18 +99,41 @@ test('SiliconFlow 未严格返回请求数量时拒绝假成功', async () => {
   const previousFetch = globalThis.fetch
   process.env.SILICONFLOW_API_KEY = 'siliconflow-test-key'
   globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ images: [{ url: 'https://img/1.png' }] }), {
+    new Response(JSON.stringify({ images: [] }), {
       status: 200,
     })) as typeof fetch
 
   try {
     await assert.rejects(
       generateSiliconFlowImages({ prompt: '品牌底图', count: 4 }),
-      /返回 1 张图片，期望 4 张/,
+      /返回 0 张图片，期望 1 张/,
     )
   } finally {
     globalThis.fetch = previousFetch
     if (previousKey === undefined) delete process.env.SILICONFLOW_API_KEY
     else process.env.SILICONFLOW_API_KEY = previousKey
   }
+})
+
+test('比例映射和显式尺寸保留，未知组合不降级为正方形', () => {
+  assert.equal(resolveImageGenerationConfig({ aspectRatio: '1:1' }).imageSize, '1024x1024')
+  assert.equal(resolveImageGenerationConfig({ aspectRatio: '16:9' }).imageSize, '1280x720')
+  assert.equal(
+    resolveImageGenerationConfig({ aspectRatio: '16:9' }, 'Qwen/Qwen-Image').imageSize,
+    '1664x928',
+  )
+  assert.equal(
+    resolveImageGenerationConfig({ width: 1280, height: 720, seed: 1 }).imageSize,
+    '1280x720',
+  )
+  assert.throws(
+    () => resolveImageGenerationConfig({ aspectRatio: '16:9', width: 1024, height: 1024 }),
+    /比例不一致/,
+  )
+  assert.throws(
+    () => resolveImageGenerationConfig({ aspectRatio: '4:5' }, 'Qwen/Qwen-Image'),
+    /不支持/,
+  )
+  assert.throws(() => resolveImageGenerationConfig({ width: 1024 }), /同时指定/)
+  assert.throws(() => resolveImageGenerationConfig({ seed: -1 }), /seed/)
 })

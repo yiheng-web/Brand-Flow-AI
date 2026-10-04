@@ -7,9 +7,40 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsInt,
+  Min,
+  Max,
+  IsMongoId,
   ValidateNested,
 } from 'class-validator'
-import { BRAND_VISUAL_STYLES, IMAGE_ASPECT_RATIOS } from '@brand-flow/contracts'
+import { BRAND_VISUAL_STYLES, IMAGE_ASPECT_RATIOS, REFERENCE_ROLES } from '@brand-flow/contracts'
+
+export class WorkflowReferenceInputDto {
+  @IsMongoId()
+  assetId!: string
+  @IsIn(REFERENCE_ROLES)
+  role!: (typeof REFERENCE_ROLES)[number]
+}
+export class ImageGenerationConfigDto {
+  @IsOptional()
+  @IsIn(IMAGE_ASPECT_RATIOS)
+  aspectRatio?: (typeof IMAGE_ASPECT_RATIOS)[number]
+  @IsOptional()
+  @IsInt()
+  @Min(512)
+  @Max(2048)
+  width?: number
+  @IsOptional()
+  @IsInt()
+  @Min(512)
+  @Max(2048)
+  height?: number
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(9999999996)
+  seed?: number
+}
 
 export class BrandRequirementInputDto {
   @IsString()
@@ -46,6 +77,17 @@ export class BrandRequirementInputDto {
 }
 
 export class CreateWorkflowDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @ValidateNested({ each: true })
+  @Type(() => WorkflowReferenceInputDto)
+  references?: WorkflowReferenceInputDto[]
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ImageGenerationConfigDto)
+  generationConfig?: ImageGenerationConfigDto
   @IsString({ message: '创意描述必须是字符串' })
   @IsNotEmpty({ message: '创意描述不能为空' })
   prompt!: string

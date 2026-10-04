@@ -15,10 +15,12 @@ describe('Works 对象归属', () => {
     _id: workId,
     creatorId: new Types.ObjectId(a),
     spaceId: 'personal',
+    title: '咖啡作品',
     objectKey: ownKey,
     toObject: () => ({}),
+    populated: () => undefined,
   }
-  const workModel = { findOne: jest.fn(), findByIdAndDelete: jest.fn() }
+  const workModel = { find: jest.fn(), findOne: jest.fn(), findByIdAndDelete: jest.fn() }
   const versions = { find: jest.fn(), deleteMany: jest.fn(), findOne: jest.fn() }
   const workflows = { findOne: jest.fn() }
   const storage = { deleteObject: jest.fn(), getSignedUrl: jest.fn(), getObject: jest.fn() }
@@ -42,6 +44,25 @@ describe('Works 对象归属', () => {
     const controller = new WorksController({ createTrustedVersion } as unknown as WorksService)
     await controller.createVersion({ user: { sub: a } }, workId.toString(), { workflowId })
     expect(createTrustedVersion).toHaveBeenCalledWith(a, workId.toString(), workflowId)
+  })
+
+  it('填充创建者后的作品列表仍使用原始 ID 签名，并拒绝外来对象', async () => {
+    const populatedWork = {
+      ...work,
+      creatorId: { _id: new Types.ObjectId(a), email: 'test@example.invalid' },
+      populated: () => new Types.ObjectId(a),
+    }
+    workModel.find.mockReturnValue({
+      populate: jest.fn(() => ({ sort: jest.fn().mockResolvedValue([populatedWork]) })),
+    })
+    storage.getSignedUrl.mockResolvedValue('own-signed-url')
+    await expect(service.findAll(a, 'personal')).resolves.toMatchObject([
+      { finalImageUrl: 'own-signed-url' },
+    ])
+    expect(storage.getSignedUrl).toHaveBeenCalledWith(ownKey)
+    populatedWork.objectKey = foreignKey
+    await expect(service.findAll(a, 'personal')).rejects.toBeInstanceOf(BadRequestException)
+    expect(storage.getSignedUrl).toHaveBeenCalledTimes(1)
   })
 
   it('A 不能访问 B 的作品，也不能生成签名或删除对象', async () => {
@@ -96,6 +117,29 @@ describe('Works 对象归属', () => {
     versions.find.mockReturnValue({ sort: jest.fn().mockResolvedValue([]) })
     await expect(service.findOne(a, workId.toString())).rejects.toBeInstanceOf(BadRequestException)
     expect(storage.getSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('正式 PNG 导出使用可信对象及附件文件名，并记录导出', async () => {
+    const createLog = jest.fn().mockResolvedValue({ _id: new Types.ObjectId() })
+    Reflect.set(service, 'exportLogModel', { create: createLog })
+    Reflect.set(
+      storage,
+      'getObjectPrefix',
+      jest.fn().mockResolvedValue({
+        contentType: 'image/png',
+        bytes: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      }),
+    )
+    storage.getSignedUrl.mockResolvedValue('export-url')
+    await expect(service.export(a, workId.toString(), { format: 'png' })).resolves.toMatchObject({
+      fileName: '咖啡作品.png',
+      downloadUrl: 'export-url',
+    })
+    expect(storage.getSignedUrl).toHaveBeenCalledWith(ownKey, {
+      expiresIn: 600,
+      downloadName: '咖啡作品.png',
+    })
+    expect(createLog).toHaveBeenCalledWith(expect.objectContaining({ workId }))
   })
 
   it('正常删除只删除本人作品对象', async () => {

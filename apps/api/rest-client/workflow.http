@@ -5,6 +5,8 @@
 @spaceId = personal
 @knowledgeId = 6a22f6a57468d83197c53eec
 @nodeType = creativeDirection
+@assetId = <个人上传图片的 Asset ID>
+@candidateId = <当前轮候选 ID>
 
 ### 创建待启动工作流
 POST {{baseUrl}}/workflow/create
@@ -14,8 +16,14 @@ Authorization: Bearer {{accessToken}}
 {
   "prompt": "做一张夏日海报极简风格",
   "spaceId": "{{spaceId}}",
-  "selectedKnowledgeBaseIds": ["{{knowledgeId}}"]
+  "selectedKnowledgeBaseIds": ["{{knowledgeId}}"],
+  "references": [{ "assetId": "{{assetId}}", "role": "product" }],
+  "generationConfig": { "aspectRatio": "16:9", "seed": 42 }
 }
+
+### 下载当前预览候选（不要求已选择最终候选）
+POST {{baseUrl}}/workflow/{{workflowId}}/candidates/{{candidateId}}/download
+Authorization: Bearer {{accessToken}}
 
 ### 获取工作流详情
 GET {{baseUrl}}/workflow/{{workflowId}}

@@ -12,10 +12,13 @@ import { OrgModule } from '../org/org.module'
 import { Knowledge, KnowledgeSchema } from '../knowledge/schemas/knowledge.schema'
 import { KnowledgeItem, KnowledgeItemSchema } from '../knowledge/schemas/knowledge-item.schema'
 import { StorageModule } from '../storage/storage.module'
+import { Asset, AssetSchema } from '../assets/asset.schema'
+import { WorkflowReferencesService } from './workflow-references.service'
 
 @Module({
   imports: [
     MongooseModule.forFeature([
+      { name: Asset.name, schema: AssetSchema },
       { name: Workflow.name, schema: WorkflowSchema },
       { name: WorkflowNode.name, schema: WorkflowNodeSchema },
       { name: WorkflowRevision.name, schema: WorkflowRevisionSchema },
@@ -29,6 +32,6 @@ import { StorageModule } from '../storage/storage.module'
     }),
   ],
   controllers: [WorkflowController],
-  providers: [WorkflowService, WorkflowProcessor],
+  providers: [WorkflowService, WorkflowProcessor, WorkflowReferencesService],
 })
 export class WorkflowModule {}

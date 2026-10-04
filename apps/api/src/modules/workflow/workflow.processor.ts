@@ -8,6 +8,7 @@ import {
   evaluateCandidateImages,
   evaluateFinalImage,
   generateCandidates,
+  extractReferenceConstraints,
 } from '@brand-flow/agent'
 import {
   WORKFLOW_NODE_ORDER,
@@ -26,6 +27,7 @@ import { WorkflowNode, WorkflowNodeDocument } from './schemas/workflow-node.sche
 import { Workflow, WorkflowDocument } from './schemas/workflow.schema'
 import { WorkflowRevision, WorkflowRevisionDocument } from './schemas/workflow-revision.schema'
 import { StorageService } from '../storage/storage.service'
+import { WorkflowReferencesService } from './workflow-references.service'
 import {
   trackWorkflow,
   persistWorkflowState,
@@ -51,6 +53,7 @@ export class WorkflowProcessor extends WorkerHost {
     @InjectModel(KnowledgeItem.name)
     private readonly knowledgeItemModel: Model<KnowledgeItemDocument>,
     private readonly storageService: StorageService,
+    private readonly referencesService?: WorkflowReferencesService,
   ) {
     super()
   }
@@ -251,9 +254,14 @@ export class WorkflowProcessor extends WorkerHost {
     result: WorkflowResult,
   ): Promise<{ result: WorkflowResult; nodeOutput: Record<string, unknown> }> {
     if (nodeType === 'brief') {
+      const executionReferences = workflow.references?.length
+        ? await this.referencesService!.forExecution(workflow.references, workflow.userId)
+        : []
+      const analyzed = await Promise.all(executionReferences.map(extractReferenceConstraints))
+      const references = analyzed.map((reference) => ({ ...reference, imageUrl: '' }))
       const generatedBrief = await this.executeWithRetry(
         nodeType,
-        () => createCreativeBrief(workflow.prompt, workflow.requirements),
+        () => createCreativeBrief(workflow.prompt, workflow.requirements, references),
         3,
       )
       const brief = {
@@ -266,7 +274,7 @@ export class WorkflowProcessor extends WorkerHost {
         version: (result.briefReview?.version ?? 0) + 1,
       }
       return {
-        result: { ...result, brief, briefReview },
+        result: { ...result, references, brief, briefReview },
         nodeOutput: brief as unknown as Record<string, unknown>,
       }
     }
@@ -304,12 +312,23 @@ export class WorkflowProcessor extends WorkerHost {
     if (nodeType === 'prompt') {
       const prompt = await this.executeWithRetry(
         nodeType,
-        () => createPromptPlan(result.brief!, selectedDirection, result.brandConstraint!),
+        () =>
+          createPromptPlan(
+            result.brief!,
+            selectedDirection,
+            result.brandConstraint!,
+            result.references,
+          ),
         3,
       )
       if (workflow.requirements?.aspectRatio) {
-        prompt.generationConfig.aspectRatio = workflow.requirements.aspectRatio
+        prompt.generationConfig = { aspectRatio: workflow.requirements.aspectRatio }
       }
+      if (workflow.generationConfig)
+        prompt.generationConfig =
+          workflow.generationConfig.aspectRatio && workflow.generationConfig.width === undefined
+            ? { seed: prompt.generationConfig.seed, ...workflow.generationConfig }
+            : { ...prompt.generationConfig, ...workflow.generationConfig }
       return {
         result: { ...result, prompt },
         nodeOutput: prompt as unknown as Record<string, unknown>,
@@ -502,9 +521,10 @@ export class WorkflowProcessor extends WorkerHost {
     const uploadedKeys: string[] = []
     try {
       return await Promise.all(
-        candidates.map(async (candidate, index) => {
+        candidates.map(async (candidate) => {
           if (!candidate.imageUrl) return candidate
-          const objectKey = `workflows/${workflow.userId}/${workflow._id.toString()}/runs/${workflow.runVersion}/candidates/${index + 1}.png`
+          if (!/^[a-zA-Z0-9_-]+$/.test(candidate.id)) throw new Error('候选图 ID 不合法')
+          const objectKey = `workflows/${workflow.userId}/${workflow._id.toString()}/runs/${workflow.runVersion}/candidates/${candidate.id}.png`
           await this.storageService.importRemotePng(candidate.imageUrl, {
             key: objectKey,
             metadata: {

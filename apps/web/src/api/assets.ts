@@ -16,6 +16,9 @@ export interface CreateAssetParams {
 
 // 资产数据
 export interface AssetData {
+  objectKey?: string
+  mimeType?: string
+  signedUrl?: string
   _id: string
   name: string
   type: string

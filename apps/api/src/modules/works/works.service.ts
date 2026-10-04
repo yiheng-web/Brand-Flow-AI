@@ -318,11 +318,12 @@ export class WorksService {
     const work = await this.findAccessibleWork(userId, id)
     this.assertWorkObject(work, work.objectKey)
     await this.assertPngExport(work.objectKey)
+    const fileName = `${this.sanitizeFileName(work.title)}.png`
     const downloadUrl = await this.storageService.getSignedUrl(work.objectKey, {
       expiresIn: 60 * 10,
+      downloadName: fileName,
     })
 
-    const fileName = `${this.sanitizeFileName(work.title)}.png`
     const log = await this.exportLogModel.create({
       workId: work._id,
       enterpriseId: work.enterpriseId,
@@ -361,7 +362,11 @@ export class WorksService {
   }
 
   private assertWorkObject(work: WorkDocument, key: string | undefined): asserts key is string {
-    const prefix = `works/${work.creatorId.toString()}/${work._id.toString()}/versions/`
+    // 列表填充创建者后，使用 Mongoose 保存的原始 ID 校验对象归属。
+    const populatedCreatorId: unknown = work.populated('creatorId')
+    const creatorId =
+      populatedCreatorId instanceof Types.ObjectId ? populatedCreatorId : work.creatorId
+    const prefix = `works/${creatorId.toString()}/${work._id.toString()}/versions/`
     if (
       !key ||
       !key.startsWith(prefix) ||

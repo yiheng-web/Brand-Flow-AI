@@ -15,6 +15,7 @@ import {
   evaluateFinalImage,
   generateArtTextCandidates as generateControlledArtTextCandidates,
   revisePromptPlan,
+  resolveImageGenerationConfig,
 } from '@brand-flow/agent'
 import {
   createInitialWorkflowNodes,
@@ -36,6 +37,7 @@ import { Queue, QueueEvents } from 'bullmq'
 import { createHash } from 'node:crypto'
 import { Model } from 'mongoose'
 import { Types } from 'mongoose'
+import { WorkflowReferencesService } from './workflow-references.service'
 import { Observable } from 'rxjs'
 import sharp from 'sharp'
 import { assertObjectId, assertPersonalOwner, personalCreatorFilter } from '@/common/personal-scope'
@@ -66,6 +68,8 @@ import {
 import { ListWorkflowsDto } from './dto/list-workflows.dto'
 
 export interface WorkflowResponse {
+  references?: WorkflowDocument['references']
+  generationConfig?: WorkflowDocument['generationConfig']
   id: string
   status: WorkflowStatus
   prompt: string
@@ -106,6 +110,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     @InjectModel(Knowledge.name)
     private readonly knowledgeModel: Model<KnowledgeDocument>,
     private readonly storageService: StorageService,
+    private readonly referencesService?: WorkflowReferencesService,
   ) {}
 
   async onModuleInit() {
@@ -165,6 +170,25 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   async create(dto: CreateWorkflowDto, userId: string): Promise<WorkflowResponse> {
     if (!userId) throw new ForbiddenException('登录状态无效')
     const space = await this.assertSpaceAccess(userId, dto.spaceId)
+    if (dto.references?.length && space.spaceType !== 'personal')
+      throw new BadRequestException('参考素材当前仅支持个人空间')
+    const references = dto.references?.length
+      ? await this.referencesService!.resolve(dto.references, userId)
+      : []
+    if (dto.generationConfig || dto.requirements?.aspectRatio) {
+      try {
+        resolveImageGenerationConfig(
+          {
+            ...dto.generationConfig,
+            aspectRatio: dto.generationConfig?.aspectRatio ?? dto.requirements?.aspectRatio,
+          },
+          process.env.IMAGE_MODEL || 'Kwai-Kolors/Kolors',
+          process.env.IMAGE_SIZE || '1024x1024',
+        )
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : '生成参数不受支持')
+      }
+    }
     const userSelectedKnowledgeBaseIds = [...new Set(dto.selectedKnowledgeBaseIds ?? [])]
     if (userSelectedKnowledgeBaseIds.length > 3) {
       throw new BadRequestException('一次最多主动选择 3 个知识库')
@@ -198,6 +222,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       entId: space.entId,
       selectedKnowledgeBaseIds,
       requirements: dto.requirements,
+      references,
+      generationConfig: dto.generationConfig,
       status: 'pending',
     })
 
@@ -243,7 +269,21 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     const workflow = await this.verifyWorkflowAccess(id, userId, entId)
     const nodes = await this.workflowNodeModel.find({ workflowId: id }).sort({ createdAt: 1 })
     const response = this.toResponse(workflow)
+    if (response.references?.length)
+      response.references = await Promise.all(
+        response.references.map(async (reference) => ({
+          ...reference,
+          imageUrl: await this.storageService.getSignedUrl(reference.objectKey),
+        })),
+      )
     const result = response.result as WorkflowResult | undefined
+    if (result?.references?.length)
+      result.references = await Promise.all(
+        result.references.map(async (reference) => ({
+          ...reference,
+          imageUrl: await this.storageService.getSignedUrl(reference.objectKey),
+        })),
+      )
     if (result?.generate) {
       result.generate.candidates = await Promise.all(
         result.generate.candidates.map(async (candidate) => {
@@ -361,7 +401,10 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         result.brandConstraint,
         result.prompt,
         feedback,
+        result.references,
       )
+      // 优化只调整创意提示词，保留用户已确认的画面参数。
+      revisedPrompt.generationConfig = { ...result.prompt.generationConfig }
       const round =
         (await this.workflowRevisionModel.countDocuments({ workflowId: workflow._id })) + 1
       const revision = await this.workflowRevisionModel.create({
@@ -422,6 +465,26 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return {
       fileName: `brand-flow-${id}.png`,
       downloadUrl: await this.storageService.getSignedUrl(objectKey, { expiresIn: 60 * 10 }),
+    }
+  }
+
+  async getCandidateDownload(id: string, candidateId: string, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const result = workflow.result as WorkflowResult | undefined
+    const candidate = result?.generate?.candidates.find((image) => image.id === candidateId)
+    if (!candidate) throw new NotFoundException('候选图不存在或已过期')
+    const objectKey = candidate.metadata?.objectKey
+    if (
+      typeof objectKey !== 'string' ||
+      !objectKey.startsWith(`workflows/${workflow.userId}/${id}/`)
+    )
+      throw new BadRequestException('候选图尚未持久化')
+    return {
+      fileName: `brand-flow-${id}-${candidateId}.png`,
+      downloadUrl: await this.storageService.getSignedUrl(objectKey, {
+        expiresIn: 600,
+        downloadName: `candidate-${candidateId}.png`,
+      }),
     }
   }
 
@@ -1055,6 +1118,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
   private toResponse(workflow: WorkflowDocument): WorkflowResponse {
     return {
+      references: workflow.references ?? [],
+      generationConfig: workflow.generationConfig,
       id: workflow._id.toString(),
       status: workflow.status,
       prompt: workflow.prompt,

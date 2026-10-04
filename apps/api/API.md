@@ -198,6 +198,8 @@ interface UserInfo {
       prompt: string,       // 用户的原始设计意图或提示词
       spaceId: string,      // 当前工作流关联的前端空间或画布 ID
       selectedKnowledgeBaseIds?: string[] // 本次主动选择的知识库 ID，最多 3 个
+      references?: { assetId: string; role: 'logo' | 'product' | 'person' | 'style' }[] // 最多 4 个个人上传图片
+      generationConfig?: { aspectRatio?: '1:1' | '4:5' | '3:4' | '16:9' | '9:16'; width?: number; height?: number; seed?: number }
     }
     ```
   - **返回 Data**:
@@ -207,6 +209,8 @@ interface UserInfo {
       status: WorkflowStatus,   // 初始状态（pending）
       prompt: string,           // 记录的原始提示词
       spaceId: string,          // 记录的空间 ID
+      references: ResolvedWorkflowReference[], // 服务端校验的素材来源、用途、对象键及读取地址
+      generationConfig?: PromptPlan['generationConfig'],
       runVersion: number,       // 执行版本，初始为 0
       eventSequence: number,    // 快照序号，初始为 0
       currentNode?: WorkflowNodeType,
@@ -215,6 +219,18 @@ interface UserInfo {
       updatedAt: string         // 更新时间
     }
     ```
+
+- **`POST /workflow/:id/candidates/:candidateId/download`**
+  - **说明**：下载当前轮的指定候选，不要求已选择最终候选。返回 `{ downloadUrl, fileName, expiresIn: 600 }`。
+  - **权限**：验证工作流归属、当前候选 ID 与服务端对象键；旧轮、非本人候选返回 404。
+  - 最终作品使用 `POST /works/:id/export`，候选下载不能代替正式作品导出。
+
+- **参考图与参数规则**
+  - 仅接受 `assetId + role`，创建及执行时均校验个人私有图片归属，不接受外链或客户端对象键。
+  - 产品、人物及风格图通过视觉模型提取结构化特征进入 Brief/Prompt；Logo 保留原图合成来源，底图不模仿 Logo。
+  - 详情快照返回 references；执行特征保存在 `result.references.visualConstraints`，不持久化图片 Base64。
+  - Kolors：1:1→1024×1024，16:9→1280×720；Qwen-Image：1:1→1328×1328，16:9→1664×928。其他支持范围见 `docs/create-v1.md`；不支持的模型、尺寸或比例明确拒绝。
+  - 四候选分别请求 Provider，记录实际 model/seed/prompt/config。对象键包含执行版本与候选 ID；优化保留原画面参数。
 
 - **`POST /workflow/:id/start`**
   - **说明**: 工作台确认图文分离设置后启动 `pending` 工作流。重复调用不会重复创建任务。

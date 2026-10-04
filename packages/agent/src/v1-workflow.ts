@@ -1,5 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages'
 import { deflateSync } from 'node:zlib'
+import { randomUUID } from 'node:crypto'
 import type {
   BrandConstraintPackage,
   ArtTextCandidate,
@@ -21,14 +22,18 @@ import { normalizeCreativeDirection, splitBrandConstraintPackage } from '@brand-
 
 import { safeJsonParse } from './common'
 import { evaluateCandidates, runFinalEvaluation } from './ai-logic/evaluate'
-import { generateService } from './generate'
+import { referenceConstraintText } from './reference'
+import type { ResolvedWorkflowReference } from '@brand-flow/contracts'
 import {
   createSiliconFlowChatModel,
   extractChatText,
   prepareSiliconFlowVisionImage,
   SILICONFLOW_JSON_CALL_OPTIONS,
 } from './common/siliconflow-chat'
-import { getSiliconFlowImageSettings } from './common/siliconflow-image-client'
+import {
+  generateSiliconFlowImageResults,
+  resolveImageGenerationConfig,
+} from './common/siliconflow-image-client'
 
 export function isDemoMode(): boolean {
   return process.env.BRAND_FLOW_DEMO_MODE === 'true'
@@ -63,11 +68,13 @@ export async function createPromptPlan(
   brief: CreativeBrief,
   direction: CreativeDirection,
   constraints: BrandConstraintPackage,
+  references: ResolvedWorkflowReference[] = [],
 ): Promise<PromptPlan> {
   let prompt: PromptPlan | undefined
   for (const batch of splitBrandConstraintPackage(constraints))
     prompt = await createPromptPlanForBatch(brief, direction, batch, prompt)
   if (!prompt) throw new Error('品牌规则分批规划未返回 Prompt')
+  prompt.imagePrompt = [prompt.imagePrompt, ...referenceConstraintText(references)].join('\n')
   return prompt
 }
 
@@ -77,10 +84,12 @@ export async function revisePromptPlan(
   constraints: BrandConstraintPackage,
   previousPrompt: PromptPlan,
   feedback: OptimizationFeedback,
+  references: ResolvedWorkflowReference[] = [],
 ): Promise<PromptPlan> {
   let prompt = previousPrompt
   for (const batch of splitBrandConstraintPackage(constraints))
     prompt = await revisePromptPlanForBatch(brief, direction, batch, prompt, feedback)
+  prompt.imagePrompt = [prompt.imagePrompt, ...referenceConstraintText(references)].join('\n')
   return prompt
 }
 
@@ -223,7 +232,9 @@ async function invokeImageJson<T>(
 export async function createCreativeBrief(
   originalRequest: string,
   requirements?: BrandRequirementInput,
+  references: ResolvedWorkflowReference[] = [],
 ): Promise<CreativeBrief> {
+  const referenceConstraints = referenceConstraintText(references)
   const structuredRequest = requirements
     ? `${originalRequest}\n品牌：${requirements.brandName}；品类：${requirements.productCategory}；产品：${requirements.productDescription}；目标用户：${requirements.targetAudience}；场景：${requirements.usageScenario}；风格：${requirements.visualStyles.join('、')}；色彩：${requirements.colorPreference || '未指定'}；比例：${requirements.aspectRatio}`
     : originalRequest
@@ -234,19 +245,20 @@ export async function createCreativeBrief(
       targetAudience: requirements?.targetAudience || fallback.targetAudience,
       channel: requirements?.usageScenario || fallback.channel,
       constraints: requirements
-        ? [...fallback.constraints, `画面比例 ${requirements.aspectRatio}`]
-        : fallback.constraints,
+        ? [...fallback.constraints, `画面比例 ${requirements.aspectRatio}`, ...referenceConstraints]
+        : [...fallback.constraints, ...referenceConstraints],
     }
   }
 
   const result = await invokeJson<CreativeBrief>(
     '把用户需求转换为 CreativeBrief。必须包含 originalRequest、normalizedIntent、outputMode、needsComposition、constraints、assumptions；outputMode 只能是 pure_image、graphic_design、scene_text、both。',
-    { originalRequest, requirements },
+    { originalRequest, requirements, referenceConstraints },
   )
   if (!result?.normalizedIntent || typeof result.needsComposition !== 'boolean') {
     throw new Error('Brief Provider 返回的数据不完整')
   }
-  return parseCreativeBrief(JSON.stringify(result), structuredRequest)
+  const brief = parseCreativeBrief(JSON.stringify(result), structuredRequest)
+  return { ...brief, constraints: [...brief.constraints, ...referenceConstraints] }
 }
 
 export function createDirectionFallbacks(brief: CreativeBrief): CreativeDirection[] {
@@ -393,6 +405,7 @@ export function createPromptPlanFallback(
     selectedDirectionId: direction.id,
     imagePrompt: [
       brief.normalizedIntent,
+      ...brief.constraints,
       direction.visualStyle,
       direction.composition,
       constraintText,
@@ -482,7 +495,11 @@ async function revisePromptPlanForBatch(
   }
 }
 
-function createDemoImage(index: number, prompt: string): CandidateImage {
+function createDemoImage(
+  index: number,
+  prompt: string,
+  config: ReturnType<typeof resolveImageGenerationConfig>,
+): CandidateImage {
   const palettes = [
     ['#0B57D0', '#D3E3FD'],
     ['#137333', '#CEEAD6'],
@@ -491,13 +508,14 @@ function createDemoImage(index: number, prompt: string): CandidateImage {
   ]
   const [primary, secondary] = palettes[index]
   return {
-    id: `demo-candidate-${index + 1}`,
-    imageUrl: createDemoPngDataUrl(primary, secondary, index),
+    id: `demo-candidate-${randomUUID()}`,
+    imageUrl: createDemoPngDataUrl(primary, secondary, index, config.width, config.height),
     prompt,
     model: 'brand-flow-demo-provider',
-    seed: 1000 + index,
+    seed: config.seed + index,
     metadata: {
       demo: true,
+      generationConfig: { ...config, seed: config.seed + index },
       durationMs: 0,
       dominantColors: [primary, secondary],
       brightness: index % 2 === 0 ? 'bright' : 'balanced',
@@ -526,9 +544,13 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, name, data, checksum])
 }
 
-function createDemoPngDataUrl(primary: string, secondary: string, index: number): string {
-  const width = 512
-  const height = 512
+function createDemoPngDataUrl(
+  primary: string,
+  secondary: string,
+  index: number,
+  width: number,
+  height: number,
+): string {
   const color = (hex: string) =>
     [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16))
   const from = color(primary)
@@ -563,29 +585,25 @@ function createDemoPngDataUrl(primary: string, secondary: string, index: number)
   return `data:image/png;base64,${png.toString('base64')}`
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`生成请求超过 ${timeoutMs}ms`)), timeoutMs),
-    ),
-  ])
-}
-
 export async function generateCandidates(plan: PromptPlan): Promise<CandidateImage[]> {
-  if (isDemoMode()) return [0, 1, 2, 3].map((index) => createDemoImage(index, plan.imagePrompt))
+  if (isDemoMode()) {
+    const config = resolveImageGenerationConfig(plan.generationConfig)
+    return [0, 1, 2, 3].map((index) => createDemoImage(index, plan.imagePrompt, config))
+  }
 
-  const batch = await withTimeout(
-    generateService.generateFourCandidates(plan.imagePrompt, plan.negativePrompt || ''),
-    Number(process.env.IMAGE_GENERATION_TIMEOUT_MS || 120000),
-  )
-  return batch.candidates.map((candidate) => ({
-    id: candidate.id,
-    imageUrl: candidate.url,
-    prompt: candidate.promptUsed,
+  const batch = await generateSiliconFlowImageResults({
+    prompt: plan.imagePrompt,
+    negativePrompt: plan.negativePrompt,
+    count: 4,
+    generationConfig: plan.generationConfig,
+  })
+  return batch.map((candidate) => ({
+    id: `candidate-${randomUUID()}`,
+    imageUrl: candidate.imageUrl,
+    prompt: plan.imagePrompt,
     seed: candidate.seed,
-    model: getSiliconFlowImageSettings().model,
-    metadata: { failed: !candidate.url },
+    model: candidate.model,
+    metadata: { generationConfig: candidate.config, negativePrompt: plan.negativePrompt },
   }))
 }
 

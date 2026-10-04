@@ -1,0 +1,5 @@
+.picker {
+  max-width: min(360px, calc(100vw - 48px));
+  max-height: 360px;
+  overflow-y: auto;
+}

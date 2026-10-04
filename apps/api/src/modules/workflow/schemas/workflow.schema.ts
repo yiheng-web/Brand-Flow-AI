@@ -5,6 +5,8 @@ import type {
   SpaceType,
   WorkflowAwaitingAction,
   WorkflowStatus,
+  ResolvedWorkflowReference,
+  PromptPlan,
 } from '@brand-flow/contracts'
 
 export type { WorkflowStatus } from '@brand-flow/contracts'
@@ -16,6 +18,10 @@ export type WorkflowDocument = Workflow &
 
 @Schema({ timestamps: true })
 export class Workflow {
+  @Prop({ type: [Object], default: [] })
+  references!: ResolvedWorkflowReference[]
+  @Prop({ type: Object })
+  generationConfig?: PromptPlan['generationConfig']
   @Prop({ required: true })
   prompt!: string
 

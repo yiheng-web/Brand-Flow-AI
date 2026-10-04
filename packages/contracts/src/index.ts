@@ -149,6 +149,28 @@ export type BrandVisualStyle = (typeof BRAND_VISUAL_STYLES)[number]
 export const IMAGE_ASPECT_RATIOS = ['1:1', '4:5', '3:4', '16:9', '9:16'] as const
 export type ImageAspectRatio = (typeof IMAGE_ASPECT_RATIOS)[number]
 
+export const REFERENCE_ROLES = ['logo', 'product', 'person', 'style'] as const
+export type ReferenceRole = (typeof REFERENCE_ROLES)[number]
+export interface WorkflowReferenceInput {
+  assetId: string
+  role: ReferenceRole
+}
+export interface ResolvedWorkflowReference extends WorkflowReferenceInput {
+  name: string
+  objectKey: string
+  mimeType: string
+  imageUrl: string
+  strategy: 'visual_constraints' | 'compose_logo'
+  visualConstraints?: {
+    description: string
+    colors: string[]
+    shape: string
+    material: string
+    composition: string
+    source: 'vision' | 'demo'
+  }
+}
+
 export interface BrandRequirementInput {
   brandName: string
   productCategory: string
@@ -484,6 +506,7 @@ export interface WorkflowNodeSnapshot {
 }
 
 export interface WorkflowResult {
+  references?: ResolvedWorkflowReference[]
   brief?: CreativeBrief
   briefReview?: BriefReview
   brandConstraint?: BrandConstraintPackage
@@ -513,6 +536,8 @@ type NodeEventBase = EventBase & { nodeId: string; nodeType: WorkflowNodeType }
 
 export interface WorkflowSnapshot {
   workflow: {
+    references?: ResolvedWorkflowReference[]
+    generationConfig?: PromptPlan['generationConfig']
     id: string
     status: WorkflowStatus
     prompt: string
@@ -553,6 +578,8 @@ export type WorkflowSseEvent =
   | ({ type: 'workflow_failed'; error: Omit<WorkflowError, 'retryable'> } & EventBase)
 
 export interface CreateWorkflowRequest {
+  references?: WorkflowReferenceInput[]
+  generationConfig?: PromptPlan['generationConfig']
   prompt: string
   spaceId: string
   selectedKnowledgeBaseIds?: string[]
