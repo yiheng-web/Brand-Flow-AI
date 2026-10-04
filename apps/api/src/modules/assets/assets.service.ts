@@ -1,4 +1,13 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common'
+import sharp from 'sharp'
+import { assertObjectId, personalCreatorFilter } from '@/common/personal-scope'
+import { MAX_ASSET_IMAGE_BYTES, ASSET_IMAGE_FORMATS } from './assets.constants'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { Asset, AssetDocument } from './asset.schema'
@@ -18,6 +27,7 @@ interface UploadedAssetFile {
 
 @Injectable()
 export class AssetsService {
+  private readonly logger = new Logger(AssetsService.name)
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
@@ -27,9 +37,11 @@ export class AssetsService {
 
   async createAsset(userId: string, enterpriseId: string | undefined, createDto: CreateAssetDto) {
     const { name, type, url, ownerId, ownerType, visibility, metadata } = createDto
+    assertObjectId(ownerId)
 
     if (ownerType === OwnerType.USER) {
-      if (ownerId !== userId || visibility !== Visibility.PRIVATE) {
+      if (ownerId !== userId) throw new ForbiddenException('不能向他人的个人空间写入素材')
+      if (visibility !== Visibility.PRIVATE) {
         throw new BadRequestException('个人素材只能保存到本人私有空间')
       }
     } else if (!enterpriseId) {
@@ -57,7 +69,8 @@ export class AssetsService {
       ownerType,
       visibility,
       creatorId: new Types.ObjectId(userId),
-      enterpriseId: enterpriseId ? new Types.ObjectId(enterpriseId) : undefined,
+      enterpriseId:
+        ownerType !== OwnerType.USER && enterpriseId ? new Types.ObjectId(enterpriseId) : undefined,
       metadata: metadata || {},
     })
 
@@ -74,12 +87,24 @@ export class AssetsService {
       throw new BadRequestException('上传文件不能为空')
     }
 
-    if (!file.mimetype.startsWith('image/')) {
-      throw new BadRequestException('当前仅支持上传图片素材')
+    assertObjectId(uploadDto.ownerId)
+    if (file.size > MAX_ASSET_IMAGE_BYTES || file.buffer.length > MAX_ASSET_IMAGE_BYTES) {
+      throw new BadRequestException('图片大小不能超过 10 MiB')
+    }
+    const expectedFormat = ASSET_IMAGE_FORMATS[file.mimetype]
+    if (!expectedFormat) throw new BadRequestException('仅支持 PNG、JPEG、WebP、GIF 图片')
+    try {
+      const image = sharp(file.buffer, { limitInputPixels: 40_000_000 })
+      const metadata = await image.metadata()
+      if (metadata.format !== expectedFormat) throw new Error('图片格式与 MIME 不一致')
+      await image.stats()
+    } catch {
+      throw new BadRequestException('图片内容无效、格式与 MIME 不一致或像素过大')
     }
 
     if (uploadDto.ownerType === OwnerType.USER) {
-      if (uploadDto.ownerId !== userId || uploadDto.visibility !== Visibility.PRIVATE) {
+      if (uploadDto.ownerId !== userId) throw new ForbiddenException('不能向他人的个人空间上传素材')
+      if (uploadDto.visibility !== Visibility.PRIVATE) {
         throw new BadRequestException('个人素材只能上传到本人私有空间')
       }
     } else if (!enterpriseId) {
@@ -95,6 +120,7 @@ export class AssetsService {
     )
 
     const assetId = new Types.ObjectId()
+    const metadata = this.parseMetadata(uploadDto.metadata)
     // Keep a stable object key in MongoDB; signed URLs are generated on read.
     const objectKey = this.buildAssetObjectKey(uploadDto, assetId.toString(), file)
 
@@ -110,27 +136,43 @@ export class AssetsService {
       },
     })
 
-    const asset = await this.assetModel.create({
-      _id: assetId,
-      name: uploadDto.name,
-      type: uploadDto.type,
-      url: this.storageService.getObjectUrl(storedObject.key),
-      bucket: storedObject.bucket,
-      objectKey: storedObject.key,
-      fileName: file.originalname,
-      mimeType: file.mimetype,
-      size: file.size,
-      ownerId: new Types.ObjectId(uploadDto.ownerId),
-      ownerType: uploadDto.ownerType,
-      visibility: uploadDto.visibility,
-      creatorId: new Types.ObjectId(userId),
-      enterpriseId: enterpriseId ? new Types.ObjectId(enterpriseId) : undefined,
-      metadata: {
-        tags: this.parseTags(uploadDto.tags),
-        description: uploadDto.description,
-        ...this.parseMetadata(uploadDto.metadata),
-      },
-    })
+    let asset: AssetDocument
+    try {
+      asset = await this.assetModel.create({
+        _id: assetId,
+        name: uploadDto.name,
+        type: uploadDto.type,
+        url: this.storageService.getObjectUrl(storedObject.key),
+        bucket: storedObject.bucket,
+        objectKey: storedObject.key,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        ownerId: new Types.ObjectId(uploadDto.ownerId),
+        ownerType: uploadDto.ownerType,
+        visibility: uploadDto.visibility,
+        creatorId: new Types.ObjectId(userId),
+        enterpriseId:
+          uploadDto.ownerType !== OwnerType.USER && enterpriseId
+            ? new Types.ObjectId(enterpriseId)
+            : undefined,
+        metadata: {
+          tags: this.parseTags(uploadDto.tags),
+          description: uploadDto.description,
+          ...metadata,
+        },
+      })
+    } catch (error: unknown) {
+      try {
+        await this.storageService.deleteObject(storedObject.key)
+      } catch (cleanupError: unknown) {
+        this.logger.error(
+          '素材写入失败后的对象清理失败',
+          cleanupError instanceof Error ? cleanupError.stack : undefined,
+        )
+      }
+      throw error
+    }
 
     return this.attachSignedUrl(asset)
   }
@@ -139,7 +181,7 @@ export class AssetsService {
     if (spaceId === 'personal' || !enterpriseId) {
       const personalAssets = await this.assetModel
         .find({
-          creatorId: new Types.ObjectId(userId),
+          ...personalCreatorFilter(userId),
           ownerId: new Types.ObjectId(userId),
           ownerType: OwnerType.USER,
           visibility: Visibility.PRIVATE,
@@ -189,7 +231,18 @@ export class AssetsService {
   }
 
   async deleteAsset(userId: string, assetId: string) {
-    const asset = await this.assetModel.findById(assetId)
+    assertObjectId(assetId)
+    const asset = await this.assetModel.findOne({
+      _id: assetId,
+      $or: [
+        {
+          ownerType: OwnerType.USER,
+          ownerId: new Types.ObjectId(userId),
+          ...personalCreatorFilter(userId),
+        },
+        { ownerType: { $ne: OwnerType.USER } },
+      ],
+    })
     if (!asset) {
       throw new NotFoundException('资产不存在')
     }
@@ -210,13 +263,14 @@ export class AssetsService {
           throw new BadRequestException('仅部门主管或企业管理员才能删除公共素材')
         }
       } else {
-        throw new BadRequestException('您无权删除此资产')
+        throw new ForbiddenException('您无权删除此资产')
       }
     }
 
     // Uploaded files live in the private bucket, so remove the object as part
     // of the same business delete path that removes the database record.
     if (asset.objectKey) {
+      this.assertAssetObject(asset, asset.objectKey)
       await this.storageService.deleteObject(asset.objectKey)
     }
 
@@ -285,7 +339,8 @@ export class AssetsService {
     visibility: Visibility,
   ) {
     if (ownerType === OwnerType.USER) {
-      if (ownerId !== userId || visibility !== Visibility.PRIVATE) {
+      if (ownerId !== userId) throw new ForbiddenException('不能向他人的个人空间写入素材')
+      if (visibility !== Visibility.PRIVATE) {
         throw new BadRequestException('个人素材只能保存到本人私有空间')
       }
       return
@@ -312,16 +367,26 @@ export class AssetsService {
     enterpriseId: string | undefined,
     assetId: string,
   ) {
-    const asset = await this.assetModel.findOne(
-      enterpriseId
-        ? { _id: assetId, enterpriseId: new Types.ObjectId(enterpriseId) }
-        : {
-            _id: assetId,
-            ownerType: OwnerType.USER,
-            ownerId: new Types.ObjectId(userId),
-            creatorId: new Types.ObjectId(userId),
-          },
-    )
+    assertObjectId(assetId)
+    const personal = {
+      ownerType: OwnerType.USER,
+      ownerId: new Types.ObjectId(userId),
+      ...personalCreatorFilter(userId),
+    }
+    const asset = await this.assetModel.findOne({
+      _id: assetId,
+      ...(enterpriseId
+        ? {
+            $or: [
+              personal,
+              {
+                enterpriseId: new Types.ObjectId(enterpriseId),
+                ownerType: { $ne: OwnerType.USER },
+              },
+            ],
+          }
+        : personal),
+    })
 
     if (!asset) {
       throw new NotFoundException('资产不存在或无权访问')
@@ -367,15 +432,9 @@ export class AssetsService {
   }
 
   private getFileExtension(file: UploadedAssetFile): string {
-    const nameParts = file.originalname.split('.')
-    const extFromName = nameParts.length > 1 ? nameParts.pop() : undefined
-
-    if (extFromName) {
-      return `.${extFromName.toLowerCase()}`
-    }
-
-    const subtype = file.mimetype.split('/')[1]
-    return subtype ? `.${subtype}` : ''
+    // 对象路径使用已验证格式，不能继承客户端文件名中的路径或伪造扩展名。
+    const format = ASSET_IMAGE_FORMATS[file.mimetype]
+    return format === 'jpeg' ? '.jpg' : `.${format}`
   }
 
   private parseTags(tags?: string): string[] {
@@ -409,13 +468,21 @@ export class AssetsService {
       return assetObject
     }
 
-    // The bucket is private in production; clients should only receive short-lived URLs.
+    this.assertAssetObject(asset, asset.objectKey)
+    if (asset.thumbnailObjectKey) this.assertAssetObject(asset, asset.thumbnailObjectKey)
     return {
       ...assetObject,
       signedUrl: await this.storageService.getSignedUrl(asset.objectKey),
       thumbnailSignedUrl: asset.thumbnailObjectKey
         ? await this.storageService.getSignedUrl(asset.thumbnailObjectKey)
         : undefined,
+    }
+  }
+
+  private assertAssetObject(asset: AssetDocument, key: string): void {
+    const prefix = `assets/${asset.ownerType}/${asset.ownerId.toString()}/${asset._id.toString()}/`
+    if (!key.startsWith(prefix) || key.slice(prefix.length).includes('/') || key.includes('..')) {
+      throw new BadRequestException('素材对象缺少可信归属')
     }
   }
 }

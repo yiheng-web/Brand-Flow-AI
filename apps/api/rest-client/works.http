@@ -45,14 +45,7 @@ Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
-  "imageUrl": "https://cdn.example.com/works/final-v2.png",
-  "objectKey": "works/user/123/final.png",
-  "sourceWorkflowId": "6a22f9dc7468d83197c53f4c",
-  "nodesSnapshot": {},
-  "qualityReport": {
-    "totalScore": 91,
-    "issues": []
-  }
+  "workflowId": "6a22f9dc7468d83197c53f4c"
 }
 
 ### 获取作品版本列表

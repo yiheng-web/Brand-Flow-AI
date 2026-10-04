@@ -13,6 +13,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AuthResult } from '@/api/auth'
+import { useWorkflowStore } from './useWorkflowStore'
+import { useUserStore } from './useUserStore'
+import { useFlowStore } from './useFlowStore'
+
+function resetSessionState() {
+  useWorkflowStore.getState().reset()
+  useWorkflowStore.persist.clearStorage()
+  useUserStore.setState(useUserStore.getInitialState(), true)
+  useFlowStore.setState(useFlowStore.getInitialState(), true)
+}
 
 /** 用户基本信息 */
 interface AuthUser {
@@ -33,26 +43,30 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isLoggedIn: false,
       user: null,
       token: null,
 
-      setAuth: (result) =>
+      setAuth: (result) => {
+        if (get().user?.id !== result.user.id) resetSessionState()
         set({
           isLoggedIn: true,
           user: result.user,
           token: result.token,
-        }),
+        })
+      },
 
       setToken: (token) => set({ token, isLoggedIn: true }),
 
-      logout: () =>
+      logout: () => {
+        resetSessionState()
         set({
           isLoggedIn: false,
           user: null,
           token: null,
-        }),
+        })
+      },
     }),
     {
       name: 'brand-flow-auth',

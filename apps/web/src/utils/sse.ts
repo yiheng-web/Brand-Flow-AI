@@ -82,6 +82,15 @@ export function createWorkflowSseParser(): WorkflowSseParser {
 export function createAuthEventSource(url: string, options?: SSEOptions): { close: () => void } {
   const controller = new AbortController()
   let closed = false
+  const sessionUserId = useAuthStore.getState().user?.id
+  const close = () => {
+    closed = true
+    controller.abort()
+    unsubscribe()
+  }
+  const unsubscribe = useAuthStore.subscribe((state) => {
+    if (!state.isLoggedIn || state.user?.id !== sessionUserId) close()
+  })
 
   const connect = async () => {
     try {
@@ -112,6 +121,7 @@ export function createAuthEventSource(url: string, options?: SSEOptions): { clos
 
       while (!closed) {
         const { done, value } = await reader.read()
+        if (closed) break
         if (done) {
           for (const event of parser.finish(decoder.decode())) options?.onMessage?.(event)
           break
@@ -125,15 +135,12 @@ export function createAuthEventSource(url: string, options?: SSEOptions): { clos
       if (!closed && (!(err instanceof Error) || err.name !== 'AbortError')) {
         options?.onError?.(err)
       }
+    } finally {
+      close()
     }
   }
 
   connect()
 
-  return {
-    close: () => {
-      closed = true
-      controller.abort()
-    },
-  }
+  return { close }
 }

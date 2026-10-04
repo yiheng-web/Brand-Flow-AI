@@ -30,6 +30,12 @@ apiClient.interceptors.request.use(
 // 统一处理错误（401 跳登录、网络异常提示等）
 apiClient.interceptors.response.use(
   (response) => {
+    if (
+      response.config.headers.Authorization &&
+      response.config.headers.Authorization !== `Bearer ${useAuthStore.getState().token}`
+    ) {
+      return Promise.reject(new Error('会话已变化，请重新请求'))
+    }
     const resData = response.data
     // 如果是后端包装的响应结构，就解包它
     if (resData && typeof resData === 'object' && 'success' in resData) {
@@ -48,7 +54,11 @@ apiClient.interceptors.response.use(
     const errorMessage = backendData?.message || error.message || '网络异常，请稍后重试'
     showApiError(errorMessage, error.response?.status)
 
-    if (error.response?.status === 401) {
+    if (
+      error.response?.status === 401 &&
+      (!error.config?.headers.Authorization ||
+        error.config.headers.Authorization === `Bearer ${useAuthStore.getState().token}`)
+    ) {
       // token 过期，清除持久化登录状态后跳转到登录页
       useAuthStore.getState().logout()
       // 如果已经在登录页则不跳转（登录失败也是 401，跳转会刷新页面导致错误提示消失）

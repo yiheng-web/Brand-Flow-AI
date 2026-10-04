@@ -467,20 +467,11 @@ interface UserInfo {
   - **路径参数**: `id` (作品 ID)
   - **返回 Data**: `{ success: boolean }`
 
-- **`POST /works/:id/versions`**
-  - **说明**: 为作品新增一个版本，并将作品当前展示图更新为该版本。
-  - **路径参数**: `id` (作品 ID)
-  - **Body**:
-    ```typescript
-    {
-      imageUrl: string,
-      objectKey?: string,
-      sourceWorkflowId?: string,
-      nodesSnapshot?: Record<string, any>,
-      qualityReport?: Record<string, any>
-    }
-    ```
+- **`POST /works/:id/versions`** / **`POST /works/:id/versions/from-workflow`**
+  - **说明**: 两个入口均只依据本人同一空间中已完成且质检通过的工作流创建版本。旧客户端提交 imageUrl/objectKey/qualityReport 不再有效。
+  - **Body**: `{ workflowId: string }`
   - **返回 Data**: `WorkVersion`
+  - 作品签名、导出与删除只处理该作品的服务端对象路径；历史污染记录会被拒绝，须人工核查后修复。
 
 - **`GET /works/:id/versions`**
   - **说明**: 获取作品版本列表。
@@ -513,3 +504,11 @@ interface UserInfo {
       downloadUrl: string
     }
     ```
+
+## V1.1 安全边界
+
+- 登录与每次 JWT 鉴权检查账号存在且 status=active；停用/删除后已有 JWT 的后续请求返回 401。企业身份与角色以当前数据库成员关系为准。
+- 当前没有修改密码/会话注销接口；前端退出清空本机会话。后续新增密码修改或服务端注销时，应在 JWT validate 边界增加会话版本校验，不引入 refresh-token 系统。
+- personal 资源由 userId/creatorId 决定归属，与当前企业无关；新个人素材不写 enterpriseId，旧个人素材仍按创建者读取。
+- POST /assets/upload 每次最多 1 张、10 MiB；仅接受 PNG/JPEG/WebP/GIF，sharp 校验真实格式和解码，像素上限 4000 万。不合法内容返回 400；超过传输大小限制返回 413。
+- Workflow 浏览器缓存仅保留 workflowId；账号切换或退出清空 Workflow/User/Flow。旧缓存升级时丢弃，签名 URL、结果和节点输出不持久化。

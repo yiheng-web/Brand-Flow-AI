@@ -92,7 +92,7 @@ const AppLayout = () => {
     return () => {
       active = false
     }
-  }, [setSpaces])
+  }, [setSpaces, user?.id])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {

@@ -62,7 +62,7 @@ const AssetUploadModal = ({
   const uploadProps: UploadProps = {
     name: 'file',
     multiple: true,
-    accept: 'image/*',
+    accept: 'image/png,image/jpeg,image/webp,image/gif',
     fileList,
     beforeUpload: (file: File) => {
       // 限制图片大小 10MB

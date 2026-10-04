@@ -37,6 +37,7 @@ import { Model } from 'mongoose'
 import { Types } from 'mongoose'
 import { Observable } from 'rxjs'
 import sharp from 'sharp'
+import { assertObjectId, assertPersonalOwner, personalCreatorFilter } from '@/common/personal-scope'
 import { CreateArtTextCandidatesDto } from './dto/create-art-text-candidates.dto'
 import {
   CreatePlacementPlanDto,
@@ -108,16 +109,23 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ): Promise<WorkflowDocument> {
-    const workflow = await this.workflowModel.findById(id)
+    assertObjectId(id)
+    const workflow = await this.workflowModel.findOne({
+      _id: id,
+      $or: [
+        { spaceId: 'personal', userId },
+        { spaceId: { $ne: 'personal' }, spaceType: { $ne: 'personal' } },
+      ],
+    })
     if (!workflow) {
       throw new NotFoundException(`Workflow ${id} not found`)
     }
 
     await this.assertSpaceAccess(userId, workflow.spaceId)
-    if (workflow.spaceType === 'personal' && workflow.userId !== userId) {
-      throw new ForbiddenException('个人空间工作流越权访问被拒绝')
+    if (workflow.spaceType === 'personal' || workflow.spaceId === 'personal') {
+      assertPersonalOwner(userId, workflow.userId)
     }
-    if (workflow.entId && entId && workflow.entId !== entId) {
+    if (workflow.spaceId !== 'personal' && workflow.entId && entId && workflow.entId !== entId) {
       throw new ForbiddenException('当前登录企业与工作流所属企业不一致')
     }
 
@@ -848,11 +856,20 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     return { success: true, message: `Node ${nodeType} queued for rerun.` }
   }
 
-  streamWorkflow(id: string, userId: string, entId?: string): Observable<MessageEvent> {
+  async streamWorkflow(
+    id: string,
+    userId: string,
+    entId?: string,
+  ): Promise<Observable<MessageEvent>> {
+    // 在建立 SSE 响应前完成资源鉴权，越权请求仍返回正常的 400/404。
+    const authorizedWorkflow = await this.verifyWorkflowAccess(id, userId, entId)
     return new Observable<MessageEvent>((subscriber) => {
-      // 在连接前校验权限，如果不通过，则直接断开不予监听
-      this.verifyWorkflowAccess(id, userId, entId)
+      Promise.resolve(authorizedWorkflow)
         .then((workflow) => {
+          if (subscriber.closed) return
+          this.queueEvents.on('progress', onProgress)
+          this.queueEvents.on('completed', onCompleted)
+          this.queueEvents.on('failed', onFailed)
           subscriber.next({
             data: { type: 'workflow_started', workflowId: id, timestamp: new Date().toISOString() },
           })
@@ -960,10 +977,6 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
           subscriber.complete()
         }
       }
-
-      this.queueEvents.on('progress', onProgress)
-      this.queueEvents.on('completed', onCompleted)
-      this.queueEvents.on('failed', onFailed)
 
       return () => {
         this.queueEvents.off('progress', onProgress)
@@ -1138,7 +1151,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
     const scopeFilters: Record<string, unknown>[] = [
       spaceType === 'personal'
-        ? { spaceId: 'personal', creatorId: new Types.ObjectId(userId) }
+        ? { spaceId: 'personal', ...personalCreatorFilter(userId) }
         : { spaceId },
     ]
     if (spaceType === 'enterprise' && entId) {

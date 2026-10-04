@@ -68,42 +68,8 @@ export class ExportWorkDto {
   format?: 'png'
 }
 
-export class CreateWorkVersionDto {
-  @ApiProperty({
-    description: '该版本对应的成品图 URL',
-    example: 'https://cdn.example.com/works/final-v2.png',
-  })
-  @IsNotEmpty({ message: '版本图片地址不能为空' })
-  imageUrl!: string
-
-  @ApiPropertyOptional({
-    description: '对象存储中的 object key。存在时可用于 signedUrl 下载',
-    example: 'works/user/123/final-v2.png',
-  })
-  @IsOptional()
-  @IsString()
-  objectKey?: string
-
-  @ApiPropertyOptional({ description: '来源工作流 ID。用于标记本版本来自哪一次重新生成或回溯优化' })
-  @IsOptional()
-  @IsString()
-  sourceWorkflowId?: string
-
-  @ApiPropertyOptional({ description: '该版本对应的节点快照' })
-  @IsOptional()
-  @IsObject()
-  nodesSnapshot?: Record<string, unknown>
-
-  @ApiPropertyOptional({
-    description: '该版本对应的品牌质检报告',
-    example: { totalScore: 91, issues: [] },
-  })
-  @IsOptional()
-  @IsObject()
-  qualityReport?: Record<string, unknown>
-}
-
 export class CreateTrustedWorkVersionDto {
+  @ApiProperty({ description: '本人已完成且质检通过的来源工作流 ID' })
   @IsString()
   @IsNotEmpty()
   workflowId!: string

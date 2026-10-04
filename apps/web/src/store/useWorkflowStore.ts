@@ -75,6 +75,12 @@ export const useWorkflowStore = create<WorkflowState>()(
           nodeStreamData: {},
         }),
     }),
-    { name: 'brand-flow-workflow' },
+    {
+      name: 'brand-flow-workflow',
+      version: 1,
+      // 仅恢复工作流指针，结果和短期签名地址由服务端重新获取。
+      partialize: (state) => ({ workflowId: state.workflowId }),
+      migrate: () => ({ workflowId: null }),
+    },
   ),
 )

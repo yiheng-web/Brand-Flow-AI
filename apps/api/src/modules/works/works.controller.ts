@@ -10,7 +10,6 @@ import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
 import {
   CreateTrustedWorkVersionDto,
   CreateWorkDto,
-  CreateWorkVersionDto,
   ExportWorkDto,
   UpdateWorkFavoriteDto,
 } from './dto/works.dto'
@@ -80,17 +79,16 @@ export class WorksController {
   @Post(':id/versions')
   @ApiOperation({
     summary: '新增作品版本',
-    description:
-      '为作品追加一个 WorkVersion，并把作品当前展示图更新为该版本。用于重新生成、回溯优化或再次编辑后的保存。',
+    description: '仅依据本人已完成且质检通过的工作流生成版本，不接受客户端对象与质检结果。',
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiCreatedSuccessResponse(WorkVersionResponseDto, '创建成功，返回封装后的新作品版本。')
   async createVersion(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() dto: CreateWorkVersionDto,
+    @Body() dto: CreateTrustedWorkVersionDto,
   ) {
-    return this.worksService.createVersion(req.user.sub, id, dto)
+    return this.worksService.createTrustedVersion(req.user.sub, id, dto.workflowId)
   }
 
   @Post(':id/versions/from-workflow')

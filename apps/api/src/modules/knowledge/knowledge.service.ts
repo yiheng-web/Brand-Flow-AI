@@ -10,6 +10,7 @@ import type { SpaceType } from '@brand-flow/contracts'
 import { Model, Types } from 'mongoose'
 
 import { Role } from '@/common/enums'
+import { assertObjectId, assertPersonalOwner, personalCreatorFilter } from '@/common/personal-scope'
 import { OrgService } from '@/modules/org/org.service'
 
 import {
@@ -66,13 +67,13 @@ export class KnowledgeService {
   }
 
   async findOne(userId: string, id: string) {
-    const knowledge = await this.findKnowledgeById(id)
+    const knowledge = await this.findKnowledgeById(userId, id)
     await this.assertKnowledgeAccess(userId, knowledge)
     return knowledge.populate('creatorId', 'email profile')
   }
 
   async update(userId: string, id: string, dto: UpdateKnowledgeDto) {
-    const knowledge = await this.findKnowledgeById(id)
+    const knowledge = await this.findKnowledgeById(userId, id)
     const scope = await this.assertCanManage(userId, knowledge)
     if (dto.isRequired !== undefined && scope.spaceType !== 'enterprise') {
       throw new BadRequestException('只有企业空间可以设置强制知识库')
@@ -81,7 +82,7 @@ export class KnowledgeService {
   }
 
   async ingestText(userId: string, knowledgeId: string, content: string) {
-    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     const scope = await this.assertCanManage(userId, knowledge)
     const result = await ingestDocument(content, {
       enterpriseId: scope.enterpriseId ?? `personal:${userId}`,
@@ -96,7 +97,7 @@ export class KnowledgeService {
   }
 
   async createItem(userId: string, knowledgeId: string, dto: CreateKnowledgeItemDto) {
-    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     const scope = await this.assertCanManage(userId, knowledge)
     const item = await this.createScopedItem(userId, knowledge, scope, {
       ...dto,
@@ -117,7 +118,7 @@ export class KnowledgeService {
       metadata?: Record<string, unknown>
     },
   ) {
-    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     const scope = await this.assertCanManage(userId, knowledge)
     const constraintLevel =
       payload.metadata?.constraintLevel === 'required' ||
@@ -134,7 +135,7 @@ export class KnowledgeService {
   }
 
   async findItems(userId: string, knowledgeId: string) {
-    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     await this.assertKnowledgeAccess(userId, knowledge)
     return this.knowledgeItemModel
       .find({ knowledgeId: new Types.ObjectId(knowledgeId) })
@@ -143,6 +144,7 @@ export class KnowledgeService {
   }
 
   async findItem(userId: string, knowledgeId: string, itemId: string) {
+    assertObjectId(itemId)
     await this.findOne(userId, knowledgeId)
     const item = await this.knowledgeItemModel
       .findOne({ _id: itemId, knowledgeId: new Types.ObjectId(knowledgeId) })
@@ -157,7 +159,7 @@ export class KnowledgeService {
     itemId: string,
     dto: UpdateKnowledgeItemDto,
   ) {
-    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     await this.assertCanManage(userId, knowledge)
     await this.findItem(userId, knowledgeId, itemId)
     const item = await this.knowledgeItemModel.findByIdAndUpdate(itemId, dto, {
@@ -169,7 +171,7 @@ export class KnowledgeService {
   }
 
   async removeItem(userId: string, knowledgeId: string, itemId: string) {
-    const knowledge = await this.findKnowledgeById(knowledgeId)
+    const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     await this.assertCanManage(userId, knowledge)
     const item = await this.findItem(userId, knowledgeId, itemId)
     await this.knowledgeItemModel.findByIdAndDelete(item._id)
@@ -177,7 +179,7 @@ export class KnowledgeService {
   }
 
   async remove(userId: string, id: string) {
-    const knowledge = await this.findKnowledgeById(id)
+    const knowledge = await this.findKnowledgeById(userId, id)
     await this.assertCanManage(userId, knowledge)
     await this.knowledgeItemModel.deleteMany({ knowledgeId: knowledge._id })
     await this.knowledgeModel.findByIdAndDelete(knowledge._id)
@@ -216,9 +218,15 @@ export class KnowledgeService {
     })
   }
 
-  private async findKnowledgeById(id: string) {
+  private async findKnowledgeById(userId: string, id: string) {
     if (!Types.ObjectId.isValid(id)) throw new NotFoundException('知识库不存在或无权访问')
-    const knowledge = await this.knowledgeModel.findById(id)
+    const knowledge = await this.knowledgeModel.findOne({
+      _id: id,
+      $or: [
+        { spaceId: 'personal', ...personalCreatorFilter(userId) },
+        { spaceId: { $ne: 'personal' }, spaceType: { $ne: 'personal' } },
+      ],
+    })
     if (!knowledge) throw new NotFoundException('知识库不存在或无权访问')
     return knowledge
   }
@@ -226,11 +234,8 @@ export class KnowledgeService {
   private async assertKnowledgeAccess(userId: string, knowledge: KnowledgeDocument) {
     const spaceId = knowledge.spaceId || knowledge.enterpriseId?.toString()
     if (!spaceId) throw new NotFoundException('知识库缺少有效空间归属')
-    if (
-      (knowledge.spaceType === 'personal' || spaceId === 'personal') &&
-      knowledge.creatorId.toString() !== userId
-    ) {
-      throw new NotFoundException('知识库不存在或无权访问')
+    if (knowledge.spaceType === 'personal' || spaceId === 'personal') {
+      assertPersonalOwner(userId, knowledge.creatorId.toString())
     }
     return this.resolveScope(userId, spaceId)
   }
@@ -264,7 +269,7 @@ export class KnowledgeService {
   private buildListFilter(scope: KnowledgeScope) {
     const exactScope =
       scope.spaceType === 'personal'
-        ? { spaceId: scope.spaceId, creatorId: scope.ownerId }
+        ? { spaceId: scope.spaceId, ...personalCreatorFilter(scope.ownerId.toString()) }
         : { spaceId: scope.spaceId }
     if (scope.spaceType === 'personal' || !scope.enterpriseId) return exactScope
     const legacyEnterprise = {

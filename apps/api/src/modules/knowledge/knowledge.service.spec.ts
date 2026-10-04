@@ -7,6 +7,7 @@ import type { OrgService } from '@/modules/org/org.service'
 import { KnowledgeService } from './knowledge.service'
 import type { KnowledgeDocument } from './schemas/knowledge.schema'
 import type { KnowledgeItemDocument } from './schemas/knowledge-item.schema'
+import { NotFoundException } from '@nestjs/common'
 
 describe('KnowledgeService 个人空间', () => {
   const userId = new Types.ObjectId().toString()
@@ -14,13 +15,18 @@ describe('KnowledgeService 个人空间', () => {
   const populateMock = jest.fn(() => ({ sort: sortMock }))
   const findMock = jest.fn(() => ({ populate: populateMock }))
   const createMock = jest.fn(async (value: unknown) => value)
+  const findOneMock = jest.fn()
   const getAccessibleSpaceMock = jest.fn(async (_userId: string, spaceId: string) => {
     if (spaceId !== 'personal') throw new Error('空间不可访问')
     return { spaceId: 'personal', spaceType: 'personal' as const, role: Role.OWNER }
   })
 
   const service = new KnowledgeService(
-    { find: findMock, create: createMock } as unknown as Model<KnowledgeDocument>,
+    {
+      find: findMock,
+      create: createMock,
+      findOne: findOneMock,
+    } as unknown as Model<KnowledgeDocument>,
     {} as Model<KnowledgeItemDocument>,
     { getAccessibleSpace: getAccessibleSpaceMock } as unknown as OrgService,
   )
@@ -60,5 +66,20 @@ describe('KnowledgeService 个人空间', () => {
 
   it('不可访问的团队空间仍然拒绝读取', async () => {
     await expect(service.findAll(userId, 'team-space')).rejects.toThrow('空间不可访问')
+  })
+
+  it('A 不能读取或修改 B 的个人知识库与知识项', async () => {
+    const id = new Types.ObjectId().toString()
+    findOneMock.mockResolvedValue({
+      spaceId: 'personal',
+      spaceType: 'personal',
+      creatorId: new Types.ObjectId(),
+    })
+    await expect(service.findOne(userId, id)).rejects.toBeInstanceOf(NotFoundException)
+    await expect(service.update(userId, id, { name: '伪造修改' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
+    await expect(service.findItems(userId, id)).rejects.toBeInstanceOf(NotFoundException)
+    await expect(service.remove(userId, id)).rejects.toBeInstanceOf(NotFoundException)
   })
 })

@@ -17,7 +17,7 @@ const createWorkflow = (status: WorkflowDocument['status']): WorkflowDocument =>
 
 const createService = () => {
   const workflowModel = {
-    findById: jest.fn(),
+    findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
     updateOne: jest.fn(),
   }
@@ -37,11 +37,45 @@ const createService = () => {
 }
 
 describe('WorkflowService.start', () => {
+  it('SSE 只有资源鉴权成功后才注册队列监听', async () => {
+    const { service, workflowModel } = createService()
+    const workflow = createWorkflow('running')
+    const events = { on: jest.fn(), off: jest.fn() }
+    Reflect.set(service, 'queueEvents', events)
+    workflowModel.findOne.mockResolvedValue(workflow)
+    await expect(
+      service.streamWorkflow(workflow._id.toString(), new Types.ObjectId().toString()),
+    ).rejects.toThrow('资源不存在或无权访问')
+    expect(events.on).not.toHaveBeenCalled()
+    const observable = await service.streamWorkflow(workflow._id.toString(), workflow.userId)
+    const next = jest.fn()
+    const subscription = observable.subscribe(next)
+    await Promise.resolve()
+    expect(events.on).toHaveBeenCalledTimes(3)
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'workflow_started' }) }),
+    )
+    subscription.unsubscribe()
+    expect(events.off).toHaveBeenCalledTimes(3)
+  })
+  it('A 不能访问或启动 B 的个人工作流', async () => {
+    const { service, workflowModel, workflowQueue } = createService()
+    const workflow = createWorkflow('pending')
+    workflowModel.findOne.mockResolvedValue(workflow)
+    await expect(
+      service.start(
+        workflow._id.toString(),
+        { needsComposition: false },
+        new Types.ObjectId().toString(),
+      ),
+    ).rejects.toThrow('资源不存在或无权访问')
+    expect(workflowQueue.add).not.toHaveBeenCalled()
+  })
   it('只允许一个请求把 pending 工作流认领为 running', async () => {
     const { service, workflowModel, workflowQueue } = createService()
     const pending = createWorkflow('pending')
     const running = { ...pending, status: 'running', needsComposition: true } as WorkflowDocument
-    workflowModel.findById.mockResolvedValue(pending)
+    workflowModel.findOne.mockResolvedValue(pending)
     workflowModel.findOneAndUpdate.mockResolvedValue(running)
     workflowQueue.add.mockResolvedValue({})
 
@@ -64,7 +98,7 @@ describe('WorkflowService.start', () => {
     const { service, workflowModel, workflowQueue } = createService()
     const pending = createWorkflow('pending')
     const running = { ...pending, status: 'running', needsComposition: false } as WorkflowDocument
-    workflowModel.findById.mockResolvedValue(pending)
+    workflowModel.findOne.mockResolvedValue(pending)
     workflowModel.findOneAndUpdate.mockResolvedValue(running)
     workflowModel.updateOne.mockResolvedValue({ acknowledged: true })
     workflowQueue.add.mockRejectedValue(new Error('redis unavailable'))
@@ -81,7 +115,7 @@ describe('WorkflowService.start', () => {
   it('非 pending 工作流重复启动时不重复入队', async () => {
     const { service, workflowModel, workflowQueue } = createService()
     const running = createWorkflow('running')
-    workflowModel.findById.mockResolvedValue(running)
+    workflowModel.findOne.mockResolvedValue(running)
 
     const result = await service.start(
       running._id.toString(),

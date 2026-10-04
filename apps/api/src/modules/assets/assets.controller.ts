@@ -27,6 +27,7 @@ import {
 } from '@/common/swagger/api-success-response'
 import { SuccessResultDto } from '@/common/swagger/common-response.dto'
 import { AssetsService } from './assets.service'
+import { MAX_ASSET_IMAGE_BYTES } from './assets.constants'
 import { CreateAssetDto, SaveAssetToKnowledgeDto, UploadAssetDto } from './dto/assets.dto'
 import { AssetResponseDto, SaveAssetToKnowledgeResponseDto } from './dto/assets-response.dto'
 import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
@@ -63,7 +64,9 @@ export class AssetsController {
   }
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_ASSET_IMAGE_BYTES, files: 1 } }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: '上传图片素材',

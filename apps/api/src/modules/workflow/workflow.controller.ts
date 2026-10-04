@@ -184,7 +184,10 @@ export class WorkflowController {
 
   @Sse(':id/stream')
   @ApiOperation({ summary: '订阅工作流 SSE 事件流' })
-  stream(@Param('id') id: string, @Req() req: AuthenticatedRequest): Observable<MessageEvent> {
+  stream(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<Observable<MessageEvent>> {
     return this.workflowService.streamWorkflow(id, req.user.sub, req.user.entId)
   }
 }
