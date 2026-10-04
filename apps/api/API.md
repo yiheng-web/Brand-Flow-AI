@@ -191,7 +191,7 @@ interface UserInfo {
 
 - **`POST /workflow/create`**
   - **说明**: 创建待运行工作流和初始节点，返回状态为 `pending`，不会触发 AI 执行。
-  - **权限拦截**: 该模块下所有接口（包括查询和更新）将严格校验企业边界（`entId`）与空间归属（`spaceId === 'personal'` 时严格校验 `userId`），越权访问将返回 `403 Forbidden`。
+  - **权限拦截**: 所有接口使用验证后的 JWT 身份；个人任务校验创建者，团队或企业任务校验真实空间成员关系。无权访问的资源返回 404，不能由客户端 userId/spaceId 声明归属。
   - **Body**:
     ```typescript
     {
@@ -207,8 +207,10 @@ interface UserInfo {
       status: WorkflowStatus,   // 初始状态（pending）
       prompt: string,           // 记录的原始提示词
       spaceId: string,          // 记录的空间 ID
-      userId: string,           // [新增] 创建者用户 ID
-      entId?: string,           // [新增] 关联的企业 ID（如果是团队空间）
+      runVersion: number,       // 执行版本，初始为 0
+      eventSequence: number,    // 快照序号，初始为 0
+      currentNode?: WorkflowNodeType,
+      progress: number,         // 0–100
       createdAt: string,        // 创建时间
       updatedAt: string         // 更新时间
     }
@@ -235,59 +237,44 @@ interface UserInfo {
     }
     ```
 
+- **`GET /workflows`**
+  - JWT 鉴权；仅返回当前用户在指定空间的任务，按 updatedAt、ID 倒序分页。
+  - 查询参数：spaceId（默认 personal）、status（可选）、page（默认 1）、limit（默认 20，最多 100）。
+  - 返回：`{ items: WorkflowResponse[], total, page, limit }`。
+  - WorkflowResponse 新增 runVersion、eventSequence、currentNode、progress（0–100），保留 awaitingAction、updatedAt、错误与结果。
+  - 状态：pending、running、awaiting_user、failed、completed、cancelled。
+
+- **`GET /workflows/:id`**
+  - 返回 `{ workflow: WorkflowResponse, nodes: WorkflowNode[] }`，用于刷新或跨设备恢复。
+  - 原 `/workflow/:id` 保留；单数与复数路由共享同一鉴权与实现。
+
+- **`POST /workflows/:id/cancel`**
+  - 取消待启动、运行中、等待用户或失败任务，增加 runVersion，旧 Worker 不再允许写回。
+  - 重复取消幂等；已完成任务不能取消；已取消任务不能重试。返回 WorkflowResponse。
+
+- **`POST /workflows/:id/retry`**
+  - 从失败任务的 currentNode 重试；旧记录没有 currentNode 时从 brief 重试。
+  - 运行中任务重复请求不重复入队。返回 `{ success, message }`。
+
 - **`PUT /workflow/:id/nodes/:nodeType`**
-  - **说明**: 用户手动修改某节点（如 Prompt 生成节点）的中间产物。该操作仅更新当前节点的数据记录，并将下游相关节点全部置为失效 (`stale`) 以清空旧产物，且**不会自动触发后续流程**。
-  - **路径参数**:
-    - `id`: 工作流 ID
-    - `nodeType`: `intentNode` | `knowledgeNode` | `promptNode` | `generateNode` | `evaluateNode` | `finishNode`
-  - **Body**: `Record<string, any>` (更新的具体节点 output)
-  - **返回 Data**: 更新后的节点数据。
+  - 只允许在对应等待选择状态下选择已有创意方向或通过质检的候选底图。
+  - creativeDirection Body：`{ selectedDirectionId: string }`。
+  - generate Body：`{ selectedCandidateId: string }`。
+  - 服务端保留方向、候选、评分和质检结果，客户端不能提交任意 output、status 或 finalEvaluation。
+  - 选择会增加运行版本并使下游节点失效，不自动执行后续节点；返回更新后的节点。
 
 - **`POST /workflow/:id/nodes/:nodeType/run`**
-  - **说明**: 指定某一节点重新执行。系统会自动计算并**跳过**该节点之前的所有已完成节点，将它们作为上下文状态喂给大模型，从指定的 `nodeType` 处实现断点接力重跑，并顺延执行后续所有节点。
-  - **路径参数**:
-    - `id`: 工作流 ID
-    - `nodeType`: 节点类型标识
-  - **返回 Data**: `{ success: boolean, message: string }`
+  - 使用现有上游结果从指定节点重跑，下游置 stale。
+  - 同一运行版本连续请求只有一个有效任务；jobId 为 `workflowId-r<runVersion>-nodeType`。
+  - 入队失败持久化为 failed，并允许从历史重试。返回 `{ success, message }`。
 
-- **`GET /workflow/:id/stream`**
-  - **说明**: （核心推荐）基于 Server-Sent Events (SSE) 的流式接口，用于实时监听大模型各节点的执行状态与结果。
-  - **路径参数**: `id` (目标工作流的实例 ID)
-  - **鉴权方式**: 通过 `Authorization: Bearer <JWT_TOKEN>` 请求头（若前端无法直接设置，请使用 fetch-event-source）
-  - **返回格式**: `text/event-stream` (流式输出，注：该接口已在全局拦截器中配置放行，不会被包裹在 `ApiResponse` 结构中)
-  - **事件返回包格式 (JSON)**:
-    - **`connected`** 事件 (SSE 成功连接):
-      ```typescript
-      { type: 'connected', workflowId: string }
-      ```
-    - **`node_started`** 事件 (预留：单个节点开始执行，暂由前端逻辑自推导):
-      ```typescript
-      { type: 'node_started', nodeType: string }
-      ```
-    - **`node_progress`** 事件 (预留：大模型流式生成中的增量输出):
-      ```typescript
-      { type: 'node_progress', nodeType: string, delta: string }
-      ```
-    - **`node_completed`** 事件 (单个节点正常执行完毕):
-      ```typescript
-      { type: 'node_completed', nodeType: string, data: Record<string, any> } // 返回节点的最终产物
-      ```
-    - **`node_failed`** 事件 (预留：单个节点执行异常中断):
-      ```typescript
-      { type: 'node_failed', nodeType: string, error: string }
-      ```
-    - **`node_skipped`** 事件 (触发重跑时，上游已被跳过的节点):
-      ```typescript
-      { type: 'node_skipped', nodeType: string } // 明确通知前端该节点已跳过，无需更新本地数据
-      ```
-    - **`workflow_failed`** 事件 (工作流级执行异常中断):
-      ```typescript
-      { type: 'workflow_failed', error: string }
-      ```
-    - **`workflow_completed`** 事件 (全流程执行完毕):
-      ```typescript
-      { type: 'workflow_completed', data: Record<string, any> } // 工作流的最终聚合状态
-      ```
+- **`GET /workflows/:id/stream`**（保留单数 /workflow 别名）
+  - Authorization Bearer JWT；资源授权通过后才注册队列监听；响应 text/event-stream，不经过普通响应包装。
+  - `workflow_snapshot`：`{ type, workflowId, sequence, snapshot: { workflow, nodes }, timestamp }`；SSE id 等于 sequence。
+  - `heartbeat`：`{ type, workflowId, timestamp }`；间隔 2 秒，同时读库补偿通知丢失。
+  - 订阅监听建立后重新读取数据库快照，避免 GET 与订阅之间的空隙。队列 progress 仅触发刷新，不直接成为客户端状态。
+  - 客户端先 GET 恢复，再带 Last-Event-ID 游标订阅；按 sequence 去重。服务端发送最新快照，不回放全部模型增量。
+  - EOF 或 30 秒没有数据时自动重连，重连前 GET；认证失效、主动关闭与终态会清理连接和计时器。
 
 ---
 

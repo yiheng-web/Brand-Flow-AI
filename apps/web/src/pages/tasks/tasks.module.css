@@ -1,0 +1,19 @@
+.page {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+.list {
+  display: grid;
+  gap: 16px;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.heading h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

@@ -15,6 +15,8 @@ type EventCallback = (event: StreamEvent) => void
 interface SSEOptions {
   onMessage?: EventCallback
   onError?: (error: unknown) => void
+  cursor?: number
+  beforeReconnect?: () => Promise<void>
 }
 
 interface WorkflowSseParser {
@@ -80,12 +82,17 @@ export function createWorkflowSseParser(): WorkflowSseParser {
 }
 
 export function createAuthEventSource(url: string, options?: SSEOptions): { close: () => void } {
-  const controller = new AbortController()
+  let controller: AbortController | undefined
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let wakeRetry: (() => void) | undefined
   let closed = false
+  let sequence = options?.cursor ?? -1
   const sessionUserId = useAuthStore.getState().user?.id
   const close = () => {
     closed = true
-    controller.abort()
+    controller?.abort()
+    clearTimeout(retryTimer)
+    wakeRetry?.()
     unsubscribe()
   }
   const unsubscribe = useAuthStore.subscribe((state) => {
@@ -93,51 +100,89 @@ export function createAuthEventSource(url: string, options?: SSEOptions): { clos
   })
 
   const connect = async () => {
-    try {
-      const token = useAuthStore.getState().token
-      const headers: Record<string, string> = {
-        Accept: 'text/event-stream',
-        'Cache-Control': 'no-cache',
+    let attempts = 0
+    while (!closed) {
+      controller = new AbortController()
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      const refreshTimeout = () => {
+        clearTimeout(timeout)
+        timeout = setTimeout(() => controller?.abort(), 30_000)
       }
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-
-      const response = await fetch(url, {
-        headers,
-        signal: controller.signal,
-      })
-
-      if (!response.ok) {
-        options?.onError?.(new Error(`SSE connection failed: ${response.status}`))
-        return
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) return
-
-      const decoder = new TextDecoder()
-      const parser = createWorkflowSseParser()
-
-      while (!closed) {
-        const { done, value } = await reader.read()
+      try {
+        if (attempts > 0) await options?.beforeReconnect?.()
         if (closed) break
-        if (done) {
-          for (const event of parser.finish(decoder.decode())) options?.onMessage?.(event)
-          break
+        const token = useAuthStore.getState().token
+        const headers: Record<string, string> = {
+          Accept: 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+        if (sequence >= 0) headers['Last-Event-ID'] = String(sequence)
+
+        refreshTimeout()
+
+        const response = await fetch(url, {
+          headers,
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          if ([401, 403, 404].includes(response.status)) {
+            options?.onError?.(new Error(`SSE connection failed: ${response.status}`))
+            close()
+            break
+          }
+          throw new Error(`SSE connection failed: ${response.status}`)
         }
 
-        for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error('SSE response has no stream')
+
+        const decoder = new TextDecoder()
+        const parser = createWorkflowSseParser()
+        const dispatch = (event: StreamEvent) => {
+          if (event.type === 'heartbeat') return
+          if (event.type === 'workflow_snapshot') {
+            if (event.sequence <= sequence) return
+            sequence = event.sequence
+          }
           options?.onMessage?.(event)
+          if (
+            event.type === 'workflow_snapshot' &&
+            ['completed', 'failed', 'cancelled'].includes(event.snapshot.workflow.status)
+          )
+            close()
         }
+
+        while (!closed) {
+          const { done, value } = await reader.read()
+          if (closed) break
+          if (done) {
+            for (const event of parser.finish(decoder.decode())) dispatch(event)
+            break
+          }
+
+          refreshTimeout()
+          attempts = 0
+          for (const event of parser.push(decoder.decode(value, { stream: true }))) dispatch(event)
+        }
+        if (!closed) options?.onError?.(new Error('SSE stream ended; reconnecting'))
+      } catch (err: unknown) {
+        if (!closed) options?.onError?.(err)
+      } finally {
+        clearTimeout(timeout)
+        controller.abort()
       }
-    } catch (err: unknown) {
-      if (!closed && (!(err instanceof Error) || err.name !== 'AbortError')) {
-        options?.onError?.(err)
-      }
-    } finally {
-      close()
+      if (closed) break
+      attempts += 1
+      await new Promise<void>((resolve) => {
+        wakeRetry = resolve
+        retryTimer = setTimeout(resolve, Math.min(1000 * 2 ** (attempts - 1), 10_000))
+      })
     }
+    close()
   }
 
   connect()

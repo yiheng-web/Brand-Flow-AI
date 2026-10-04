@@ -75,7 +75,7 @@ export default function WorksPage() {
     <div className={styles.page}>
       <PageHeader
         title="作品空间"
-        description={`所有完成和进行中的创作都会保存在这里 · ${spaceName}`}
+        description={`已保存的作品与版本 · ${spaceName}；未完成创作请前往创作任务`}
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/home')}>
             新建创作

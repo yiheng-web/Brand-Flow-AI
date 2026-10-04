@@ -10,6 +10,7 @@ interface BriefReviewPanelProps {
   workflowId: string
   brief: CreativeBrief
   awaitingConfirmation: boolean
+  disabled?: boolean
   onChanged: () => Promise<void>
   onRerun: () => Promise<void>
 }
@@ -18,6 +19,7 @@ export default function BriefReviewPanel({
   workflowId,
   brief,
   awaitingConfirmation,
+  disabled = false,
   onChanged,
   onRerun,
 }: BriefReviewPanelProps) {
@@ -106,6 +108,7 @@ export default function BriefReviewPanel({
       {!awaitingConfirmation && (
         <Button
           className={styles.rerunAction}
+          disabled={disabled || loading}
           loading={loading}
           onClick={() => void execute(onRerun, '正在从需求理解节点重跑')}
         >

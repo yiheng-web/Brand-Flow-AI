@@ -44,6 +44,9 @@ export class WorkflowNode {
   @Prop({ type: Number, default: 1 })
   version!: number
 
+  @Prop({ type: Number, default: 0 })
+  runVersion!: number
+
   @Prop({ type: Boolean, default: false })
   userModified!: boolean
 

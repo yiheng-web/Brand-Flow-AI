@@ -26,10 +26,17 @@ import { WorkflowNode, WorkflowNodeDocument } from './schemas/workflow-node.sche
 import { Workflow, WorkflowDocument } from './schemas/workflow.schema'
 import { WorkflowRevision, WorkflowRevisionDocument } from './schemas/workflow-revision.schema'
 import { StorageService } from '../storage/storage.service'
+import {
+  trackWorkflow,
+  persistWorkflowState,
+  persistNodeState,
+  StaleWorkflowError,
+} from './workflow-state'
 
 interface RunWorkflowJobData {
   workflowId: string
   nodeType?: WorkflowNodeType
+  runVersion: number
 }
 
 @Processor(WORKFLOW_QUEUE)
@@ -52,7 +59,13 @@ export class WorkflowProcessor extends WorkerHost {
     if (job.name !== RUN_WORKFLOW_JOB) return
 
     const workflow = await this.workflowModel.findById(job.data.workflowId)
-    if (!workflow) return
+    if (
+      !workflow ||
+      workflow.status !== 'running' ||
+      (workflow.runVersion ?? 0) !== job.data.runVersion
+    )
+      return
+    trackWorkflow(workflow)
 
     const nodes = await this.workflowNodeModel.find({ workflowId: workflow._id.toString() })
     const nodeMap = new Map(nodes.map((node) => [node.type, node]))
@@ -60,7 +73,7 @@ export class WorkflowProcessor extends WorkerHost {
     if (startIndex < 0) throw new Error(`未知节点类型: ${job.data.nodeType}`)
 
     let result: WorkflowResult = (workflow.result as WorkflowResult | undefined) ?? {}
-    await this.workflowModel.findByIdAndUpdate(workflow._id, {
+    await this.saveWorkflow(workflow, {
       status: 'running',
       $unset: { errorMessage: 1 },
     })
@@ -70,23 +83,24 @@ export class WorkflowProcessor extends WorkerHost {
         const node = nodeMap.get(nodeType)
         if (!node) throw new Error(`工作流缺少节点 ${nodeType}`)
 
+        workflow.currentNode = nodeType
         await this.emitNodeEvent(job, node, 'node_queued')
-        await this.workflowNodeModel.findByIdAndUpdate(node._id, {
+        await this.writeNode(workflow, node._id, {
           status: 'queued',
           $unset: { error: 1, errorMessage: 1, skipReason: 1 },
         })
         await this.emitNodeEvent(job, node, 'node_started')
-        await this.workflowNodeModel.findByIdAndUpdate(node._id, {
+        await this.writeNode(workflow, node._id, {
           status: 'running',
           startedAt: new Date(),
         })
 
         if (nodeType === 'compose' && result.brief?.needsComposition) {
-          await this.workflowNodeModel.findByIdAndUpdate(node._id, {
+          await this.writeNode(workflow, node._id, {
             status: 'pending',
             $unset: { output: 1, completedAt: 1 },
           })
-          await this.workflowModel.findByIdAndUpdate(workflow._id, {
+          await this.saveWorkflow(workflow, {
             status: 'awaiting_user',
             awaitingAction: 'enter_art_text',
             result,
@@ -109,7 +123,7 @@ export class WorkflowProcessor extends WorkerHost {
           result.compose = composeFinalImage(selected, result.brief)
           result.finalImageUrl = result.compose.finalImageUrl
           const reason = '当前需求不需要叠加标题、Logo 或营销文案'
-          await this.workflowNodeModel.findByIdAndUpdate(node._id, {
+          await this.writeNode(workflow, node._id, {
             status: 'skipped',
             skipReason: reason,
             output: result.compose,
@@ -123,13 +137,13 @@ export class WorkflowProcessor extends WorkerHost {
             reason,
             timestamp: new Date().toISOString(),
           } satisfies WorkflowSseEvent)
-          await this.persistProgress(workflow._id.toString(), result)
+          await this.persistProgress(workflow, result)
           continue
         }
 
         const output = await this.executeNode(nodeType, workflow, result)
         result = output.result
-        await this.workflowNodeModel.findByIdAndUpdate(node._id, {
+        await this.writeNode(workflow, node._id, {
           status: 'completed',
           output: output.nodeOutput,
           completedAt: new Date(),
@@ -143,10 +157,13 @@ export class WorkflowProcessor extends WorkerHost {
           output: output.nodeOutput,
           timestamp: new Date().toISOString(),
         } satisfies WorkflowSseEvent)
-        await this.persistProgress(workflow._id.toString(), result)
+        workflow.progress = Math.round(
+          ((WORKFLOW_NODE_ORDER.indexOf(nodeType) + 1) / WORKFLOW_NODE_ORDER.length) * 100,
+        )
+        await this.persistProgress(workflow, result)
         if (nodeType === 'generate') {
           await this.workflowRevisionModel.findOneAndUpdate(
-            { workflowId: workflow._id, status: 'queued' },
+            { workflowId: workflow._id, runVersion: workflow.runVersion, status: 'queued' },
             { status: 'completed' },
             { sort: { round: -1 } },
           )
@@ -161,7 +178,7 @@ export class WorkflowProcessor extends WorkerHost {
                 ? 'select_candidate'
                 : undefined
         if (awaitingAction) {
-          await this.workflowModel.findByIdAndUpdate(workflow._id, {
+          await this.saveWorkflow(workflow, {
             status: 'awaiting_user',
             awaitingAction,
             result,
@@ -177,13 +194,17 @@ export class WorkflowProcessor extends WorkerHost {
         }
       }
 
-      await this.workflowModel.findByIdAndUpdate(workflow._id, {
+      await this.saveWorkflow(workflow, {
         status: 'completed',
         result,
         $unset: { awaitingAction: 1 },
       })
       return result
     } catch (error) {
+      if (error instanceof StaleWorkflowError) return
+      const current = await this.workflowModel.findById(workflow._id)
+      if (!current || current.status !== 'running' || current.runVersion !== job.data.runVersion)
+        return
       const message = error instanceof Error ? error.message : '工作流执行失败'
       const runningNode = await this.workflowNodeModel.findOne({
         workflowId: workflow._id.toString(),
@@ -195,7 +216,7 @@ export class WorkflowProcessor extends WorkerHost {
           message,
           retryable: true,
         }
-        await this.workflowNodeModel.findByIdAndUpdate(runningNode._id, {
+        await this.writeNode(workflow, runningNode._id, {
           status: 'failed',
           error: structuredError,
           errorMessage: message,
@@ -210,13 +231,13 @@ export class WorkflowProcessor extends WorkerHost {
           timestamp: new Date().toISOString(),
         } satisfies WorkflowSseEvent)
       }
-      await this.workflowModel.findByIdAndUpdate(workflow._id, {
+      await this.saveWorkflow(workflow, {
         status: 'failed',
         result,
         errorMessage: message,
       })
       await this.workflowRevisionModel.findOneAndUpdate(
-        { workflowId: workflow._id, status: 'queued' },
+        { workflowId: workflow._id, runVersion: workflow.runVersion, status: 'queued' },
         { status: 'failed' },
         { sort: { round: -1 } },
       )
@@ -324,11 +345,13 @@ export class WorkflowProcessor extends WorkerHost {
       }
       // 生图已付费且已落 MinIO 后立即检查点，质检失败时可只重跑质检，避免重复生图。
       const checkpointResult = { ...result, generate: checkpoint }
-      await this.persistProgress(workflow._id.toString(), checkpointResult)
-      await this.workflowNodeModel.findOneAndUpdate(
-        { workflowId: workflow._id.toString(), type: 'generate' },
-        { output: checkpoint },
-      )
+      await this.persistProgress(workflow, checkpointResult)
+      const checkpointNode = await this.workflowNodeModel.findOne({
+        workflowId: workflow._id.toString(),
+        type: 'generate',
+      })
+      if (!checkpointNode) throw new Error('缺少生成节点检查点')
+      await this.writeNode(workflow, checkpointNode._id, { output: checkpoint })
       const evaluations = sortCandidateEvaluations(
         await this.executeWithRetry(
           nodeType,
@@ -458,8 +481,18 @@ export class WorkflowProcessor extends WorkerHost {
     } satisfies WorkflowSseEvent)
   }
 
-  private async persistProgress(workflowId: string, result: WorkflowResult) {
-    await this.workflowModel.findByIdAndUpdate(workflowId, { result })
+  private async saveWorkflow(workflow: WorkflowDocument, patch: Record<string, unknown>) {
+    const { $unset, ...fields } = patch
+    Object.assign(workflow, fields)
+    if ($unset && typeof $unset === 'object')
+      for (const key of Object.keys($unset)) Reflect.set(workflow, key, undefined)
+    await persistWorkflowState(this.workflowModel, workflow)
+  }
+  private writeNode(workflow: WorkflowDocument, nodeId: unknown, patch: Record<string, unknown>) {
+    return persistNodeState(this.workflowNodeModel, this.workflowModel, workflow, nodeId, patch)
+  }
+  private async persistProgress(workflow: WorkflowDocument, result: WorkflowResult) {
+    await this.saveWorkflow(workflow, { result })
   }
 
   private async persistGeneratedCandidates(
@@ -471,7 +504,7 @@ export class WorkflowProcessor extends WorkerHost {
       return await Promise.all(
         candidates.map(async (candidate, index) => {
           if (!candidate.imageUrl) return candidate
-          const objectKey = `workflows/${workflow.userId}/${workflow._id.toString()}/candidates/${index + 1}.png`
+          const objectKey = `workflows/${workflow.userId}/${workflow._id.toString()}/runs/${workflow.runVersion}/candidates/${index + 1}.png`
           await this.storageService.importRemotePng(candidate.imageUrl, {
             key: objectKey,
             metadata: {

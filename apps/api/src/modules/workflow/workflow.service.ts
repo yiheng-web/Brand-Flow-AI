@@ -6,6 +6,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   MessageEvent,
+  Logger,
 } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
@@ -17,6 +18,7 @@ import {
 } from '@brand-flow/agent'
 import {
   createInitialWorkflowNodes,
+  WORKFLOW_NODE_ORDER,
   downstreamNodeTypes,
   isNormalizedArtTextRegion,
   normalizeWorkflowNodeType,
@@ -27,11 +29,10 @@ import {
   type SpaceType,
   type WorkflowAwaitingAction,
   type WorkflowResult,
-  type WorkflowSseEvent,
   type WorkflowNodeType,
   type BrandRequirementInput,
 } from '@brand-flow/contracts'
-import { Queue, QueueEvents, type JobProgress } from 'bullmq'
+import { Queue, QueueEvents } from 'bullmq'
 import { createHash } from 'node:crypto'
 import { Model } from 'mongoose'
 import { Types } from 'mongoose'
@@ -55,6 +56,14 @@ import { Team, TeamDocument } from '../org/schemas/team.schema'
 import { Enterprise, EnterpriseDocument } from '../org/schemas/enterprise.schema'
 import { Knowledge, KnowledgeDocument } from '../knowledge/schemas/knowledge.schema'
 import { StorageService } from '../storage/storage.service'
+import {
+  trackWorkflow,
+  persistWorkflowState,
+  persistNodeState,
+  adoptWorkflowNodes,
+  StaleWorkflowError,
+} from './workflow-state'
+import { ListWorkflowsDto } from './dto/list-workflows.dto'
 
 export interface WorkflowResponse {
   id: string
@@ -68,10 +77,15 @@ export interface WorkflowResponse {
   awaitingAction?: WorkflowAwaitingAction
   requirements?: BrandRequirementInput
   needsComposition?: boolean
+  runVersion: number
+  eventSequence: number
+  currentNode?: WorkflowNodeType
+  progress: number
 }
 
 @Injectable()
 export class WorkflowService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(WorkflowService.name)
   private queueEvents!: QueueEvents
 
   constructor(
@@ -98,6 +112,22 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     this.queueEvents = new QueueEvents(WORKFLOW_QUEUE, {
       connection: this.workflowQueue.opts.connection,
     })
+    // 升级前的队列载荷没有版本号，不能再允许其写回；保留任务供用户安全重试。
+    const legacyRuns = await this.workflowModel.find({
+      status: 'running',
+      runVersion: { $exists: false },
+    })
+    for (const legacy of legacyRuns) {
+      const workflow = trackWorkflow(legacy)
+      workflow.status = 'failed'
+      workflow.errorMessage = '任务来自旧版本，请重试以继续创作'
+      try {
+        await persistWorkflowState(this.workflowModel, workflow, true)
+        await adoptWorkflowNodes(this.workflowNodeModel, workflow)
+      } catch (error) {
+        if (!(error instanceof StaleWorkflowError)) throw error
+      }
+    }
   }
 
   async onModuleDestroy() {
@@ -129,7 +159,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('当前登录企业与工作流所属企业不一致')
     }
 
-    return workflow
+    return trackWorkflow(workflow)
   }
 
   async create(dto: CreateWorkflowDto, userId: string): Promise<WorkflowResponse> {
@@ -192,35 +222,19 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       return this.toResponse(accessibleWorkflow)
     }
 
-    const workflow = await this.workflowModel.findOneAndUpdate(
-      { _id: accessibleWorkflow._id, status: 'pending' },
-      {
-        $set: { needsComposition: dto.needsComposition, status: 'running' },
-        $unset: { errorMessage: 1 },
-      },
-      { new: true },
-    )
-    if (!workflow) {
-      return this.toResponse(await this.verifyWorkflowAccess(id, userId, entId))
-    }
-
+    accessibleWorkflow.needsComposition = dto.needsComposition
+    accessibleWorkflow.status = 'running'
+    accessibleWorkflow.currentNode = 'brief'
+    accessibleWorkflow.errorMessage = undefined
     try {
-      await this.workflowQueue.add(
-        RUN_WORKFLOW_JOB,
-        { workflowId: workflow._id.toString() },
-        {
-          jobId: `${workflow._id.toString()}-main-v1`,
-          removeOnComplete: 100,
-          removeOnFail: 100,
-        },
-      )
+      await this.saveWorkflow(accessibleWorkflow)
     } catch (error) {
-      await this.workflowModel.updateOne(
-        { _id: workflow._id, status: 'running' },
-        { $set: { status: 'pending' }, $unset: { needsComposition: 1 } },
-      )
+      if (error instanceof StaleWorkflowError)
+        return this.toResponse(await this.verifyWorkflowAccess(id, userId, entId))
       throw error
     }
+    await this.queueNode(accessibleWorkflow, 'brief')
+    const workflow = accessibleWorkflow
 
     return this.toResponse(workflow)
   }
@@ -273,8 +287,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     workflow.awaitingAction = undefined
     workflow.errorMessage = undefined
     workflow.markModified('result')
-    await workflow.save()
-    await this.queueNode(id, 'brandConstraint', result.briefReview.version)
+    await this.saveWorkflow(workflow)
+    await this.queueNode(workflow, 'brandConstraint')
     return result.briefReview
   }
 
@@ -295,10 +309,16 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     node.version = version
     node.status = 'completed'
     node.markModified('output')
-    await node.save()
+    // 节点将在父工作流 CAS 成功后写入。
     workflow.result = result as unknown as Record<string, unknown>
     workflow.markModified('result')
-    await workflow.save()
+    await this.saveWorkflow(workflow)
+    await this.writeNode(workflow, node._id, {
+      output: node.output,
+      userModified: true,
+      version: node.version,
+      status: 'completed',
+    })
     return this.confirmBrief(id, userId, entId)
   }
 
@@ -333,42 +353,55 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       preserveBrandPositioning: true as const,
       preserveCoreSubject: true as const,
     }
-    const revisedPrompt = await revisePromptPlan(
-      result.brief,
-      direction,
-      result.brandConstraint,
-      result.prompt,
-      feedback,
-    )
-    const round =
-      (await this.workflowRevisionModel.countDocuments({ workflowId: workflow._id })) + 1
-    const revision = await this.workflowRevisionModel.create({
-      workflowId: workflow._id,
-      round,
-      feedback,
-      previousPrompt: result.prompt,
-      revisedPrompt,
-      previousGenerate: result.generate ?? {},
-      status: 'queued',
-    })
-    result.prompt = revisedPrompt
-    this.clearDownstreamResult(result, 'prompt')
-    await this.workflowNodeModel.updateOne(
-      { workflowId: id, type: 'prompt' },
-      { $set: { output: revisedPrompt, userModified: true }, $inc: { version: 1 } },
-    )
-    await this.workflowNodeModel.updateMany(
-      { workflowId: id, type: { $in: ['generate', 'compose', 'finalEvaluation'] } },
-      { $set: { status: 'stale' }, $unset: { output: 1, error: 1, errorMessage: 1 } },
-    )
-    workflow.result = result as unknown as Record<string, unknown>
-    workflow.status = 'running'
-    workflow.awaitingAction = undefined
-    workflow.errorMessage = undefined
-    workflow.markModified('result')
-    await workflow.save()
-    await this.queueNode(id, 'generate', round)
-    return { revisionId: revision._id.toString(), round, revisedPrompt }
+    await this.beginAction(workflow, 'prompt')
+    try {
+      const revisedPrompt = await revisePromptPlan(
+        result.brief,
+        direction,
+        result.brandConstraint,
+        result.prompt,
+        feedback,
+      )
+      const round =
+        (await this.workflowRevisionModel.countDocuments({ workflowId: workflow._id })) + 1
+      const revision = await this.workflowRevisionModel.create({
+        workflowId: workflow._id,
+        round,
+        runVersion: workflow.runVersion,
+        feedback,
+        previousPrompt: result.prompt,
+        revisedPrompt,
+        previousGenerate: result.generate ?? {},
+        status: 'queued',
+      })
+      result.prompt = revisedPrompt
+      this.clearDownstreamResult(result, 'prompt')
+      // Prompt 在父工作流认领成功后写入。
+      // 下游状态在新版本保存后重置。
+      workflow.result = result as unknown as Record<string, unknown>
+      workflow.status = 'running'
+      workflow.awaitingAction = undefined
+      workflow.errorMessage = undefined
+      workflow.markModified('result')
+      await this.saveWorkflow(workflow, false)
+      await this.writeNodes(workflow, ['prompt'], {
+        $set: { output: revisedPrompt, userModified: true },
+        $inc: { version: 1 },
+      })
+      await this.writeNodes(workflow, ['generate', 'compose', 'finalEvaluation'], {
+        status: 'stale',
+        $unset: { output: 1, error: 1, errorMessage: 1 },
+      })
+      await this.queueNode(workflow, 'generate')
+      return { revisionId: revision._id.toString(), round, revisedPrompt }
+    } catch (error) {
+      if (!(error instanceof StaleWorkflowError) && workflow.status !== 'failed') {
+        workflow.status = 'failed'
+        workflow.errorMessage = '当前操作失败，请重试'
+        await this.saveWorkflow(workflow, false)
+      }
+      throw error
+    }
   }
 
   async getRevisions(id: string, userId: string, entId?: string) {
@@ -424,51 +457,61 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('工作流当前不接受艺术字输入')
     }
 
-    let candidates: ArtTextCandidate[]
+    await this.beginAction(workflow, 'compose')
     try {
-      candidates = await generateControlledArtTextCandidates(dto, baseCandidateWithFreshUrl)
-    } catch (error) {
+      let candidates: ArtTextCandidate[]
+      try {
+        candidates = await generateControlledArtTextCandidates(dto, baseCandidateWithFreshUrl)
+      } catch (error) {
+        result.compositionDraft = {
+          baseCandidateId: dto.baseCandidateId,
+          textContent: dto.textContent,
+          stylePrompt: dto.stylePrompt,
+          candidates: [],
+        }
+        delete result.compose
+        delete result.finalEvaluation
+        delete result.finalImageUrl
+        workflow.result = result as unknown as Record<string, unknown>
+        workflow.status = 'failed'
+        workflow.awaitingAction = 'enter_art_text'
+        workflow.errorMessage = error instanceof Error ? error.message : '艺术字生成失败'
+        workflow.markModified('result')
+        await this.saveWorkflow(workflow, false)
+        await this.resetCompositionNodes(workflow)
+        throw error
+      }
+      if (
+        candidates.length !== 4 ||
+        candidates.some((item) => item.textContent !== dto.textContent)
+      ) {
+        throw new BadRequestException('艺术字候选未满足四候选及文本一致性约束')
+      }
       result.compositionDraft = {
         baseCandidateId: dto.baseCandidateId,
         textContent: dto.textContent,
         stylePrompt: dto.stylePrompt,
-        candidates: [],
+        candidates,
       }
       delete result.compose
       delete result.finalEvaluation
       delete result.finalImageUrl
       workflow.result = result as unknown as Record<string, unknown>
-      workflow.status = 'failed'
-      workflow.awaitingAction = 'enter_art_text'
-      workflow.errorMessage = error instanceof Error ? error.message : '艺术字生成失败'
+      workflow.status = 'awaiting_user'
+      workflow.awaitingAction = 'select_art_text'
+      workflow.errorMessage = undefined
       workflow.markModified('result')
-      await workflow.save()
-      await this.resetCompositionNodes(id)
+      await this.saveWorkflow(workflow, false)
+      await this.resetCompositionNodes(workflow)
+      return result.compositionDraft
+    } catch (error) {
+      if (!(error instanceof StaleWorkflowError) && workflow.status !== 'failed') {
+        workflow.status = 'failed'
+        workflow.errorMessage = '当前操作失败，请重试'
+        await this.saveWorkflow(workflow, false)
+      }
       throw error
     }
-    if (
-      candidates.length !== 4 ||
-      candidates.some((item) => item.textContent !== dto.textContent)
-    ) {
-      throw new BadRequestException('艺术字候选未满足四候选及文本一致性约束')
-    }
-    result.compositionDraft = {
-      baseCandidateId: dto.baseCandidateId,
-      textContent: dto.textContent,
-      stylePrompt: dto.stylePrompt,
-      candidates,
-    }
-    delete result.compose
-    delete result.finalEvaluation
-    delete result.finalImageUrl
-    workflow.result = result as unknown as Record<string, unknown>
-    workflow.status = 'awaiting_user'
-    workflow.awaitingAction = 'select_art_text'
-    workflow.errorMessage = undefined
-    workflow.markModified('result')
-    await workflow.save()
-    await this.resetCompositionNodes(id)
-    return result.compositionDraft
   }
 
   async selectArtTextCandidate(
@@ -500,8 +543,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     workflow.awaitingAction = 'select_art_text_region'
     workflow.errorMessage = undefined
     workflow.markModified('result')
-    await workflow.save()
-    await this.resetCompositionNodes(id)
+    await this.saveWorkflow(workflow)
+    await this.resetCompositionNodes(workflow)
     return draft
   }
 
@@ -528,16 +571,26 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     }
     const candidate = draft.candidates.find((item) => item.id === dto.candidateId)
     if (!candidate) throw new BadRequestException('艺术字候选不存在或已经过期')
-    const placement = await createArtTextPlacementPlan(candidate, dto.region)
-    draft.region = dto.region
-    draft.placement = placement
-    workflow.result = result as unknown as Record<string, unknown>
-    workflow.status = 'awaiting_user'
-    workflow.awaitingAction = 'select_art_text_region'
-    workflow.errorMessage = undefined
-    workflow.markModified('result')
-    await workflow.save()
-    return placement
+    await this.beginAction(workflow, 'compose')
+    try {
+      const placement = await createArtTextPlacementPlan(candidate, dto.region)
+      draft.region = dto.region
+      draft.placement = placement
+      workflow.result = result as unknown as Record<string, unknown>
+      workflow.status = 'awaiting_user'
+      workflow.awaitingAction = 'select_art_text_region'
+      workflow.errorMessage = undefined
+      workflow.markModified('result')
+      await this.saveWorkflow(workflow, false)
+      return placement
+    } catch (error) {
+      if (!(error instanceof StaleWorkflowError) && workflow.status !== 'failed') {
+        workflow.status = 'failed'
+        workflow.errorMessage = '当前操作失败，请重试'
+        await this.saveWorkflow(workflow, false)
+      }
+      throw error
+    }
   }
 
   async saveComposition(
@@ -627,74 +680,97 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       )
       .digest('hex')
 
-    const objectKey = `workflows/${userId}/${id}/composition/final-${Date.now()}.png`
-    await this.storageService.uploadObject({
-      key: objectKey,
-      body: file!.buffer!,
-      contentType: 'image/png',
-      size: file!.size,
-      metadata: { workflowId: id, candidateId: dto.selectedArtTextCandidateId },
-    })
-    const finalImageUrl = await this.storageService.getSignedUrl(objectKey)
-    const composition: CompositionOutput = {
-      baseCandidateId: dto.baseCandidateId,
-      selectedArtTextCandidateId: dto.selectedArtTextCandidateId,
-      textContent: dto.textContent,
-      stylePrompt: dto.stylePrompt,
-      placement,
-      layers,
-      finalImageUrl,
-      objectKey,
-      integrity: {
-        sha256: integritySha256,
-        renderer: 'fabric-v1',
-        baseObjectKey,
-        pixelRegionVerified: true,
-      },
-      exportSettings: { width: dto.width, height: dto.height, format: 'png' },
-    }
-    let finalEvaluation
+    await this.beginAction(workflow, 'compose')
+    let uploadedObjectKey: string | undefined
+    let compositionCommitted = false
     try {
-      finalEvaluation = await evaluateFinalImage(
+      const objectKey = `workflows/${userId}/${id}/composition/final-${Date.now()}.png`
+      await this.storageService.uploadObject({
+        key: objectKey,
+        body: file!.buffer!,
+        contentType: 'image/png',
+        size: file!.size,
+        metadata: { workflowId: id, candidateId: dto.selectedArtTextCandidateId },
+      })
+      uploadedObjectKey = objectKey
+      const finalImageUrl = await this.storageService.getSignedUrl(objectKey)
+      const composition: CompositionOutput = {
+        baseCandidateId: dto.baseCandidateId,
+        selectedArtTextCandidateId: dto.selectedArtTextCandidateId,
+        textContent: dto.textContent,
+        stylePrompt: dto.stylePrompt,
+        placement,
+        layers,
         finalImageUrl,
-        result.brandConstraint ?? { required: [], recommended: [], optional: [], sources: [] },
-        result.brief,
-        composition,
-      )
+        objectKey,
+        integrity: {
+          sha256: integritySha256,
+          renderer: 'fabric-v1',
+          baseObjectKey,
+          pixelRegionVerified: true,
+        },
+        exportSettings: { width: dto.width, height: dto.height, format: 'png' },
+      }
+      let finalEvaluation
+      try {
+        finalEvaluation = await evaluateFinalImage(
+          finalImageUrl,
+          result.brandConstraint ?? { required: [], recommended: [], optional: [], sources: [] },
+          result.brief,
+          composition,
+        )
+      } catch (error) {
+        workflow.status = 'failed'
+        workflow.awaitingAction = 'select_art_text_region'
+        workflow.errorMessage = error instanceof Error ? error.message : '最终品牌质检失败'
+        await this.saveWorkflow(workflow, false)
+        throw error
+      }
+      const awaitingAction: WorkflowAwaitingAction | undefined = finalEvaluation.passed
+        ? undefined
+        : finalEvaluation.suggestions.some((item) => /位置|区域|遮挡|裁切|对比/.test(item))
+          ? 'select_art_text_region'
+          : 'select_art_text'
+      await this.writeNodes(workflow, ['compose'], {
+        status: 'completed',
+        output: composition,
+        completedAt: new Date(),
+      })
+      await this.writeNodes(workflow, ['finalEvaluation'], {
+        status: 'completed',
+        output: finalEvaluation,
+        completedAt: new Date(),
+      })
+      result.compose = composition
+      result.finalImageUrl = finalImageUrl
+      result.finalEvaluation = finalEvaluation
+      workflow.result = result as unknown as Record<string, unknown>
+      workflow.status = finalEvaluation.passed ? 'completed' : 'awaiting_user'
+      workflow.awaitingAction = awaitingAction
+      workflow.errorMessage = undefined
+      workflow.progress = finalEvaluation.passed ? 100 : workflow.progress
+      workflow.markModified('result')
+      await this.saveWorkflow(workflow, false)
+      compositionCommitted = true
+      if (previousObjectKey && previousObjectKey !== objectKey) {
+        await this.storageService
+          .deleteObject(previousObjectKey)
+          .catch(() => this.logger.warn(`工作流 ${id} 的旧合成对象清理失败`))
+      }
+      return { composition, finalEvaluation }
     } catch (error) {
-      await this.storageService.deleteObject(objectKey).catch(() => undefined)
-      workflow.status = 'failed'
-      workflow.awaitingAction = 'select_art_text_region'
-      workflow.errorMessage = error instanceof Error ? error.message : '最终品牌质检失败'
-      await workflow.save()
+      if (uploadedObjectKey && !compositionCommitted) {
+        await this.storageService
+          .deleteObject(uploadedObjectKey)
+          .catch(() => this.logger.warn(`工作流 ${id} 的未提交合成对象清理失败`))
+      }
+      if (!(error instanceof StaleWorkflowError) && workflow.status !== 'failed') {
+        workflow.status = 'failed'
+        workflow.errorMessage = '当前操作失败，请重试'
+        await this.saveWorkflow(workflow, false)
+      }
       throw error
     }
-    result.compose = composition
-    result.finalImageUrl = finalImageUrl
-    result.finalEvaluation = finalEvaluation
-    workflow.result = result as unknown as Record<string, unknown>
-    const awaitingAction: WorkflowAwaitingAction | undefined = finalEvaluation.passed
-      ? undefined
-      : finalEvaluation.suggestions.some((item) => /位置|区域|遮挡|裁切|对比/.test(item))
-        ? 'select_art_text_region'
-        : 'select_art_text'
-    workflow.status = finalEvaluation.passed ? 'completed' : 'awaiting_user'
-    workflow.awaitingAction = awaitingAction
-    workflow.errorMessage = undefined
-    workflow.markModified('result')
-    await workflow.save()
-    await this.workflowNodeModel.updateOne(
-      { workflowId: id, type: 'compose' },
-      { $set: { status: 'completed', output: composition, completedAt: new Date() } },
-    )
-    await this.workflowNodeModel.updateOne(
-      { workflowId: id, type: 'finalEvaluation' },
-      { $set: { status: 'completed', output: finalEvaluation, completedAt: new Date() } },
-    )
-    if (previousObjectKey && previousObjectKey !== objectKey) {
-      await this.storageService.deleteObject(previousObjectKey).catch(() => undefined)
-    }
-    return { composition, finalEvaluation }
   }
 
   async updateNodeOutput(
@@ -708,6 +784,14 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     const nodeType = normalizeWorkflowNodeType(rawNodeType)
     if (!nodeType) throw new BadRequestException('不支持的工作流节点类型')
 
+    const editableKey =
+      nodeType === 'creativeDirection'
+        ? 'selectedDirectionId'
+        : nodeType === 'generate'
+          ? 'selectedCandidateId'
+          : undefined
+    if (!editableKey || Object.keys(payload).some((key) => key !== editableKey))
+      throw new BadRequestException('仅允许选择已有创意方向或候选图；服务端输出不可编辑')
     const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType })
     if (!node) {
       throw new NotFoundException(`Node ${nodeType} not found for workflow ${id}`)
@@ -758,7 +842,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     node.markModified('output')
     node.userModified = true
     node.version = (node.version || 1) + 1
-    await node.save()
+    // 父工作流先认领新版本，避免旧选择污染新结果。
 
     if (workflow) {
       const nextResult = { ...(workflow.result || {}), [nodeType]: nextPayload } as WorkflowResult
@@ -768,20 +852,24 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         workflow.status = 'awaiting_user'
         workflow.awaitingAction = 'enter_art_text'
       } else {
-        workflow.status = 'running'
-        workflow.awaitingAction = undefined
+        workflow.status = 'awaiting_user'
+        workflow.awaitingAction =
+          nodeType === 'creativeDirection' ? 'select_direction' : 'select_candidate'
       }
       workflow.markModified('result')
-      await workflow.save()
+      await this.saveWorkflow(workflow)
     }
+
+    await this.writeNode(workflow, node._id, {
+      output: nextPayload,
+      userModified: true,
+      version: node.version,
+    })
 
     // 2. 级联置空（下游 stale 机制）
     const downstreamTypes = downstreamNodeTypes(nodeType)
     if (downstreamTypes.length > 0) {
-      await this.workflowNodeModel.updateMany(
-        { workflowId: id, type: { $in: downstreamTypes } },
-        { $set: { status: 'stale' } },
-      )
+      await this.writeNodes(workflow, downstreamTypes, { status: 'stale' })
     }
 
     return node
@@ -792,6 +880,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     const nodeType = normalizeWorkflowNodeType(rawNodeType)
     if (!nodeType) throw new BadRequestException('不支持的工作流节点类型')
 
+    if (workflow.status === 'cancelled') throw new BadRequestException('已取消任务不能重试')
+    if (workflow.status === 'running') return { success: true, message: '当前版本已在执行' }
     // 触发对应节点的重新执行（实际会发布给 Agent 服务或 Processor，这里仅负责状态更改与触发）
     const node = await this.workflowNodeModel.findOne({ workflowId: id, type: nodeType })
     if (!node) {
@@ -812,48 +902,96 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         (candidate) => typeof candidate.metadata?.objectKey === 'string',
       )
 
-    node.status = 'pending'
-    await node.save()
-
-    const downstreamTypes = downstreamNodeTypes(nodeType)
-    if (downstreamTypes.length > 0) {
-      await this.workflowNodeModel.updateMany(
-        { workflowId: id, type: { $in: downstreamTypes } },
-        { $set: { status: 'stale' } },
-      )
-    }
-
-    const nextResult = currentResult
-    delete nextResult[nodeType]
-    this.clearDownstreamResult(nextResult, nodeType)
-    if (canReuseGenerateCheckpoint && failedGenerateCheckpoint) {
-      nextResult.generate = {
-        ...failedGenerateCheckpoint,
-        evaluations: [],
-        selectedCandidateId: '',
-      }
-    }
-    workflow.result = nextResult as unknown as Record<string, unknown>
     workflow.status = 'running'
-    workflow.awaitingAction = undefined
-    workflow.markModified('result')
-    await workflow.save()
-
-    // 发送任务到消息队列触发 Agent
-    await this.workflowQueue.add(
-      RUN_WORKFLOW_JOB,
-      {
-        workflowId: id,
-        nodeType,
-      },
-      {
-        jobId: `${id}-${nodeType}-v${node.version}-${Date.now()}`,
-        removeOnComplete: 100,
-        removeOnFail: 100,
-      },
+    workflow.currentNode = nodeType
+    workflow.progress = Math.round(
+      (WORKFLOW_NODE_ORDER.indexOf(nodeType) / WORKFLOW_NODE_ORDER.length) * 100,
     )
+    workflow.awaitingAction = undefined
+    workflow.errorMessage = undefined
+    try {
+      await this.saveWorkflow(workflow)
+    } catch (error) {
+      if (error instanceof StaleWorkflowError)
+        return { success: true, message: '当前动作已由其他请求认领' }
+      throw error
+    }
+    try {
+      await this.writeNode(workflow, node._id, { status: 'pending' })
 
-    return { success: true, message: `Node ${nodeType} queued for rerun.` }
+      const downstreamTypes = downstreamNodeTypes(nodeType)
+      if (downstreamTypes.length > 0) {
+        await this.writeNodes(workflow, downstreamTypes, { status: 'stale' })
+      }
+
+      const nextResult = currentResult
+      delete nextResult[nodeType]
+      this.clearDownstreamResult(nextResult, nodeType)
+      if (canReuseGenerateCheckpoint && failedGenerateCheckpoint) {
+        nextResult.generate = {
+          ...failedGenerateCheckpoint,
+          evaluations: [],
+          selectedCandidateId: '',
+        }
+      }
+      workflow.result = nextResult as unknown as Record<string, unknown>
+      workflow.status = 'running'
+      workflow.awaitingAction = undefined
+      workflow.markModified('result')
+      await this.saveWorkflow(workflow, false)
+
+      await this.queueNode(workflow, nodeType)
+
+      return { success: true, message: `Node ${nodeType} queued for rerun.` }
+    } catch (error) {
+      if (!(error instanceof StaleWorkflowError) && workflow.status === 'running') {
+        workflow.status = 'failed'
+        workflow.errorMessage = '任务准备失败，请重试'
+        await this.saveWorkflow(workflow, false)
+      }
+      throw error
+    }
+  }
+
+  async listWorkflows(query: ListWorkflowsDto, userId: string) {
+    await this.assertSpaceAccess(userId, query.spaceId)
+    const filter = {
+      userId,
+      spaceId: query.spaceId,
+      ...(query.status ? { status: query.status } : {}),
+    }
+    const [workflows, total] = await Promise.all([
+      this.workflowModel
+        .find(filter)
+        .sort({ updatedAt: -1, _id: -1 })
+        .skip((query.page - 1) * query.limit)
+        .limit(query.limit),
+      this.workflowModel.countDocuments(filter),
+    ])
+    return {
+      items: workflows.map((workflow) => this.toResponse(workflow)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    }
+  }
+
+  async cancel(id: string, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    if (workflow.status === 'cancelled') return this.toResponse(workflow)
+    if (workflow.status === 'completed') throw new BadRequestException('已完成任务不能取消')
+    workflow.status = 'cancelled'
+    workflow.awaitingAction = undefined
+    await this.saveWorkflow(workflow)
+    await this.writeNodes(workflow, [...WORKFLOW_NODE_ORDER], { status: 'stale' })
+    return this.toResponse(workflow)
+  }
+
+  async retry(id: string, userId: string, entId?: string) {
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    if (workflow.status === 'running') return { success: true, message: '任务已在执行' }
+    if (workflow.status !== 'failed') throw new BadRequestException('只能重试失败任务')
+    return this.runNode(id, workflow.currentNode ?? 'brief', userId, entId)
   }
 
   async streamWorkflow(
@@ -861,127 +999,56 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ): Promise<Observable<MessageEvent>> {
-    // 在建立 SSE 响应前完成资源鉴权，越权请求仍返回正常的 400/404。
-    const authorizedWorkflow = await this.verifyWorkflowAccess(id, userId, entId)
+    await this.verifyWorkflowAccess(id, userId, entId)
     return new Observable<MessageEvent>((subscriber) => {
-      Promise.resolve(authorizedWorkflow)
-        .then((workflow) => {
+      let sequence = -1
+      let reading = false
+      const publish = async () => {
+        if (reading || subscriber.closed) return
+        reading = true
+        try {
+          // 注册监听后重新读快照；队列通知只触发读库，旧任务事件不能改变客户端事实。
+          const snapshot = await this.getWorkflowDetail(id, userId, entId)
           if (subscriber.closed) return
-          this.queueEvents.on('progress', onProgress)
-          this.queueEvents.on('completed', onCompleted)
-          this.queueEvents.on('failed', onFailed)
-          subscriber.next({
-            data: { type: 'workflow_started', workflowId: id, timestamp: new Date().toISOString() },
-          })
-          if (workflow.status === 'awaiting_user' && workflow.awaitingAction) {
+          if (snapshot.workflow.eventSequence !== sequence) {
+            sequence = snapshot.workflow.eventSequence
             subscriber.next({
+              id: String(sequence),
               data: {
-                type: 'workflow_awaiting_user',
+                type: 'workflow_snapshot',
                 workflowId: id,
-                action: workflow.awaitingAction,
-                result: workflow.result,
+                sequence,
+                snapshot,
                 timestamp: new Date().toISOString(),
               },
             })
-          } else if (workflow.status === 'completed') {
-            subscriber.next({
-              data: {
-                type: 'workflow_completed',
-                workflowId: id,
-                result: workflow.result,
-                timestamp: new Date().toISOString(),
-              },
-            })
+          }
+          if (['completed', 'failed', 'cancelled'].includes(snapshot.workflow.status))
             subscriber.complete()
-          } else if (workflow.status === 'failed') {
-            subscriber.next({
-              data: {
-                type: 'workflow_failed',
-                workflowId: id,
-                error: {
-                  code: 'WORKFLOW_FAILED',
-                  message: workflow.errorMessage || '工作流执行失败',
-                },
-                timestamp: new Date().toISOString(),
-              },
-            })
-            subscriber.complete()
-          }
+        } catch (error) {
+          if (!subscriber.closed) subscriber.error(error)
+        } finally {
+          reading = false
+        }
+      }
+      const onNotification = ({ jobId }: { jobId: string }) => {
+        if (jobId?.startsWith(`${id}-`)) void publish()
+      }
+      this.queueEvents.on('progress', onNotification)
+      this.queueEvents.on('completed', onNotification)
+      this.queueEvents.on('failed', onNotification)
+      const heartbeat = setInterval(() => {
+        subscriber.next({
+          data: { type: 'heartbeat', workflowId: id, timestamp: new Date().toISOString() },
         })
-        .catch((err) => {
-          subscriber.next({
-            data: {
-              type: 'workflow_failed',
-              workflowId: id,
-              error: { code: 'WORKFLOW_ACCESS_DENIED', message: err.message },
-              timestamp: new Date().toISOString(),
-            },
-          })
-          subscriber.complete()
-        })
-
-      const onProgress = ({ jobId, data }: { jobId: string; data: JobProgress }) => {
-        if (!jobId) return
-        if (String(jobId).startsWith(id)) {
-          if (data && typeof data === 'object' && 'type' in data) {
-            subscriber.next({ data: data as unknown as WorkflowSseEvent })
-          }
-        }
-      }
-
-      const onCompleted = async ({
-        jobId,
-        returnvalue,
-      }: {
-        jobId: string
-        returnvalue: unknown
-      }) => {
-        if (!jobId) return
-        if (String(jobId).startsWith(id)) {
-          const workflow = await this.workflowModel.findById(id)
-          if (workflow?.status === 'awaiting_user' && workflow.awaitingAction) {
-            subscriber.next({
-              data: {
-                type: 'workflow_awaiting_user',
-                workflowId: id,
-                action: workflow.awaitingAction,
-                result: workflow.result,
-                timestamp: new Date().toISOString(),
-              },
-            })
-            return
-          }
-          subscriber.next({
-            data: {
-              type: 'workflow_completed',
-              workflowId: id,
-              result: returnvalue,
-              timestamp: new Date().toISOString(),
-            },
-          })
-          subscriber.complete()
-        }
-      }
-
-      const onFailed = ({ jobId, failedReason }: { jobId: string; failedReason: string }) => {
-        if (!jobId) return
-        if (String(jobId).startsWith(id)) {
-          subscriber.next({
-            data: {
-              type: 'workflow_failed',
-              workflowId: id,
-              error: { code: 'WORKFLOW_JOB_FAILED', message: failedReason },
-              timestamp: new Date().toISOString(),
-            },
-          })
-          subscriber.complete()
-        }
-      }
-
+        void publish()
+      }, 2000)
+      void publish()
       return () => {
-        this.queueEvents.off('progress', onProgress)
-        this.queueEvents.off('completed', onCompleted)
-        this.queueEvents.off('failed', onFailed)
+        clearInterval(heartbeat)
+        this.queueEvents.off('progress', onNotification)
+        this.queueEvents.off('completed', onNotification)
+        this.queueEvents.off('failed', onNotification)
       }
     })
   }
@@ -1005,6 +1072,10 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       awaitingAction: workflow.awaitingAction,
       requirements: workflow.requirements,
       needsComposition: workflow.needsComposition,
+      runVersion: workflow.runVersion ?? 0,
+      eventSequence: workflow.eventSequence ?? 0,
+      currentNode: workflow.currentNode,
+      progress: workflow.progress ?? 0,
     }
   }
 
@@ -1018,23 +1089,70 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async resetCompositionNodes(workflowId: string) {
-    await this.workflowNodeModel.updateMany(
-      { workflowId, type: { $in: ['compose', 'finalEvaluation'] } },
-      { $set: { status: 'pending' }, $unset: { output: 1, error: 1, errorMessage: 1 } },
+  private async beginAction(workflow: WorkflowDocument, nodeType: WorkflowNodeType) {
+    if (workflow.status === 'running' || workflow.status === 'cancelled')
+      throw new BadRequestException('任务正在执行或已取消')
+    workflow.status = 'running'
+    workflow.currentNode = nodeType
+    workflow.progress = Math.round(
+      (WORKFLOW_NODE_ORDER.indexOf(nodeType) / WORKFLOW_NODE_ORDER.length) * 100,
     )
+    workflow.errorMessage = undefined
+    await this.saveWorkflow(workflow)
   }
-
-  private async queueNode(workflowId: string, nodeType: WorkflowNodeType, version: number) {
-    await this.workflowQueue.add(
-      RUN_WORKFLOW_JOB,
-      { workflowId, nodeType },
-      {
-        jobId: `${workflowId}-${nodeType}-v${version}-${Date.now()}`,
-        removeOnComplete: 100,
-        removeOnFail: 100,
-      },
-    )
+  private async saveWorkflow(workflow: WorkflowDocument, advanceRun = true) {
+    await persistWorkflowState(this.workflowModel, workflow, advanceRun)
+    if (advanceRun) {
+      try {
+        await adoptWorkflowNodes(this.workflowNodeModel, workflow)
+      } catch (error) {
+        if (workflow.status === 'running') {
+          workflow.status = 'failed'
+          workflow.errorMessage = '任务版本初始化失败，请重试'
+          await persistWorkflowState(this.workflowModel, workflow)
+        }
+        throw error
+      }
+    }
+  }
+  private writeNode(workflow: WorkflowDocument, nodeId: unknown, patch: Record<string, unknown>) {
+    return persistNodeState(this.workflowNodeModel, this.workflowModel, workflow, nodeId, patch)
+  }
+  private async writeNodes(
+    workflow: WorkflowDocument,
+    types: WorkflowNodeType[],
+    patch: Record<string, unknown>,
+  ) {
+    const nodes = await this.workflowNodeModel.find({
+      workflowId: workflow._id.toString(),
+      type: { $in: types },
+    })
+    for (const node of nodes) await this.writeNode(workflow, node._id, patch)
+  }
+  private async resetCompositionNodes(workflow: WorkflowDocument) {
+    await this.writeNodes(workflow, ['compose', 'finalEvaluation'], {
+      status: 'pending',
+      $unset: { output: 1, error: 1, errorMessage: 1 },
+    })
+  }
+  private async queueNode(workflow: WorkflowDocument, nodeType: WorkflowNodeType) {
+    try {
+      await this.workflowQueue.add(
+        RUN_WORKFLOW_JOB,
+        { workflowId: workflow._id.toString(), nodeType, runVersion: workflow.runVersion },
+        {
+          jobId: `${workflow._id.toString()}-r${workflow.runVersion}-${nodeType}`,
+          removeOnComplete: 100,
+          removeOnFail: 100,
+        },
+      )
+    } catch (error) {
+      workflow.status = 'failed'
+      workflow.currentNode = nodeType
+      workflow.errorMessage = '任务入队失败，请重试'
+      await this.saveWorkflow(workflow, false)
+      throw error
+    }
   }
 
   private assertPngFile(file: { buffer?: Buffer; mimetype?: string } | undefined) {

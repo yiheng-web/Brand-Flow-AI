@@ -26,6 +26,7 @@ interface NavigationItem {
 const NAVIGATION_ITEMS: NavigationItem[] = [
   { key: 'home', label: '首页', path: '/home', icon: <HomeOutlined /> },
   { key: 'workspace', label: '节点流', path: '/workspace', icon: <ApartmentOutlined /> },
+  { key: 'tasks', label: '创作任务', path: '/tasks', icon: <ApartmentOutlined /> },
   { key: 'knowledge', label: '知识库', path: '/knowledge', icon: <DatabaseOutlined /> },
   { key: 'brand', label: '品牌资产', path: '/brand', icon: <FolderOpenOutlined /> },
   { key: 'works', label: '作品空间', path: '/works', icon: <PictureOutlined /> },
@@ -33,6 +34,7 @@ const NAVIGATION_ITEMS: NavigationItem[] = [
 
 const PAGE_TITLES: Record<string, string> = {
   '/workspace': '创作工作台',
+  '/tasks': '创作任务',
   '/knowledge': '知识库',
   '/brand': '品牌资产',
   '/works': '作品空间',

@@ -1,10 +1,10 @@
-import type { WorkflowResult } from '@brand-flow/contracts'
+import type { WorkflowResult, WorkflowStatus as ServerWorkflowStatus } from '@brand-flow/contracts'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import type { FlowNodeId, NodeExecStatus } from '../pages/workspace/workspace.const'
 
-type WorkflowStatus = 'idle' | 'pending' | 'running' | 'awaiting_user' | 'completed' | 'failed'
+type WorkflowStatus = 'idle' | ServerWorkflowStatus
 type Updater<T> = T | ((previous: T) => T)
 
 export const INITIAL_NODE_EXEC_STATUSES: Record<FlowNodeId, NodeExecStatus> = {
@@ -48,7 +48,21 @@ export const useWorkflowStore = create<WorkflowState>()(
       result: null,
       nodeExecStatuses: INITIAL_NODE_EXEC_STATUSES,
       nodeStreamData: {},
-      setWorkflowId: (workflowId) => set({ workflowId }),
+      setWorkflowId: (workflowId) =>
+        set((state) =>
+          state.workflowId === workflowId
+            ? { workflowId }
+            : {
+                workflowId,
+                status: 'idle',
+                prompt: '',
+                imageUrl: null,
+                error: null,
+                result: null,
+                nodeExecStatuses: INITIAL_NODE_EXEC_STATUSES,
+                nodeStreamData: {},
+              },
+        ),
       setStatus: (status) => set({ status }),
       setPrompt: (prompt) => set({ prompt }),
       setImageUrl: (imageUrl) => set({ imageUrl }),

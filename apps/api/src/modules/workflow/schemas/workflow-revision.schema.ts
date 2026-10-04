@@ -13,6 +13,9 @@ export class WorkflowRevision {
   @Prop({ required: true })
   round!: number
 
+  @Prop({ type: Number, default: 0 })
+  runVersion!: number
+
   @Prop({ type: Object, required: true })
   feedback!: OptimizationFeedback
 

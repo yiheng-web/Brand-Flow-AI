@@ -12,6 +12,8 @@ const createWorkflow = (status: WorkflowDocument['status']): WorkflowDocument =>
     spaceType: 'personal',
     userId: new Types.ObjectId().toString(),
     createdAt: new Date('2026-08-23T00:00:00.000Z'),
+    runVersion: 0,
+    eventSequence: 0,
     updatedAt: new Date('2026-08-23T00:00:00.000Z'),
   }) as WorkflowDocument
 
@@ -22,9 +24,13 @@ const createService = () => {
     updateOne: jest.fn(),
   }
   const workflowQueue = { add: jest.fn() }
+  const nodeModel = {
+    updateMany: jest.fn().mockResolvedValue({}),
+    find: jest.fn(() => ({ sort: jest.fn().mockResolvedValue([]) })),
+  }
   const service = new WorkflowService(
     workflowModel as never,
-    {} as never,
+    nodeModel as never,
     {} as never,
     workflowQueue as never,
     {} as never,
@@ -37,6 +43,21 @@ const createService = () => {
 }
 
 describe('WorkflowService.start', () => {
+  it('通用节点更新拒绝客户端质检、评分和服务端状态', async () => {
+    const { service, workflowModel } = createService()
+    const workflow = createWorkflow('awaiting_user')
+    workflowModel.findOne.mockResolvedValue(workflow)
+    for (const [type, output] of [
+      ['finalEvaluation', { passed: true }],
+      ['generate', { selectedCandidateId: 'a', evaluations: [] }],
+      ['creativeDirection', { status: 'completed' }],
+    ] as const) {
+      await expect(
+        service.updateNodeOutput(workflow._id.toString(), type, output, workflow.userId),
+      ).rejects.toThrow('服务端输出不可编辑')
+    }
+    expect(workflowModel.findOneAndUpdate).not.toHaveBeenCalled()
+  })
   it('SSE 只有资源鉴权成功后才注册队列监听', async () => {
     const { service, workflowModel } = createService()
     const workflow = createWorkflow('running')
@@ -50,10 +71,10 @@ describe('WorkflowService.start', () => {
     const observable = await service.streamWorkflow(workflow._id.toString(), workflow.userId)
     const next = jest.fn()
     const subscription = observable.subscribe(next)
-    await Promise.resolve()
+    await new Promise((resolve) => setImmediate(resolve))
     expect(events.on).toHaveBeenCalledTimes(3)
     expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: 'workflow_started' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ type: 'workflow_snapshot' }) }),
     )
     subscription.unsubscribe()
     expect(events.off).toHaveBeenCalledTimes(3)
@@ -74,7 +95,13 @@ describe('WorkflowService.start', () => {
   it('只允许一个请求把 pending 工作流认领为 running', async () => {
     const { service, workflowModel, workflowQueue } = createService()
     const pending = createWorkflow('pending')
-    const running = { ...pending, status: 'running', needsComposition: true } as WorkflowDocument
+    const running = {
+      ...pending,
+      status: 'running',
+      needsComposition: true,
+      runVersion: 1,
+      eventSequence: 1,
+    } as WorkflowDocument
     workflowModel.findOne.mockResolvedValue(pending)
     workflowModel.findOneAndUpdate.mockResolvedValue(running)
     workflowQueue.add.mockResolvedValue({})
@@ -87,17 +114,28 @@ describe('WorkflowService.start', () => {
 
     expect(result.status).toBe('running')
     expect(workflowModel.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: pending._id, status: 'pending' },
+      {
+        _id: pending._id,
+        status: 'pending',
+        runVersion: { $in: [0, null] },
+        eventSequence: { $in: [0, null] },
+      },
       expect.objectContaining({ $set: expect.objectContaining({ needsComposition: true }) }),
       { new: true },
     )
     expect(workflowQueue.add).toHaveBeenCalledTimes(1)
   })
 
-  it('队列写入失败时把工作流恢复为 pending', async () => {
+  it('队列写入失败时进入可恢复 failed 并记录错误', async () => {
     const { service, workflowModel, workflowQueue } = createService()
     const pending = createWorkflow('pending')
-    const running = { ...pending, status: 'running', needsComposition: false } as WorkflowDocument
+    const running = {
+      ...pending,
+      status: 'running',
+      needsComposition: false,
+      runVersion: 1,
+      eventSequence: 1,
+    } as WorkflowDocument
     workflowModel.findOne.mockResolvedValue(pending)
     workflowModel.findOneAndUpdate.mockResolvedValue(running)
     workflowModel.updateOne.mockResolvedValue({ acknowledged: true })
@@ -106,9 +144,12 @@ describe('WorkflowService.start', () => {
     await expect(
       service.start(pending._id.toString(), { needsComposition: false }, pending.userId),
     ).rejects.toThrow('redis unavailable')
-    expect(workflowModel.updateOne).toHaveBeenCalledWith(
-      { _id: pending._id, status: 'running' },
-      { $set: { status: 'pending' }, $unset: { needsComposition: 1 } },
+    expect(workflowModel.findOneAndUpdate).toHaveBeenLastCalledWith(
+      { _id: pending._id, status: 'running', runVersion: 1, eventSequence: 1 },
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: 'failed', errorMessage: '任务入队失败，请重试' }),
+      }),
+      { new: true },
     )
   })
 

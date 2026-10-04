@@ -10,7 +10,7 @@ import type {
   CandidateImage,
   CreativeDirection,
   WorkflowNodeStatus,
-  WorkflowResult,
+  WorkflowSnapshot,
 } from '@brand-flow/contracts'
 import {
   Button,
@@ -76,12 +76,10 @@ const NODE_STATUS_MAP: Record<NodeExecStatus, SemanticStatus> = {
   skipped: 'skipped',
   stale: 'warning',
 }
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
-
 export default function Workspace() {
   const location = useLocation()
   const navigate = useNavigate()
+  const queryWorkflowId = new URLSearchParams(location.search).get('workflowId')
   const navState = location.state as { prompt?: string; workflowId?: string } | null
   const currentSpaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
   const workflowId = useWorkflowStore((state) => state.workflowId)
@@ -112,115 +110,92 @@ export default function Workspace() {
   const [feedbackInstruction, setFeedbackInstruction] = useState('')
   const connectionRef = useRef<{ close: () => void } | null>(null)
   const recoverRef = useRef<(workflowId: string) => Promise<void>>(async () => undefined)
-  const recoveryTimerRef = useRef<number | null>(null)
+  const lastSnapshotRef = useRef<{ id: string; sequence: number } | null>(null)
   const initializedWorkflowRef = useRef<string | null>(null)
   const autoSaveWorkflowRef = useRef<string | null>(null)
   const userPrompt = navState?.prompt || workflowPrompt
 
+  const applySnapshot = useCallback(
+    (detail: WorkflowSnapshot) => {
+      if (useWorkflowStore.getState().workflowId !== detail.workflow.id) return
+      const previous = lastSnapshotRef.current
+      if (previous?.id === detail.workflow.id && detail.workflow.eventSequence < previous.sequence)
+        return
+      lastSnapshotRef.current = { id: detail.workflow.id, sequence: detail.workflow.eventSequence }
+      setError(detail.workflow.errorMessage ?? null)
+      setStatus(detail.workflow.status)
+      setWorkflowSpaceId(detail.workflow.spaceId)
+      setNeedsComposition(
+        detail.workflow.result?.brief?.needsComposition ?? detail.workflow.needsComposition,
+      )
+      setPrompt(detail.workflow.prompt)
+      setResult(detail.workflow.result || null)
+      setAwaitingAction(detail.workflow.awaitingAction)
+      if (detail.workflow.status === 'awaiting_user') {
+        setSelectedNodeId(
+          detail.workflow.awaitingAction === 'confirm_brief'
+            ? 'brief'
+            : detail.workflow.awaitingAction === 'select_direction'
+              ? 'creativeDirection'
+              : detail.workflow.awaitingAction === 'select_candidate'
+                ? 'generate'
+                : 'compose',
+        )
+      }
+      const statuses = { ...INITIAL_NODE_EXEC_STATUSES }
+      const outputs: Record<string, Record<string, unknown>> = {}
+      detail.nodes.forEach((node) => {
+        statuses[node.type as FlowNodeId] = STATUS_MAP[node.status]
+        if (node.output) outputs[node.type] = node.output
+      })
+      setNodeExecStatuses(statuses)
+      setNodeStreamData(outputs)
+    },
+    [setError, setNodeExecStatuses, setNodeStreamData, setPrompt, setResult, setStatus],
+  )
+
   const connect = useCallback(
-    (workflowId: string) => {
+    (id: string) => {
       connectionRef.current?.close()
-      connectionRef.current = createAuthEventSource(`/api/workflow/${workflowId}/stream`, {
+      connectionRef.current = createAuthEventSource(`/api/workflows/${id}/stream`, {
+        cursor: lastSnapshotRef.current?.id === id ? lastSnapshotRef.current.sequence : -1,
+        beforeReconnect: async () => {
+          const detail = await getWorkflowDetail(id)
+          applySnapshot(detail)
+          if (
+            ['completed', 'failed', 'cancelled', 'awaiting_user'].includes(detail.workflow.status)
+          )
+            connectionRef.current?.close()
+        },
         onMessage: (event) => {
-          if ('nodeType' in event) {
-            const nodeType = event.nodeType as FlowNodeId
-            if (event.type === 'node_queued')
-              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'queued' }))
-            if (event.type === 'node_started')
-              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'running' }))
-            if (event.type === 'node_failed') {
-              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'failed' }))
-              setError(event.error.message)
-            }
-            if (event.type === 'node_skipped')
-              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'skipped' }))
-            if (event.type === 'node_completed') {
-              setNodeExecStatuses((old) => ({ ...old, [nodeType]: 'done' }))
-              if (isRecord(event.output))
-                setNodeStreamData((old) => ({
-                  ...old,
-                  [nodeType]: event.output as Record<string, unknown>,
-                }))
-            }
-          }
-          if (event.type === 'workflow_awaiting_user') {
-            setStatus('awaiting_user')
-            setAwaitingAction(event.action)
-            if (event.result) setResult(event.result)
-            setSelectedNodeId(
-              event.action === 'confirm_brief'
-                ? 'brief'
-                : event.action === 'select_direction'
-                  ? 'creativeDirection'
-                  : event.action === 'select_candidate'
-                    ? 'generate'
-                    : 'compose',
-            )
-            connectionRef.current?.close()
-            connectionRef.current = null
-          }
-          if (event.type === 'workflow_completed') {
-            setStatus('completed')
-            setResult(event.result as WorkflowResult)
-            connectionRef.current?.close()
-            connectionRef.current = null
-          }
-          if (event.type === 'workflow_failed') {
-            setStatus('failed')
-            setError(event.error.message)
-          }
+          if (event.type !== 'workflow_snapshot') return
+          applySnapshot(event.snapshot)
+          if (event.snapshot.workflow.status !== 'running') connectionRef.current?.close()
         },
-        onError: () => {
-          message.warning('实时连接已断开，正在通过状态恢复保持数据一致')
-          if (recoveryTimerRef.current !== null) return
-          recoveryTimerRef.current = window.setTimeout(() => {
-            recoveryTimerRef.current = null
-            void recoverRef.current(workflowId)
-          }, 1200)
-        },
+        onError: (error) =>
+          setError(
+            error instanceof Error && /failed: (401|403|404)/.test(error.message)
+              ? '实时订阅不可用，请重新登录或刷新任务'
+              : '实时连接暂时断开，正在重连并恢复服务端状态',
+          ),
       })
     },
-    [setError, setNodeExecStatuses, setNodeStreamData, setResult, setStatus],
+    [applySnapshot, setError],
   )
 
   const recover = useCallback(
-    async (workflowId: string) => {
+    async (id: string) => {
       try {
-        const detail = await getWorkflowDetail(workflowId)
-        setStatus(detail.workflow.status)
-        setWorkflowSpaceId(detail.workflow.spaceId)
-        setNeedsComposition(
-          detail.workflow.result?.brief?.needsComposition ?? detail.workflow.needsComposition,
-        )
-        setPrompt(detail.workflow.prompt)
-        setResult(detail.workflow.result || null)
-        setAwaitingAction(detail.workflow.awaitingAction)
-        if (detail.workflow.status === 'awaiting_user') {
-          setSelectedNodeId(
-            detail.workflow.awaitingAction === 'confirm_brief'
-              ? 'brief'
-              : detail.workflow.awaitingAction === 'select_direction'
-                ? 'creativeDirection'
-                : detail.workflow.awaitingAction === 'select_candidate'
-                  ? 'generate'
-                  : 'compose',
-          )
-        }
-        const statuses = { ...INITIAL_NODE_EXEC_STATUSES }
-        const outputs: Record<string, Record<string, unknown>> = {}
-        detail.nodes.forEach((node) => {
-          statuses[node.type as FlowNodeId] = STATUS_MAP[node.status]
-          if (node.output) outputs[node.type] = node.output
-        })
-        setNodeExecStatuses(statuses)
-        setNodeStreamData(outputs)
-        if (detail.workflow.status === 'running') connect(workflowId)
+        const detail = await getWorkflowDetail(id)
+        if (useWorkflowStore.getState().workflowId !== id) return
+        applySnapshot(detail)
+        if (detail.workflow.status === 'running') connect(id)
       } catch (reason) {
-        setStatus('failed')
-        setError(reason instanceof Error ? reason.message : '无法恢复工作流')
+        if (useWorkflowStore.getState().workflowId === id)
+          setError(reason instanceof Error ? reason.message : '无法恢复工作流')
       }
     },
-    [connect, setError, setNodeExecStatuses, setNodeStreamData, setPrompt, setResult, setStatus],
+    [applySnapshot, connect, setError],
   )
 
   const runWorkflow = useCallback(
@@ -236,11 +211,11 @@ export default function Workspace() {
         const workflow = await startWorkflow(workflowId, enableComposition)
         setWorkflowSpaceId(workflow.spaceId)
         setNeedsComposition(workflow.needsComposition ?? enableComposition)
-        setStatus('running')
-        connect(workflowId)
+        setStatus(workflow.status)
+        if (workflow.status === 'running') connect(workflowId)
       } catch (reason) {
         setNeedsComposition(previousNeedsComposition)
-        setStatus('pending')
+        await recover(workflowId)
         setError(reason instanceof Error ? reason.message : '启动工作流失败')
       } finally {
         setSubmitting(false)
@@ -248,6 +223,7 @@ export default function Workspace() {
     },
     [
       connect,
+      recover,
       needsComposition,
       selectedNodeId,
       setError,
@@ -277,21 +253,29 @@ export default function Workspace() {
   }, [recover])
 
   useEffect(() => {
-    const id = navState?.workflowId || workflowId
+    const id = queryWorkflowId || navState?.workflowId || workflowId
     queueMicrotask(() => {
       if (id && initializedWorkflowRef.current !== id) {
         initializedWorkflowRef.current = id
+        connectionRef.current?.close()
+        connectionRef.current = null
+        lastSnapshotRef.current = null
+        autoSaveWorkflowRef.current = null
+        setSavedWorkId(null)
+        setCompletionOpen(false)
+        setAutoSaveFailed(false)
+        setPreviewCandidateId('')
+        setAwaitingAction(undefined)
         setWorkflowId(id)
         void recover(id)
       }
     })
-  }, [navState?.prompt, navState?.workflowId, recover, setWorkflowId, workflowId])
+  }, [queryWorkflowId, navState?.prompt, navState?.workflowId, recover, setWorkflowId, workflowId])
 
   useEffect(
     () => () => {
       connectionRef.current?.close()
       connectionRef.current = null
-      if (recoveryTimerRef.current !== null) window.clearTimeout(recoveryTimerRef.current)
     },
     [],
   )
@@ -307,11 +291,7 @@ export default function Workspace() {
       ...result.creativeDirection,
       selectedDirectionId: direction.id,
     }
-    await updateNodeOutput(
-      workflowId,
-      'creativeDirection',
-      nextCreativeDirection as unknown as Record<string, unknown>,
-    )
+    await updateNodeOutput(workflowId, 'creativeDirection', { selectedDirectionId: direction.id })
     setResult({ ...result, creativeDirection: nextCreativeDirection })
     await rerunNode(workflowId, 'prompt')
     setStatus('running')
@@ -320,11 +300,7 @@ export default function Workspace() {
   const selectCandidate = async (candidate: CandidateImage) => {
     if (!workflowId || !generate) return
     const nextGenerate = { ...generate, selectedCandidateId: candidate.id }
-    await updateNodeOutput(
-      workflowId,
-      'generate',
-      nextGenerate as unknown as Record<string, unknown>,
-    )
+    await updateNodeOutput(workflowId, 'generate', { selectedCandidateId: candidate.id })
     setResult({
       ...result,
       generate: nextGenerate,
@@ -379,7 +355,7 @@ export default function Workspace() {
         composition: result.compose,
       },
     })
-    setSavedWorkId(work._id)
+    if (useWorkflowStore.getState().workflowId === workflowId) setSavedWorkId(work._id)
     message.success('作品与初始版本已保存')
     return work._id
   }, [nodeStreamData, result, savedWorkId, userPrompt, workflowId, workflowSpaceId])
@@ -387,6 +363,7 @@ export default function Workspace() {
   useEffect(() => {
     if (
       workflowStatus !== 'completed' ||
+      lastSnapshotRef.current?.id !== workflowId ||
       !workflowId ||
       !result?.finalEvaluation?.passed ||
       autoSaveWorkflowRef.current === workflowId
@@ -397,7 +374,7 @@ export default function Workspace() {
     setAutoSaveFailed(false)
     void saveWork()
       .then((workId) => {
-        if (workId) setCompletionOpen(true)
+        if (workId && useWorkflowStore.getState().workflowId === workflowId) setCompletionOpen(true)
       })
       .catch(() => {
         autoSaveWorkflowRef.current = null
@@ -551,17 +528,20 @@ export default function Workspace() {
                 showCompose={needsComposition !== false}
               />
             </ReactFlowProvider>
-            {selectedNodeId === 'compose' && workflowId && baseCandidate && (
-              <div className={styles.composerOverlay}>
-                <ArtTextComposer
-                  key={baseCandidate.id}
-                  workflowId={workflowId}
-                  baseCandidate={baseCandidate}
-                  draft={result?.compositionDraft}
-                  onChanged={() => recover(workflowId)}
-                />
-              </div>
-            )}
+            {selectedNodeId === 'compose' &&
+              workflowId &&
+              baseCandidate &&
+              workflowStatus !== 'cancelled' && (
+                <div className={styles.composerOverlay}>
+                  <ArtTextComposer
+                    key={baseCandidate.id}
+                    workflowId={workflowId}
+                    baseCandidate={baseCandidate}
+                    draft={result?.compositionDraft}
+                    onChanged={() => recover(workflowId)}
+                  />
+                </div>
+              )}
           </div>
         </section>
         <aside className={styles.right}>
@@ -587,6 +567,7 @@ export default function Workspace() {
                   workflowId={workflowId}
                   brief={result.brief}
                   awaitingConfirmation={awaitingAction === 'confirm_brief'}
+                  disabled={workflowStatus === 'running' || workflowStatus === 'cancelled'}
                   onChanged={() => recover(workflowId)}
                   onRerun={rerun}
                 />
@@ -633,7 +614,12 @@ export default function Workspace() {
                             </Button>
                             <Radio
                               value={candidate.id}
-                              disabled={!evaluation || evaluation.totalScore < 6}
+                              disabled={
+                                workflowStatus === 'running' ||
+                                workflowStatus === 'cancelled' ||
+                                !evaluation ||
+                                evaluation.totalScore < 6
+                              }
                               onChange={() => void selectCandidate(candidate)}
                             >
                               {evaluation && evaluation.totalScore < 6 ? '质检未通过' : '选择'} ·{' '}
@@ -665,7 +651,11 @@ export default function Workspace() {
                       placeholder="例如：背景改成夜景，增加科技感"
                       autoSize={{ minRows: 2, maxRows: 4 }}
                     />
-                    <Button type="primary" onClick={() => void submitOptimization()}>
+                    <Button
+                      type="primary"
+                      disabled={workflowStatus === 'running' || workflowStatus === 'cancelled'}
+                      onClick={() => void submitOptimization()}
+                    >
                       保持品牌与主体并重新生成
                     </Button>
                   </Card>
@@ -689,7 +679,9 @@ export default function Workspace() {
               )}
               <Button
                 onClick={() => void rerun()}
-                disabled={!workflowId || workflowStatus === 'running'}
+                disabled={
+                  !workflowId || workflowStatus === 'running' || workflowStatus === 'cancelled'
+                }
                 className={selectedNodeId === 'brief' ? styles.hiddenAction : undefined}
               >
                 从此节点重跑

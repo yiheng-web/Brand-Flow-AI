@@ -54,7 +54,37 @@ export type WorkflowNodeStatus =
   | 'failed'
   | 'stale'
 
-export type WorkflowStatus = 'pending' | 'running' | 'awaiting_user' | 'completed' | 'failed'
+export type WorkflowStatus =
+  | 'pending'
+  | 'running'
+  | 'awaiting_user'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export const WORKFLOW_TRANSITIONS: Record<WorkflowStatus, readonly WorkflowStatus[]> = {
+  pending: ['running', 'failed', 'cancelled'],
+  running: ['awaiting_user', 'completed', 'failed', 'cancelled'],
+  awaiting_user: ['running', 'completed', 'failed', 'cancelled'],
+  completed: ['running', 'awaiting_user'],
+  failed: ['running', 'awaiting_user', 'cancelled'],
+  cancelled: [],
+}
+export const NODE_TRANSITIONS: Record<WorkflowNodeStatus, readonly WorkflowNodeStatus[]> = {
+  pending: ['queued', 'running', 'completed', 'stale'],
+  queued: ['running', 'pending', 'failed', 'stale'],
+  running: ['completed', 'skipped', 'failed', 'pending', 'stale'],
+  completed: ['pending', 'queued', 'stale'],
+  skipped: ['pending', 'queued', 'stale'],
+  failed: ['pending', 'queued', 'stale'],
+  stale: ['pending', 'queued', 'completed'],
+}
+export function canTransitionWorkflow(from: WorkflowStatus, to: WorkflowStatus): boolean {
+  return from === to || WORKFLOW_TRANSITIONS[from]?.includes(to) === true
+}
+export function canTransitionNode(from: WorkflowNodeStatus, to: WorkflowNodeStatus): boolean {
+  return from === to || NODE_TRANSITIONS[from]?.includes(to) === true
+}
 
 export type WorkflowAwaitingAction =
   | 'confirm_brief'
@@ -481,7 +511,30 @@ export interface WorkflowResult {
 type EventBase = { workflowId: string; timestamp: string }
 type NodeEventBase = EventBase & { nodeId: string; nodeType: WorkflowNodeType }
 
+export interface WorkflowSnapshot {
+  workflow: {
+    id: string
+    status: WorkflowStatus
+    prompt: string
+    spaceId: string
+    createdAt: string
+    updatedAt: string
+    result?: WorkflowResult
+    awaitingAction?: WorkflowAwaitingAction
+    errorMessage?: string
+    needsComposition?: boolean
+    requirements?: BrandRequirementInput
+    runVersion: number
+    eventSequence: number
+    currentNode?: WorkflowNodeType
+    progress: number
+  }
+  nodes: WorkflowNodeSnapshot[]
+}
+
 export type WorkflowSseEvent =
+  | ({ type: 'workflow_snapshot'; sequence: number; snapshot: WorkflowSnapshot } & EventBase)
+  | ({ type: 'heartbeat' } & EventBase)
   | ({ type: 'workflow_started' } & EventBase)
   | ({ type: 'node_queued' } & NodeEventBase)
   | ({ type: 'node_started' } & NodeEventBase)
@@ -570,6 +623,24 @@ function hasWorkflowError(value: unknown, requireRetryable: boolean): boolean {
 export function parseWorkflowSseEvent(value: unknown): WorkflowSseEvent | null {
   if (!isRecord(value) || typeof value.type !== 'string') return null
   if (typeof value.workflowId !== 'string' || typeof value.timestamp !== 'string') return null
+
+  if (value.type === 'heartbeat') return value as unknown as WorkflowSseEvent
+  if (value.type === 'workflow_snapshot') {
+    if (
+      !Number.isSafeInteger(value.sequence) ||
+      !isRecord(value.snapshot) ||
+      !isRecord(value.snapshot.workflow) ||
+      !Array.isArray(value.snapshot.nodes)
+    )
+      return null
+    const workflow = value.snapshot.workflow
+    return workflow.id === value.workflowId &&
+      typeof workflow.status === 'string' &&
+      Object.prototype.hasOwnProperty.call(WORKFLOW_TRANSITIONS, workflow.status) &&
+      workflow.eventSequence === value.sequence
+      ? (value as unknown as WorkflowSseEvent)
+      : null
+  }
 
   if (value.type === 'workflow_started') return value as unknown as WorkflowSseEvent
   if (value.type === 'workflow_awaiting_user') {

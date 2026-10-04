@@ -45,7 +45,7 @@ export class Workflow {
 
   @Prop({
     type: String,
-    enum: ['pending', 'running', 'awaiting_user', 'completed', 'failed'],
+    enum: ['pending', 'running', 'awaiting_user', 'completed', 'failed', 'cancelled'],
     default: 'pending',
     index: true,
   })
@@ -69,6 +69,16 @@ export class Workflow {
 
   @Prop()
   errorMessage?: string
+
+  @Prop({ type: Number, default: 0 })
+  runVersion!: number
+  @Prop({ type: Number, default: 0 })
+  eventSequence!: number
+  @Prop({ type: String })
+  currentNode?: import('@brand-flow/contracts').WorkflowNodeType
+  @Prop({ type: Number, default: 0 })
+  progress!: number
 }
 
 export const WorkflowSchema = SchemaFactory.createForClass(Workflow)
+WorkflowSchema.index({ userId: 1, spaceId: 1, updatedAt: -1, _id: -1 })

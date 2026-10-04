@@ -9,13 +9,13 @@ import type {
   FinalEvaluationResult,
   WorkflowAwaitingAction,
   WorkflowStatus,
-  WorkflowNodeSnapshot,
   WorkflowResult,
   WorkflowSseEvent,
   BrandRequirementInput,
   CreativeBrief,
   OptimizationFeedback,
   PromptPlan,
+  WorkflowSnapshot,
 } from '@brand-flow/contracts'
 
 import apiClient from './index'
@@ -38,12 +38,30 @@ export interface WorkflowData {
   awaitingAction?: WorkflowAwaitingAction
   requirements?: BrandRequirementInput
   needsComposition?: boolean
+  runVersion: number
+  eventSequence: number
+  currentNode?: import('@brand-flow/contracts').WorkflowNodeType
+  progress: number
 }
 
-export interface WorkflowDetailResponse {
-  workflow: WorkflowData
-  nodes: WorkflowNodeSnapshot[]
+export type WorkflowDetailResponse = WorkflowSnapshot
+
+export interface WorkflowListResponse {
+  items: WorkflowData[]
+  total: number
+  page: number
+  limit: number
 }
+export const listWorkflows = (params: {
+  spaceId: string
+  status?: WorkflowStatus
+  page?: number
+  limit?: number
+}): Promise<WorkflowListResponse> => apiClient.get('/workflows', { params })
+export const cancelWorkflow = (id: string): Promise<WorkflowData> =>
+  apiClient.post(`/workflows/${id}/cancel`)
+export const retryWorkflow = (id: string): Promise<{ success: boolean; message: string }> =>
+  apiClient.post(`/workflows/${id}/retry`)
 
 export async function submitPrompt(params: SubmitPromptParams): Promise<WorkflowData> {
   return apiClient.post<unknown, WorkflowData>('/workflow/create', params)

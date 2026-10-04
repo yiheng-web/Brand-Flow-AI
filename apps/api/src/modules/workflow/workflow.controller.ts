@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Query,
   Param,
   Post,
   Put,
@@ -25,6 +26,8 @@ import {
 } from './dto/composition.dto'
 import { WorkflowResponse, WorkflowService } from './workflow.service'
 import { Observable } from 'rxjs'
+import { ListWorkflowsDto } from './dto/list-workflows.dto'
+import { SelectNodeOutputDto } from './dto/select-node-output.dto'
 
 interface AuthenticatedRequest {
   user: { sub: string; entId?: string }
@@ -38,10 +41,28 @@ interface UploadedCompositionFile {
 
 @ApiTags('智能工作流 Workflow')
 @ApiBearerAuth()
-@Controller('workflow')
+@Controller(['workflow', 'workflows'])
 @UseGuards(JwtAuthGuard)
 export class WorkflowController {
   constructor(private readonly workflowService: WorkflowService) {}
+
+  @Get()
+  @ApiOperation({ summary: '查询当前用户当前空间的创作任务历史' })
+  list(@Query() query: ListWorkflowsDto, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.listWorkflows(query, req.user.sub)
+  }
+
+  @Post(':id/cancel')
+  @ApiOperation({ summary: '取消任务并阻止旧版本写回' })
+  cancel(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.cancel(id, req.user.sub, req.user.entId)
+  }
+
+  @Post(':id/retry')
+  @ApiOperation({ summary: '从失败节点安全重试任务' })
+  retry(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.workflowService.retry(id, req.user.sub, req.user.entId)
+  }
 
   @Post('create')
   @ApiOperation({ summary: '创建待启动工作流' })
@@ -160,13 +181,13 @@ export class WorkflowController {
   updateNodeOutput(
     @Param('id') id: string,
     @Param('nodeType') nodeType: string,
-    @Body() payload: Record<string, unknown>,
+    @Body() payload: SelectNodeOutputDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.workflowService.updateNodeOutput(
       id,
       nodeType,
-      payload,
+      { ...payload },
       req.user.sub,
       req.user.entId,
     )

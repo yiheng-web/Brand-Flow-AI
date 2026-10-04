@@ -10,7 +10,19 @@ import {
   sortCandidateEvaluations,
   parseKnowledgeImport,
   splitBrandConstraintPackage,
+  canTransitionNode,
+  canTransitionWorkflow,
 } from './index'
+
+test('工作流和节点转换受控，取消是终态，失败允许重试', () => {
+  assert.equal(canTransitionWorkflow('pending', 'running'), true)
+  assert.equal(canTransitionWorkflow('running', 'pending'), false)
+  assert.equal(canTransitionWorkflow('cancelled', 'completed'), false)
+  assert.equal(canTransitionWorkflow('failed', 'running'), true)
+  assert.equal(canTransitionNode('pending', 'completed'), true)
+  assert.equal(canTransitionNode('failed', 'pending'), true)
+  assert.equal(canTransitionNode('stale', 'skipped'), false)
+})
 
 test('文本导入保留规则正文、解析级别并拒绝空规则和超量输入', () => {
   assert.deepEqual(
