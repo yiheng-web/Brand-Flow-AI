@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -45,6 +45,30 @@ describe('BriefReviewPanel', () => {
     expect(screen.getByText('修改并确认')).toBeTruthy()
     expect(screen.getByText('重新生成')).toBeTruthy()
     expect(screen.getByText('从此节点重跑')).toBeTruthy()
+  })
+
+  it('断网失败显示可重试状态，保留草稿并恢复提交按钮', async () => {
+    confirmBrief.mockRejectedValueOnce(new Error('Network Error')).mockResolvedValueOnce({})
+    const onChanged = vi.fn().mockResolvedValue(undefined)
+    render(
+      <BriefReviewPanel
+        workflowId="wf-1"
+        brief={brief}
+        awaitingConfirmation
+        onChanged={onChanged}
+        onRerun={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByText('确认 Brief'))
+    expect(await screen.findByText('Network Error，请恢复连接后重试')).toBeTruthy()
+    expect(onChanged).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('图片目标')).toHaveProperty('value', brief.normalizedIntent)
+    const button = screen.getByText('确认 Brief').closest('button')
+    if (!button) throw new Error('确认按钮不存在')
+    await waitFor(() => expect(button.classList.contains('ant-btn-loading')).toBe(false))
+    await userEvent.click(button)
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('Network Error，请恢复连接后重试')).toBeNull()
   })
 
   it('非等待态不允许再次提交 Brief', () => {

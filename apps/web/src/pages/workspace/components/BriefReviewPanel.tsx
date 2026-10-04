@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CreativeBrief } from '@brand-flow/contracts'
-import { Button, Input, Select, Space, Switch, message } from 'antd'
+import { Alert, Button, Input, Select, Space, Switch, message } from 'antd'
 
 import { confirmBrief, regenerateBrief, updateBrief } from '@/api/workflow'
 
@@ -25,13 +25,17 @@ export default function BriefReviewPanel({
 }: BriefReviewPanelProps) {
   const [draft, setDraft] = useState(brief)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string>()
 
   const execute = async (operation: () => Promise<unknown>, success: string) => {
     setLoading(true)
+    setError(undefined)
     try {
       await operation()
       message.success(success)
       await onChanged()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '操作失败，请重试')
     } finally {
       setLoading(false)
     }
@@ -39,6 +43,7 @@ export default function BriefReviewPanel({
 
   return (
     <div className={styles.panel}>
+      {error && <Alert type="error" title={`${error}，请恢复连接后重试`} showIcon />}
       <Space orientation="vertical" className={styles.fields}>
         <Input.TextArea
           value={draft.normalizedIntent}

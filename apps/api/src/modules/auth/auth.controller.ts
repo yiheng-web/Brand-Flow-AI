@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, Get, UseGuards, Req } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { AuthRateGuard } from '../limits/auth-rate.guard'
 import { AuthService } from './auth.service'
 import { RegisterDto, LoginDto } from './dto/auth.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
@@ -13,17 +14,19 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取当前登录用户信息' })
-  getProfile(@Req() req: any) {
+  getProfile(@Req() req: { user: { sub: string; entId?: string } }) {
     return req.user
   }
 
   @Post('register')
+  @UseGuards(AuthRateGuard)
   @ApiOperation({ summary: '注册账号' })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto)
   }
 
   @Post('login')
+  @UseGuards(AuthRateGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '登录并获取 JWT' })
   async login(@Body() loginDto: LoginDto) {

@@ -1,18 +1,18 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
+import { Document } from 'mongoose'
 
-export type EnterpriseDocument = Enterprise & Document;
+export type EnterpriseDocument = Enterprise & Document
 
 @Schema({ timestamps: true })
 export class Enterprise {
   @Prop({ required: true, unique: true })
-  name!: string;
+  name!: string
 
   @Prop()
-  logo!: string;
+  logo!: string
 
   @Prop({ default: 'active' })
-  status!: string;
+  status!: string
 }
 
-export const EnterpriseSchema = SchemaFactory.createForClass(Enterprise);
+export const EnterpriseSchema = SchemaFactory.createForClass(Enterprise)

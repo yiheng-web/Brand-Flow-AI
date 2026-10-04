@@ -51,7 +51,10 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     const backendData = error.response?.data
-    const errorMessage = backendData?.message || error.message || '网络异常，请稍后重试'
+    const detail = backendData?.message || error.message || '网络异常，请稍后重试'
+    const wait = Number(error.response?.headers?.['retry-after'])
+    const errorMessage =
+      error.response?.status === 429 && wait > 0 ? `${detail}（建议 ${wait} 秒后重试）` : detail
     showApiError(errorMessage, error.response?.status)
 
     if (

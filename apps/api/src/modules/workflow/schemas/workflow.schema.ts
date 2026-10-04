@@ -78,6 +78,8 @@ export class Workflow {
 
   @Prop({ type: Number, default: 0 })
   runVersion!: number
+  @Prop({ type: String })
+  executionLease?: string
   @Prop({ type: Number, default: 0 })
   eventSequence!: number
   @Prop({ type: String })

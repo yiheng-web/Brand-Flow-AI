@@ -5,11 +5,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { AuthService } from './auth.service'
 import { AuthController } from './auth.controller'
 import { OrgModule } from '@/modules/org/org.module'
+import { LimitsModule } from '../limits/limits.module'
 import { JwtStrategy } from './guards/jwt.strategy'
 
 @Module({
   imports: [
     OrgModule,
+    LimitsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

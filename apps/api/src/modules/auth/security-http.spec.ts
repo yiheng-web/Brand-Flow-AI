@@ -15,6 +15,7 @@ import { WorksController } from '../works/works.controller'
 import { WorksService } from '../works/works.service'
 import { WorkflowController } from '../workflow/workflow.controller'
 import { WorkflowService } from '../workflow/workflow.service'
+import { LimitsService } from '../limits/limits.service'
 import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { JwtStrategy } from './guards/jwt.strategy'
@@ -42,6 +43,7 @@ const workflowService = new WorkflowService(
   controllers: [AuthController, AssetsController, WorksController, WorkflowController],
   providers: [
     JwtStrategy,
+    { provide: LimitsService, useValue: { authenticate: jest.fn().mockResolvedValue(undefined) } },
     { provide: ConfigService, useValue: new ConfigService({ JWT_SECRET: secret }) },
     { provide: getModelToken(User.name), useValue: { findById } },
     { provide: AuthService, useValue: {} },

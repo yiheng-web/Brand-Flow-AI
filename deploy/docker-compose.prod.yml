@@ -1,0 +1,67 @@
+name: brand-flow-prod
+services:
+  web:
+    image: brand-flow-web:${RELEASE_TAG:?设置已构建的发布标签}
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '127.0.0.1:8080:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    image: brand-flow-api:${RELEASE_TAG:?设置已构建的发布标签}
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    env_file: ${API_ENV_FILE:?设置部署层保存的API环境文件绝对路径}
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://${MONGO_USER:?设置数据库用户}:${MONGO_PASSWORD:?设置数据库密码}@mongodb:27017/brand_flow?authSource=admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?设置Redis密码}
+      TRUST_PROXY_HOPS: 1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  mongodb:
+    image: mongo:8.0.15
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?设置数据库用户}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?设置数据库密码}
+    volumes:
+      - mongo:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand({ping:1}).ok']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2.1-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?设置Redis密码}
+    command:
+      ['/bin/sh', '-c', 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mongo:
+  redis:

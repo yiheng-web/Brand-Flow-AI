@@ -539,3 +539,19 @@ interface UserInfo {
 - personal 资源由 userId/creatorId 决定归属，与当前企业无关；新个人素材不写 enterpriseId，旧个人素材仍按创建者读取。
 - POST /assets/upload 每次最多 1 张、10 MiB；仅接受 PNG/JPEG/WebP/GIF，sharp 校验真实格式和解码，像素上限 4000 万。不合法内容返回 400；超过传输大小限制返回 413。
 - Workflow 浏览器缓存仅保留 workflowId；账号切换或退出清空 Workflow/User/Flow。旧缓存升级时丢弃，签名 URL、结果和节点输出不持久化。
+
+## V1.6 可用性与健康检查
+
+健康接口位于根路径，**不加 `/api` 前缀**，无需登录：
+
+| 接口                   | 响应                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `GET /health/live`     | 200，`data.status = "ok"`，仅检查进程                                                                        |
+| `GET /health/ready`    | 200，`data.status = "ready"`，`data.checks` 包含 mongo/redis/bullmq/storage 的 ready 状态                    |
+| readiness 任一依赖失败 | 503，`success = false`，`message = "依赖未就绪"`，`data.checks` 对失败依赖标记 unavailable；不返回地址或凭据 |
+
+登录/注册、running 并发和同步重试额度拒绝返回 429，并设置 `Retry-After` 秒数。队列内生图额度拒绝保存为 failed 检查点并通过既有节点失败事件展示；今日额度按 UTC 次日恢复。Provider 有界重试前检查任务版本和取消，不自动重试付费生图。
+
+新增持久化字段：User.runningWorkflowLeases（默认空字符串数组）和 Workflow.executionLease（可选执行令牌）。这些字段由服务端维护，客户端不能分配、续用或清除名额。现有工作流/节点/SSE 状态协议保持不变。
+
+配置、部署与验收见 [V1 部署文档](../../docs/v1-deployment.md)，请求示例见 [health.http](rest-client/health.http)。

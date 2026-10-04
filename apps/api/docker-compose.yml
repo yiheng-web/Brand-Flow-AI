@@ -1,21 +1,21 @@
 services:
   mongodb:
-    image: mongo:latest
+    image: mongo:8.0.15
     container_name: brand-flow-mongodb
     restart: always
     ports:
-      - '27017:27017'
+      - '127.0.0.1:27017:27017'
     volumes:
       - mongodb_data:/data/db
     environment:
       - MONGO_INITDB_DATABASE=brand_flow
 
   redis:
-    image: redis:latest
+    image: redis:8.2.1-alpine
     container_name: brand-flow-redis
     restart: always
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -55,11 +55,11 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET}
     entrypoint: >
       /bin/sh -c "
+      set -eu;
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
       mc mb -p local/$$MINIO_BUCKET;
       mc version enable local/$$MINIO_BUCKET;
-      mc encrypt set sse-s3 local/$$MINIO_BUCKET;
-      exit 0;
+      mc anonymous set none local/$$MINIO_BUCKET;
       "
 
 volumes:

@@ -31,7 +31,7 @@ export class ExportLog {
   downloadUrl!: string
 
   @Prop({ type: Object })
-  metadata!: Record<string, any>
+  metadata!: Record<string, unknown>
 }
 
 export const ExportLogSchema = SchemaFactory.createForClass(ExportLog)

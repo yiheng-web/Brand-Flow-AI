@@ -1,3 +1,4 @@
+import { HealthModule } from './modules/health/health.module'
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { MongooseModule } from '@nestjs/mongoose'
@@ -15,6 +16,7 @@ import { WorksModule } from './modules/works/works.module'
 @Module({
   imports: [
     OrgModule,
+    HealthModule,
     AssetsModule,
     AuthModule,
     WorkflowModule,
@@ -39,9 +41,13 @@ import { WorksModule } from './modules/works/works.module'
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
+        prefix: configService.get<string>('REDIS_QUEUE_PREFIX') ?? 'bull',
         connection: {
           host: configService.get<string>('REDIS_HOST'),
-          port: configService.get<number>('REDIS_PORT'),
+          port: Number(configService.get('REDIS_PORT') ?? 6379),
+          password: configService.get<string>('REDIS_PASSWORD') || undefined,
+          db: Number(configService.get('REDIS_DB') ?? 0),
+          connectTimeout: 3000,
         },
       }),
       inject: [ConfigService],

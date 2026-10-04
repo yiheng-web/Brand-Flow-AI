@@ -14,4 +14,4 @@ export const PROMPT_GENERATE_TEMPLATE = `
   "negativePrompt": "绘图专用的负向提示词 (Negative Prompt，英文，如丑陋、多指、变形等)",
   "purpose": "生成目的"
 }}
-`;
+`

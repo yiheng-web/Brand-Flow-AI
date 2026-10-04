@@ -1,3 +1,4 @@
+import { LimitsService } from '../limits/limits.service'
 import {
   Injectable,
   NotFoundException,
@@ -112,6 +113,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     private readonly knowledgeModel: Model<KnowledgeDocument>,
     private readonly storageService: StorageService,
     private readonly referencesService?: WorkflowReferencesService,
+    private readonly limits?: LimitsService,
   ) {}
 
   async onModuleInit() {
@@ -407,8 +409,10 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       preserveBrandPositioning: true as const,
       preserveCoreSubject: true as const,
     }
+    await this.limits?.retry(id)
     await this.beginAction(workflow, 'prompt')
     try {
+      await this.assertActive(workflow)
       const revisedPrompt = await revisePromptPlan(
         result.brief,
         direction,
@@ -548,10 +552,12 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('工作流当前不接受艺术字输入')
     }
 
+    if (result.compositionDraft?.candidates?.length) await this.limits?.retry(id)
     await this.beginAction(workflow, 'compose')
     try {
       let candidates: ArtTextCandidate[]
       try {
+        await this.assertActive(workflow)
         candidates = await generateControlledArtTextCandidates(dto, baseCandidateWithFreshUrl)
       } catch (error) {
         result.compositionDraft = {
@@ -664,6 +670,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     if (!candidate) throw new BadRequestException('艺术字候选不存在或已经过期')
     await this.beginAction(workflow, 'compose')
     try {
+      await this.assertActive(workflow)
       const placement = await createArtTextPlacementPlan(candidate, dto.region)
       draft.region = dto.region
       draft.placement = placement
@@ -843,6 +850,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       }
       let finalEvaluation
       try {
+        await this.assertActive(workflow)
         finalEvaluation = await evaluateFinalImage(
           finalImageUrl,
           result.brandConstraint ?? { required: [], recommended: [], optional: [], sources: [] },
@@ -1023,6 +1031,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException(`Node ${nodeType} not found for workflow ${id}`)
     }
 
+    if (node.status === 'failed' || node.status === 'completed' || node.status === 'stale')
+      await this.limits?.retry(id)
     const currentResult = (workflow.result as WorkflowResult | undefined) ?? {}
     const nodeGenerateCheckpoint = node.output as WorkflowResult['generate'] | undefined
     const failedGenerateCheckpoint =
@@ -1237,8 +1247,32 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     workflow.errorMessage = undefined
     await this.saveWorkflow(workflow)
   }
+  private async assertActive(workflow: WorkflowDocument) {
+    if (!this.limits) return
+    if (
+      !(await this.workflowModel.exists({
+        _id: workflow._id,
+        status: 'running',
+        runVersion: workflow.runVersion,
+      }))
+    )
+      throw new StaleWorkflowError()
+    if (workflow.executionLease) await this.limits.renew(workflow.userId, workflow.executionLease)
+  }
   private async saveWorkflow(workflow: WorkflowDocument, advanceRun = true) {
-    await persistWorkflowState(this.workflowModel, workflow, advanceRun)
+    let reserved: string | undefined
+    if (advanceRun && workflow.status === 'running' && this.limits) {
+      reserved = await this.limits.reserve(workflow.userId, workflow._id.toString())
+      workflow.executionLease = reserved
+    }
+    try {
+      await persistWorkflowState(this.workflowModel, workflow, advanceRun)
+    } catch (error) {
+      await this.limits?.release(workflow.userId, reserved)
+      throw error
+    }
+    if (workflow.status !== 'running')
+      await this.limits?.release(workflow.userId, workflow.executionLease)
     if (advanceRun) {
       try {
         await adoptWorkflowNodes(this.workflowNodeModel, workflow)
@@ -1247,6 +1281,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
           workflow.status = 'failed'
           workflow.errorMessage = '任务版本初始化失败，请重试'
           await persistWorkflowState(this.workflowModel, workflow)
+          await this.limits?.release(workflow.userId, workflow.executionLease)
         }
         throw error
       }

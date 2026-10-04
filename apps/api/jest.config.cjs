@@ -1,5 +1,6 @@
 module.exports = {
   testEnvironment: 'node',
+  maxWorkers: 2,
   rootDir: '.',
   moduleFileExtensions: ['js', 'json', 'ts'],
   testRegex: '.*\\.spec\\.ts$',

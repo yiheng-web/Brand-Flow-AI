@@ -1,6 +1,7 @@
-### 变量
-@baseUrl = http://localhost:3000/api
+@host = http://localhost:3000
 
-### 根路径健康检查
-GET {{baseUrl}}
+### 进程存活，无需 JWT，不依赖数据库或对象存储
+GET {{host}}/health/live
 
+### 依赖就绪；失败时返回 503，data.checks 描述各依赖状态
+GET {{host}}/health/ready

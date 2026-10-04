@@ -1,3 +1,5 @@
+import { WorkflowRecoveryService } from './workflow-recovery.service'
+import { LimitsModule } from '../limits/limits.module'
 import { Module } from '@nestjs/common'
 import { BullModule } from '@nestjs/bullmq'
 import { MongooseModule } from '@nestjs/mongoose'
@@ -26,12 +28,18 @@ import { WorkflowReferencesService } from './workflow-references.service'
       { name: KnowledgeItem.name, schema: KnowledgeItemSchema },
     ]),
     OrgModule,
+    LimitsModule,
     StorageModule,
     BullModule.registerQueue({
       name: WORKFLOW_QUEUE,
     }),
   ],
   controllers: [WorkflowController],
-  providers: [WorkflowService, WorkflowProcessor, WorkflowReferencesService],
+  providers: [
+    WorkflowService,
+    WorkflowProcessor,
+    WorkflowReferencesService,
+    WorkflowRecoveryService,
+  ],
 })
 export class WorkflowModule {}

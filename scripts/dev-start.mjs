@@ -3,6 +3,7 @@
  *
  * 使用：pnpm dev:all  或  pnpm start
  */
+import './check-node.mjs'
 import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -85,6 +86,8 @@ function validateEnv() {
   const env = loadEnvFile(envPath)
   const apiKey = env.SILICONFLOW_API_KEY?.trim() ?? ''
 
+  if (env.BRAND_FLOW_DEMO_MODE === 'true') return env
+
   if (PLACEHOLDER_KEYS.has(apiKey)) {
     if (skipKeyCheck) {
       console.warn('')
@@ -116,14 +119,14 @@ console.log('')
 console.log('=== Brand-Flow AI 开发环境启动 ===')
 console.log('')
 
-console.log('[1/4] 启动 Docker 依赖（MongoDB + Redis）...')
-run('node', ['scripts/dev-deps.mjs'])
-
-console.log('')
-console.log('[2/4] 检查 API 环境变量...')
+console.log('[1/4] 检查 API 环境变量...')
 ensureEnvFile()
 const apiEnv = validateEnv()
 console.log('      apps/api/.env 已就绪')
+
+console.log('')
+console.log('[2/4] 启动 Docker 依赖（MongoDB + Redis + MinIO）...')
+run('node', ['scripts/dev-deps.mjs'], { env: { ...process.env, ...apiEnv } })
 
 console.log('')
 console.log('[3/4] 构建共享包（contracts + agent）...')

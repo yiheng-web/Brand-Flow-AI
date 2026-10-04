@@ -52,8 +52,17 @@ export function createSiliconFlowChatModel(): ChatOpenAI {
     useResponsesApi: false,
     temperature: 0.2,
     maxTokens: 4096,
-    maxRetries: 2,
+    // V1 由 API 在每次重试前检查取消与额度，SDK 不再隐式重复请求。
+    maxRetries: 0,
+    timeout: getSiliconFlowChatTimeoutMs(),
   })
+}
+
+export function getSiliconFlowChatTimeoutMs(): number {
+  const value = Number(process.env.SILICONFLOW_CHAT_TIMEOUT_MS ?? 60000)
+  if (!Number.isSafeInteger(value) || value <= 0)
+    throw new Error('SILICONFLOW_CHAT_TIMEOUT_MS 必须为正整数')
+  return value
 }
 
 export function createSiliconFlowEmbeddings(): OpenAIEmbeddings {

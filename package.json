@@ -17,7 +17,9 @@
     "benchmark:resume": "apps\\web\\node_modules\\.bin\\vitest.cmd run --config apps/web/vitest.benchmark.config.ts",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "preinstall": "node scripts/check-node.mjs",
+    "test:v1": "node scripts/smoke-v1.cjs"
   },
   "pnpm": {
     "overrides": {
@@ -43,5 +45,9 @@
     "turbo": "^2.5.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": "10.29.3"
   }
 }

@@ -32,6 +32,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getResponse()
         : ERROR_MESSAGE[errorCode] || 'Internal server error'
 
+    if (
+      status === 429 &&
+      typeof message === 'object' &&
+      message !== null &&
+      'retryAfter' in message &&
+      Number.isSafeInteger(message.retryAfter) &&
+      Number(message.retryAfter) > 0
+    )
+      response.setHeader('Retry-After', String(message.retryAfter))
+
     const errorMessage =
       typeof message === 'object' && message !== null && 'message' in message
         ? (message as Record<string, unknown>).message
@@ -50,7 +60,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       path: request.url,
       message: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage),
-      data: null,
+      data:
+        status === 503 && typeof message === 'object' && message !== null && 'checks' in message
+          ? { checks: message.checks }
+          : null,
     }
 
     response.status(status).json(responseData)

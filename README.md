@@ -65,10 +65,10 @@ Brand-Flow-AI/
 
 ### 环境要求
 
-| 工具        | 版本                                                                |
-| ----------- | ------------------------------------------------------------------- |
-| **Node.js** | `>= 20`（建议使用 LTS）                                             |
-| **pnpm**    | `>= 9`（仓库根 `packageManager` 已锁定推荐版本，建议开启 Corepack） |
+| 工具        | 版本                                            |
+| ----------- | ----------------------------------------------- |
+| **Node.js** | `>= 24`（使用 Node.js 24 LTS）                  |
+| **pnpm**    | `10.29.3`（与仓库根 `packageManager` 保持一致） |
 
 ### 安装依赖
 
@@ -216,3 +216,13 @@ import { AGENT_VERSION } from '@brand-flow/agent'
 ---
 
 **欢迎每一位组员在这里留下你的 commit —— 我们一起把 Brand-Flow AI 做成团队愿意安利、用户愿意买单的产品。** ✨
+
+## V1 可用性与发布
+
+V1 运行环境为 **Node.js 24 LTS + pnpm 10.29.3**。开发执行 `pnpm dev:all`，先检查环境配置，再启动 Mongo/Redis/MinIO、构建共享包并启动 Web/API。Demo 必须显式开启；默认不会用演示输出代替真实 Provider。
+
+06 补齐登录限流、用户 running 上限、生图/重试额度、Provider 超时、取消前校验、健康检查与任务对账。`/health/live` 检查进程，`/health/ready` 检查 Mongo、Redis、BullMQ 与私有存储桶；失败返回 503。
+
+生产镜像入口为 `apps/api/Dockerfile` 与 `apps/web/Dockerfile`，生产示例为 `deploy/docker-compose.prod.yml`，包含固定版本数据库、SPA/API/SSE 代理。生产必需环境变量、私有 MinIO/S3 签名和 CORS、Redis/Mongo 认证、SiliconFlow、可信代理及备份回滚步骤见 [V1 部署文档](docs/v1-deployment.md)。
+
+完整自动验收使用 `pnpm test:v1 <专用Mongo地址> <Playwright模块目录>`，实际验收范围和剩余外部联调项见 [V1 发布清单](docs/v1-release-checklist.md)。

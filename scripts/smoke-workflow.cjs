@@ -52,7 +52,7 @@ async function main() {
   const dbName = `codex_workflow_smoke_${Date.now()}`
   const connection = await mongoose.createConnection(mongoUri, { dbName }).asPromise()
   const redis = { host: '127.0.0.1', port: redisPort }
-  const queue = new Queue(WORKFLOW_QUEUE, { connection: redis })
+  const queue = new Queue(WORKFLOW_QUEUE, { connection: redis, prefix: dbName })
   let worker
   let service
   let subscription
@@ -117,6 +117,7 @@ async function main() {
     const processor = new WorkflowProcessor(Workflow, Node, Revision, null, {})
     worker = new Worker(WORKFLOW_QUEUE, (queuedJob) => processor.process(queuedJob), {
       connection: redis,
+      prefix: dbName,
     })
     await began
     const newer = trackWorkflow(await Workflow.findById(first.id))

@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common'
+import { LimitsService } from '../limits/limits.service'
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
 import {
@@ -43,6 +45,7 @@ interface RunWorkflowJobData {
 
 @Processor(WORKFLOW_QUEUE)
 export class WorkflowProcessor extends WorkerHost {
+  private readonly logger = new Logger(WorkflowProcessor.name)
   constructor(
     @InjectModel(Workflow.name)
     private readonly workflowModel: Model<WorkflowDocument>,
@@ -54,6 +57,7 @@ export class WorkflowProcessor extends WorkerHost {
     private readonly knowledgeItemModel: Model<KnowledgeItemDocument>,
     private readonly storageService: StorageService,
     private readonly referencesService?: WorkflowReferencesService,
+    private readonly limits?: LimitsService,
   ) {
     super()
   }
@@ -83,6 +87,13 @@ export class WorkflowProcessor extends WorkerHost {
     })
 
     try {
+      if (this.limits && !workflow.executionLease) {
+        workflow.executionLease = await this.limits.reserve(
+          workflow.userId,
+          workflow._id.toString(),
+        )
+        await this.saveWorkflow(workflow, { executionLease: workflow.executionLease })
+      }
       for (const nodeType of WORKFLOW_NODE_ORDER.slice(startIndex)) {
         const node = nodeMap.get(nodeType)
         if (!node) throw new Error(`工作流缺少节点 ${nodeType}`)
@@ -145,7 +156,40 @@ export class WorkflowProcessor extends WorkerHost {
           continue
         }
 
-        const output = await this.executeNode(nodeType, workflow, result)
+        const startedAt = Date.now()
+        this.logger.log(
+          JSON.stringify({
+            workflowId: workflow._id.toString(),
+            node: nodeType,
+            revision: result.revision?.round ?? 0,
+            providerStatus: 'started',
+          }),
+        )
+        let output: Awaited<ReturnType<WorkflowProcessor['executeNode']>>
+        try {
+          await this.assertActive(workflow)
+          output = await this.executeNode(nodeType, workflow, result)
+          this.logger.log(
+            JSON.stringify({
+              workflowId: workflow._id.toString(),
+              node: nodeType,
+              revision: result.revision?.round ?? 0,
+              duration: Date.now() - startedAt,
+              providerStatus: 'completed',
+            }),
+          )
+        } catch (error) {
+          this.logger.warn(
+            JSON.stringify({
+              workflowId: workflow._id.toString(),
+              node: nodeType,
+              revision: result.revision?.round ?? 0,
+              duration: Date.now() - startedAt,
+              providerStatus: error instanceof StaleWorkflowError ? 'cancelled_or_stale' : 'failed',
+            }),
+          )
+          throw error
+        }
         result = output.result
         await this.writeNode(workflow, node._id, {
           status: 'completed',
@@ -267,6 +311,7 @@ export class WorkflowProcessor extends WorkerHost {
       const analyzed = await Promise.all(executionReferences.map(extractReferenceConstraints))
       const references = analyzed.map((reference) => ({ ...reference, imageUrl: '' }))
       const generatedBrief = await this.executeWithRetry(
+        workflow,
         nodeType,
         () => createCreativeBrief(workflow.prompt, workflow.requirements, references),
         3,
@@ -300,6 +345,7 @@ export class WorkflowProcessor extends WorkerHost {
 
     if (nodeType === 'creativeDirection') {
       const directions = await this.executeWithRetry(
+        workflow,
         nodeType,
         () => createCreativeDirections(result.brief!, result.brandConstraint!),
         3,
@@ -318,6 +364,7 @@ export class WorkflowProcessor extends WorkerHost {
 
     if (nodeType === 'prompt') {
       const prompt = await this.executeWithRetry(
+        workflow,
         nodeType,
         () =>
           createPromptPlan(
@@ -359,7 +406,7 @@ export class WorkflowProcessor extends WorkerHost {
               ),
             })),
           )
-        : await this.persistGeneratedCandidates(workflow, await generateCandidates(result.prompt))
+        : await this.generateWithQuota(workflow, result.prompt)
       if (!candidates.some((candidate) => candidate.imageUrl)) {
         throw new Error('四张候选图均生成失败，请检查生图 Provider 配置或显式开启演示模式')
       }
@@ -380,6 +427,7 @@ export class WorkflowProcessor extends WorkerHost {
       await this.writeNode(workflow, checkpointNode._id, { output: checkpoint })
       const evaluations = sortCandidateEvaluations(
         await this.executeWithRetry(
+          workflow,
           nodeType,
           () => evaluateCandidateImages(candidates, result.brandConstraint!),
           2,
@@ -412,6 +460,7 @@ export class WorkflowProcessor extends WorkerHost {
 
     const finalImageUrl = result.compose?.finalImageUrl || selectedCandidate.imageUrl
     const finalEvaluation = await this.executeWithRetry(
+      workflow,
       nodeType,
       () => evaluateFinalImage(finalImageUrl, result.brandConstraint!, result.brief!),
       3,
@@ -422,27 +471,56 @@ export class WorkflowProcessor extends WorkerHost {
     }
   }
 
+  private async assertActive(workflow: WorkflowDocument) {
+    const active = await this.workflowModel.exists({
+      _id: workflow._id,
+      status: 'running',
+      runVersion: workflow.runVersion,
+    })
+    if (!active) throw new StaleWorkflowError()
+    if (workflow.executionLease) await this.limits?.renew(workflow.userId, workflow.executionLease)
+  }
+
+  private async generateWithQuota(
+    workflow: WorkflowDocument,
+    prompt: NonNullable<WorkflowResult['prompt']>,
+  ) {
+    await this.assertActive(workflow)
+    await this.limits?.images(workflow.userId, 4)
+    await this.assertActive(workflow)
+    return this.persistGeneratedCandidates(workflow, await generateCandidates(prompt))
+  }
+
   private async executeWithRetry<T>(
+    workflow: WorkflowDocument,
     nodeType: WorkflowNodeType,
     operation: () => Promise<T>,
     maxAttempts: number,
   ): Promise<T> {
+    maxAttempts = Math.min(maxAttempts, this.limits?.providerMaxAttempts ?? maxAttempts)
     let lastError: unknown
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      await this.assertActive(workflow)
       try {
         return await operation()
       } catch (error) {
         lastError = error
         const message = error instanceof Error ? error.message : String(error)
-        const retryable = /timeout|超时|provider|network|fetch|json|解析|429|502|503|504/i.test(
-          message,
-        )
+        const retryable =
+          /timeout|timed?\s*out|超时|abort|provider|network|fetch|json|解析|429|502|503|504/i.test(
+            message,
+          )
         if (!retryable || attempt === maxAttempts) break
         await new Promise((resolve) => setTimeout(resolve, attempt * 250))
       }
     }
-    const message = lastError instanceof Error ? lastError.message : `${nodeType} 执行失败`
-    throw new Error(`${message}（已完成 ${maxAttempts} 次内的安全重试）`)
+    const detail = lastError instanceof Error ? lastError.message : `${nodeType} 执行失败`
+    const message = /429/.test(detail)
+      ? '模型服务请求过于频繁（HTTP 429），请稍后重试'
+      : /timeout|timed?\s*out|超时|abort/i.test(detail)
+        ? '模型服务响应超时，请重试继续'
+        : detail
+    throw new Error(`${message}（最多尝试 ${maxAttempts} 次）`)
   }
 
   private async buildConstraintPackage(
@@ -513,6 +591,8 @@ export class WorkflowProcessor extends WorkerHost {
     if ($unset && typeof $unset === 'object')
       for (const key of Object.keys($unset)) Reflect.set(workflow, key, undefined)
     await persistWorkflowState(this.workflowModel, workflow)
+    if (workflow.status !== 'running')
+      await this.limits?.release(workflow.userId, workflow.executionLease)
   }
   private writeNode(workflow: WorkflowDocument, nodeId: unknown, patch: Record<string, unknown>) {
     return persistNodeState(this.workflowNodeModel, this.workflowModel, workflow, nodeId, patch)

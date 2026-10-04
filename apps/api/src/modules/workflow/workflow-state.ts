@@ -39,6 +39,7 @@ export async function persistWorkflowState(
     throw new StaleWorkflowError()
   const fields = [
     'status',
+    'executionLease',
     'result',
     'awaitingAction',
     'errorMessage',

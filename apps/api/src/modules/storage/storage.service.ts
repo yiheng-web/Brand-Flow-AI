@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -26,6 +27,12 @@ export class StorageService {
         accessKeyId: this.config.accessKey,
         secretAccessKey: this.config.secretKey,
       },
+    })
+  }
+
+  async checkReady(): Promise<void> {
+    await this.client.send(new HeadBucketCommand({ Bucket: this.config.bucket }), {
+      abortSignal: AbortSignal.timeout(2500),
     })
   }
 

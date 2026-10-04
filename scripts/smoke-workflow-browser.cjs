@@ -1,8 +1,9 @@
+const { startS3Fixture } = require('./garage-fixture.cjs')
 // 使用现有 Playwright 和本机 Edge，验证任务恢复或参考创作闭环；不读取 .env。
 const assert = require('node:assert/strict')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
-const { randomUUID } = require('node:crypto')
+const { randomUUID, randomBytes } = require('node:crypto')
 const Module = require('node:module')
 const root = path.resolve(__dirname, '..')
 const apiRequire = Module.createRequire(path.join(root, 'apps/api/package.json'))
@@ -57,12 +58,16 @@ async function main() {
   let app
   let vite
   let browser
+  let storageFixture
   try {
     assert.equal(
       await queue.getJobCountByTypes('waiting', 'active', 'completed', 'failed', 'delayed'),
       0,
     )
     ownsQueue = true
+    const storageAccess = `GK${randomBytes(16).toString('hex')}`
+    const storageSecret = randomBytes(32).toString('hex')
+    if (createMode) storageFixture = await startS3Fixture(storageAccess, storageSecret, 'smoke')
     class SmokeApp {}
     NestModule({
       imports: [
@@ -73,8 +78,9 @@ async function main() {
             () => ({
               JWT_SECRET: randomUUID(),
               MINIO_ENDPOINT: '127.0.0.1',
-              MINIO_ACCESS_KEY: randomUUID(),
-              MINIO_SECRET_KEY: randomUUID(),
+              MINIO_PORT: storageFixture?.port ?? 9000,
+              MINIO_ACCESS_KEY: storageAccess,
+              MINIO_SECRET_KEY: storageSecret,
               MINIO_BUCKET: 'smoke',
             }),
           ],
@@ -92,51 +98,24 @@ async function main() {
     app.useGlobalFilters(new AllExceptionsFilter())
     app.setGlobalPrefix('api')
     if (createMode) {
-      // 注册表无法提供 MinIO 时使用对象存储替身；业务 Controller/Service 与读写字节链路保持真实。
-      const objects = new Map()
-      const links = new Map()
-      const storage = app.get(StorageService)
-      storage.client.send = async (command) => {
-        const input = command.input
-        if (command.constructor.name === 'PutObjectCommand') {
-          objects.set(input.Key, { bytes: Buffer.from(input.Body), contentType: input.ContentType })
-          return {}
-        }
-        if (command.constructor.name === 'DeleteObjectCommand') {
-          objects.delete(input.Key)
-          return {}
-        }
-        assert.equal(command.constructor.name, 'GetObjectCommand')
-        const object = objects.get(input.Key)
-        assert.ok(object, `对象不存在：${input.Key}`)
-        const bytes = input.Range
-          ? object.bytes.subarray(0, Number(input.Range.split('-')[1]) + 1)
-          : object.bytes
-        return {
-          ContentType: object.contentType,
-          Body: { transformToByteArray: async () => bytes },
-        }
-      }
-      storage.getSignedUrl = async (key, options) => {
-        const token = randomUUID()
-        links.set(token, { key, downloadName: options?.downloadName })
-        return `http://127.0.0.1:3088/__smoke_objects/${token}`
-      }
-      app
-        .getHttpAdapter()
-        .getInstance()
-        .get('/__smoke_objects/:token', (req, res) => {
-          const link = links.get(req.params.token)
-          const object = link && objects.get(link.key)
-          if (!object) return res.status(404).end()
-          if (link.downloadName)
-            res.setHeader(
-              'Content-Disposition',
-              `attachment; filename*=UTF-8''${encodeURIComponent(link.downloadName)}`,
-            )
-          res.setHeader('Access-Control-Allow-Origin', '*')
-          res.type(object.contentType).send(object.bytes)
-        })
+      const { PutBucketCorsCommand } = apiRequire('@aws-sdk/client-s3')
+      await app.get(StorageService).checkReady()
+      await app.get(StorageService).client.send(
+        new PutBucketCorsCommand({
+          Bucket: 'smoke',
+          CORSConfiguration: {
+            CORSRules: [
+              {
+                AllowedOrigins: ['http://127.0.0.1:5189'],
+                AllowedMethods: ['GET', 'HEAD'],
+                AllowedHeaders: ['*'],
+                ExposeHeaders: ['Content-Disposition', 'Content-Type'],
+                MaxAgeSeconds: 600,
+              },
+            ],
+          },
+        }),
+      )
     }
     await app.listen(3088, '127.0.0.1')
     const { createServer, preview } = await import(pathToFileURL(webRequire.resolve('vite')).href)
@@ -168,6 +147,7 @@ async function main() {
     }
     const { chromium } = require(path.join(runtimeModules, 'playwright'))
     browser = await chromium.launch({ channel: 'msedge', headless: true })
+    const sessionErrors = []
     const password = `${randomUUID()}aA1!`
     const email = `workflow-${randomUUID()}@example.test`
     const request = async (route, body, token) => {
@@ -198,7 +178,9 @@ async function main() {
         (auth) => localStorage.setItem('brand-flow-auth', JSON.stringify(auth)),
         authState,
       )
-      return { context, page: await context.newPage() }
+      const page = await context.newPage()
+      page.on('pageerror', (error) => sessionErrors.push(error.message))
+      return { context, page }
     }
     if (createMode) {
       const token = login.access_token
@@ -250,11 +232,23 @@ async function main() {
         { spaceId: 'personal', name: '本轮知识源' },
         token,
       )
-      await request(
-        `knowledge/${knowledge._id}/items`,
-        { title: '品牌蓝色', content: '品牌主色必须为蓝色', constraintLevel: 'required' },
+      const preview = await request(
+        `knowledge/${knowledge._id}/import/preview`,
+        { content: '[required] 品牌主色必须为蓝色\n[recommended] 保持画面简洁' },
         token,
       )
+      assert.equal(preview.items.length, 2)
+      for (let attempt = 0; attempt < 2; attempt++)
+        await request(`knowledge/${knowledge._id}/import`, preview, token)
+      const items = await fetch(`http://127.0.0.1:3088/api/knowledge/${knowledge._id}/items`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      assert.equal((await items.json()).data.length, 2)
+      const forbiddenKnowledge = await fetch(
+        `http://127.0.0.1:3088/api/knowledge/${knowledge._id}/items`,
+        { headers: { Authorization: `Bearer ${otherLogin.access_token}` } },
+      )
+      assert.equal(forbiddenKnowledge.status, 404)
       const resolved = await request(
         'workflows/create',
         {
@@ -532,9 +526,10 @@ async function main() {
           assert.deepEqual(bytes.subarray(0, 8), png.subarray(0, 8))
         }
         assert.deepEqual(pageErrors, [])
+        assert.deepEqual(sessionErrors, [])
         await session.context.close()
         console.log(
-          `PASS：${previewMode ? 'production preview' : '开发构建'}真实 Edge 质检失败不可交付并可继续、纯图 skipped、艺术字与 Logo 原图合成、两次优化三版本、Revision 与对象字节不可变、真实 Mongo 并发版本号、重复保存幂等及指定版本 PNG 下载；模型 Demo、对象存储替身`,
+          `PASS：${previewMode ? 'production preview' : '开发构建'}真实 Edge 质检失败不可交付并可继续、纯图 skipped、艺术字与 Logo 原图合成、两次优化三版本、Revision 与对象字节不可变、真实 Mongo 并发版本号、重复保存幂等及指定版本 PNG 下载；模型 Demo、真实 Garage 对象存储`,
         )
         return
       }
@@ -643,7 +638,7 @@ async function main() {
       assert.deepEqual(sizes, ['1024x1024', '1280x720'])
       await session.context.close()
       console.log(
-        'PASS：真实 Edge 首页选择知识与产品参考，1:1/16:9 三方向四候选、未选择候选下载、纯图最终质检及作品保存、正式导出、优化比例保持和跨版本对象键隔离；对象存储使用替身，模型使用 Demo',
+        'PASS：真实 Edge 首页选择知识与产品参考，1:1/16:9 三方向四候选、未选择候选下载、纯图最终质检及作品保存、正式导出、优化比例保持和跨版本对象键隔离；对象存储使用真实 Garage，模型使用 Demo',
       )
       return
     }
@@ -673,6 +668,10 @@ async function main() {
     await second.page.getByRole('heading', { name: '跨设备恢复咖啡海报' }).waitFor()
     await second.page.getByRole('button', { name: '继续创作' }).click()
     await second.page.getByRole('button', { name: '确认 Brief', exact: true }).waitFor()
+    await second.context.setOffline(true)
+    await second.page.getByRole('button', { name: '确认 Brief', exact: true }).click()
+    await second.page.getByText('Network Error，请恢复连接后重试', { exact: true }).waitFor()
+    await second.context.setOffline(false)
     await second.page.reload()
     await second.page.getByRole('button', { name: '确认 Brief', exact: true }).waitFor()
     const workflowCache = await second.page.evaluate(() =>
@@ -688,6 +687,7 @@ async function main() {
     await second.page.getByText('cancelled', { exact: true }).waitFor()
     assert.equal(await second.page.getByRole('button', { name: '从此节点重跑' }).isEnabled(), false)
     await second.context.close()
+    assert.deepEqual(sessionErrors, [])
     console.log(
       'PASS：真实 Edge 会话 A 启动后关闭，会话 B 无任务缓存从历史继续；刷新恢复 Brief；取消任务只读且不能重跑',
     )
@@ -711,6 +711,7 @@ async function main() {
     }
     if (ownsQueue) await queue.obliterate({ force: true })
     await queue.close()
+    await storageFixture?.close()
   }
 }
 main().catch((error) => {

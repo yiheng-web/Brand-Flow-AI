@@ -6,6 +6,7 @@ import {
   extractChatText,
   getSiliconFlowChatSettings,
   getSiliconFlowVisionTimeoutMs,
+  getSiliconFlowChatTimeoutMs,
   prepareSiliconFlowVisionImage,
 } from './siliconflow-chat'
 
@@ -56,6 +57,19 @@ test('视觉质检请求默认在 60 秒内结束并校验自定义配置', () =
   } finally {
     if (previous === undefined) delete process.env.SILICONFLOW_VISION_TIMEOUT_MS
     else process.env.SILICONFLOW_VISION_TIMEOUT_MS = previous
+  }
+})
+
+test('文本调用有明确超时且拒绝无效超时配置', () => {
+  const previous = process.env.SILICONFLOW_CHAT_TIMEOUT_MS
+  delete process.env.SILICONFLOW_CHAT_TIMEOUT_MS
+  try {
+    assert.equal(getSiliconFlowChatTimeoutMs(), 60000)
+    process.env.SILICONFLOW_CHAT_TIMEOUT_MS = '0'
+    assert.throws(() => getSiliconFlowChatTimeoutMs(), /必须为正整数/)
+  } finally {
+    if (previous === undefined) delete process.env.SILICONFLOW_CHAT_TIMEOUT_MS
+    else process.env.SILICONFLOW_CHAT_TIMEOUT_MS = previous
   }
 })
 

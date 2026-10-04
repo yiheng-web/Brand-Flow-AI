@@ -9,9 +9,9 @@ export const ERROR_CODE = {
   NOT_FOUND: 404,
   INTERNAL_SERVER_ERROR: 500,
   SERVICE_UNAVAILABLE: 502,
-} as const;
+} as const
 
-export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE];
+export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE]
 
 /**
  * 错误码对应的默认消息
@@ -24,17 +24,17 @@ export const ERROR_MESSAGE: Record<ErrorCode, string> = {
   [ERROR_CODE.NOT_FOUND]: '请求的资源不存在',
   [ERROR_CODE.INTERNAL_SERVER_ERROR]: '服务器内部错误',
   [ERROR_CODE.SERVICE_UNAVAILABLE]: '服务不可用，请稍后再试',
-};
+}
 
 /**
  * 统一响应接口格式
  */
-export interface ApiResponse<T = any> {
-  success: boolean;
-  statusCode: number;
-  errorCode?: number;
-  data: T;
-  message: string;
-  path?: string;
-  timestamp?: string;
+export interface ApiResponse<T = unknown> {
+  success: boolean
+  statusCode: number
+  errorCode?: number
+  data: T
+  message: string
+  path?: string
+  timestamp?: string
 }
