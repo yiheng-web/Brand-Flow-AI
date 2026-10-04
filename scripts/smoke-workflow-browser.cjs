@@ -8,10 +8,12 @@ const root = path.resolve(__dirname, '..')
 const apiRequire = Module.createRequire(path.join(root, 'apps/api/package.json'))
 const webRequire = Module.createRequire(path.join(root, 'apps/web/package.json'))
 const [mongoUri, runtimeModules] = process.argv.slice(2)
-const createMode = process.argv[4] === 'create'
+const composeMode = ['compose', 'compose-preview'].includes(process.argv[4])
+const previewMode = process.argv[4] === 'compose-preview'
+const createMode = process.argv[4] === 'create' || composeMode
 if (!/^mongodb:\/\/(localhost|127\.0\.0\.1):\d+\/?$/.test(mongoUri ?? '') || !runtimeModules) {
   throw new Error(
-    '用法：node scripts/smoke-workflow-browser.cjs mongodb://127.0.0.1:27018 <已有运行时的 node_modules 路径> [create]；Redis 6381 必须为专用临时实例',
+    '用法：node scripts/smoke-workflow-browser.cjs mongodb://127.0.0.1:27018 <已有运行时的 node_modules 路径> [create|compose|compose-preview]；Redis 6381 必须为专用临时实例',
   )
 }
 process.env.BRAND_FLOW_DEMO_MODE = 'true'
@@ -43,10 +45,14 @@ Module._resolveFilename = resolve
 const agentRequire = Module.createRequire(path.join(root, 'packages/agent/package.json'))
 const core = agentRequire('./dist/v1-workflow')
 const originalBrief = core.createCreativeBrief
+const originalEvaluation = core.evaluateFinalImage
 
 async function main() {
   const dbName = `codex_workflow_browser_${Date.now()}`
-  const queue = new Queue(WORKFLOW_QUEUE, { connection: { host: '127.0.0.1', port: 6381 } })
+  const queue = new Queue(WORKFLOW_QUEUE, {
+    prefix: dbName,
+    connection: { host: '127.0.0.1', port: 6381 },
+  })
   let ownsQueue = false
   let app
   let vite
@@ -74,7 +80,7 @@ async function main() {
           ],
         }),
         MongooseModule.forRoot(mongoUri, { dbName }),
-        BullModule.forRoot({ connection: { host: '127.0.0.1', port: 6381 } }),
+        BullModule.forRoot({ prefix: dbName, connection: { host: '127.0.0.1', port: 6381 } }),
         AuthModule,
         WorkflowModule,
         ...(createMode ? [AssetsModule, WorksModule] : []),
@@ -133,17 +139,33 @@ async function main() {
         })
     }
     await app.listen(3088, '127.0.0.1')
-    const { createServer } = await import(pathToFileURL(webRequire.resolve('vite')).href)
-    vite = await createServer({
-      root: path.join(root, 'apps/web'),
-      server: {
-        host: '127.0.0.1',
-        port: 5189,
-        strictPort: true,
-        proxy: { '/api': { target: 'http://127.0.0.1:3088', changeOrigin: true } },
-      },
-    })
-    await vite.listen()
+    const { createServer, preview } = await import(pathToFileURL(webRequire.resolve('vite')).href)
+    const serverOptions = {
+      host: '127.0.0.1',
+      port: 5189,
+      strictPort: true,
+      proxy: { '/api': { target: 'http://127.0.0.1:3088', changeOrigin: true } },
+    }
+    if (previewMode) {
+      const server = await preview({ root: path.join(root, 'apps/web'), preview: serverOptions })
+      vite = {
+        close: () =>
+          new Promise((resolve, reject) =>
+            server.httpServer.close((error) => (error ? reject(error) : resolve())),
+          ),
+      }
+    } else {
+      vite = await createServer({
+        root: path.join(root, 'apps/web'),
+        server: {
+          host: '127.0.0.1',
+          port: 5189,
+          strictPort: true,
+          proxy: { '/api': { target: 'http://127.0.0.1:3088', changeOrigin: true } },
+        },
+      })
+      await vite.listen()
+    }
     const { chromium } = require(path.join(runtimeModules, 'playwright'))
     browser = await chromium.launch({ channel: 'msedge', headless: true })
     const password = `${randomUUID()}aA1!`
@@ -264,6 +286,258 @@ async function main() {
         throw new Error('工作流状态等待超时')
       }
       const sizes = []
+      if (composeMode) {
+        const page = session.page
+        const pageErrors = []
+        let forceFailedEvaluation = true
+        core.evaluateFinalImage = async (...args) => {
+          const report = await originalEvaluation(...args)
+          if (!forceFailedEvaluation) return report
+          forceFailedEvaluation = false
+          return {
+            ...report,
+            passed: false,
+            totalScore: 50,
+            deductions: [{ dimension: 'brandConsistency', points: 30, reason: '品牌一致性不足' }],
+            suggestions: ['提高品牌一致性后继续优化'],
+          }
+        }
+        page.on('pageerror', (error) => pageErrors.push(error.message))
+        const complete = async (task, graphic, first) => {
+          if (first) {
+            await page.goto(`http://127.0.0.1:5189/workspace?workflowId=${task.id}`)
+            await page.getByRole('button', { name: '运行工作流' }).click()
+            await page.getByRole('button', { name: graphic ? /^需\s*要$/ : '不需要' }).click()
+            await page.getByRole('button', { name: '确认 Brief', exact: true }).click()
+            await page.getByRole('radio').first().check()
+            await page.getByRole('button', { name: '确定创意方案', exact: true }).click()
+          }
+          await page.getByRole('button', { name: '下载当前候选', exact: true }).waitFor()
+          const expectFailure = !graphic && first && forceFailedEvaluation
+          await page.getByRole('radio').first().click()
+          if (expectFailure) {
+            await until(async () => {
+              const detail = await getDetail(task.id)
+              return (
+                detail.workflow.status === 'awaiting_user' &&
+                detail.workflow.result.finalEvaluation?.passed === false
+              )
+            })
+            await page.getByText('质检未通过，当前结果不可交付').waitFor()
+            await page.getByText('提高品牌一致性后继续优化').waitFor()
+            assert.equal(
+              await page.getByRole('button', { name: '下载 PNG', exact: true }).count(),
+              0,
+            )
+            await page.getByRole('button', { name: '继续优化', exact: true }).first().click()
+            await page.getByRole('radio').nth(1).click()
+          }
+          if (graphic) {
+            await page.getByPlaceholder('输入需要生成的文字，支持换行').fill('夏日咖啡')
+            await page
+              .getByPlaceholder('期望的艺术字风格，例如：清爽冰感、圆润醒目、蓝白高光')
+              .fill('清爽蓝色粗体')
+            await page.getByRole('button', { name: /生成四个候选/ }).click()
+            await page.getByRole('button', { name: '选择此艺术字', exact: true }).first().click()
+            const drawButton = page.getByRole('button', { name: '开始框选', exact: true })
+            await drawButton.waitFor()
+            await until(async () => !(await drawButton.isDisabled()))
+            await drawButton.click()
+            const canvas = page.locator('[aria-label="图文合成画布"] canvas.upper-canvas')
+            await canvas.scrollIntoViewIfNeeded()
+            const bounds = await canvas.boundingBox()
+            assert.ok(bounds && bounds.width > 0 && bounds.height > 0)
+            await page.mouse.move(bounds.x + bounds.width * 0.1, bounds.y + bounds.height * 0.55)
+            await page.mouse.down()
+            await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.85, {
+              steps: 12,
+            })
+            await page.mouse.up()
+            await page.getByRole('button', { name: 'AI 计算放置方案', exact: true }).click()
+            const [composition] = await Promise.all([
+              page.waitForResponse(
+                (response) =>
+                  response.url().endsWith(`/workflow/${task.id}/composition`) &&
+                  response.request().method() === 'PUT',
+              ),
+              page.getByRole('button', { name: '确认合成并生成 PNG', exact: true }).click(),
+            ])
+            assert.equal(composition.ok(), true, await composition.text())
+          }
+          await until(async () => (await getDetail(task.id)).workflow.status === 'completed')
+          const detail = await getDetail(task.id)
+          assert.equal(detail.workflow.result.finalEvaluation.passed, true)
+          if (!graphic)
+            assert.equal(detail.nodes.find((node) => node.type === 'compose').status, 'skipped')
+          else
+            assert.ok(
+              detail.workflow.result.compose.layers.some(
+                (layer) => layer.type === 'logo' && layer.assetId === logo._id,
+              ),
+            )
+          await page.getByRole('button', { name: '下载 PNG', exact: true }).waitFor()
+          await page.getByRole('button', { name: /^关\s*闭$/ }).click()
+          return detail
+        }
+        const pure = await request(
+          'workflows/create',
+          {
+            prompt: '纯图片咖啡',
+            spaceId: 'personal',
+            generationConfig: { width: 512, height: 512 },
+          },
+          token,
+        )
+        await complete(pure, false, true)
+        const graphic = await request(
+          'workflows/create',
+          {
+            prompt: '夏日咖啡海报',
+            spaceId: 'personal',
+            references: [{ assetId: logo._id, role: 'logo' }],
+            generationConfig: { width: 512, height: 512 },
+          },
+          token,
+        )
+        await complete(graphic, true, true)
+        let revisionSnapshot
+        let revisionBytes
+        let storedRevision
+        const revisionModel = app.get(
+          apiRequire('@nestjs/mongoose').getModelToken('WorkflowRevision'),
+        )
+        const snapshotContent = (value) =>
+          JSON.parse(
+            JSON.stringify(value, (key, field) =>
+              ['imageUrl', 'finalImageUrl'].includes(key) ? undefined : field,
+            ),
+          )
+        for (let index = 1; index <= 2; index++) {
+          await page.getByRole('button', { name: '继续优化', exact: true }).click()
+          await page
+            .getByPlaceholder('例如：背景改成夜景，增加科技感')
+            .fill(`第 ${index} 轮改为蓝色夜景`)
+          const [optimized] = await Promise.all([
+            page.waitForResponse((response) =>
+              response.url().endsWith(`/workflow/${graphic.id}/optimize`),
+            ),
+            page.getByRole('button', { name: '保持品牌与主体并重新生成', exact: true }).click(),
+          ])
+          assert.equal(optimized.ok(), true, await optimized.text())
+          assert.ok((await optimized.json()).data.revisionId)
+          await until(
+            async () =>
+              (await getDetail(graphic.id)).workflow.awaitingAction === 'select_candidate',
+          )
+          await complete(graphic, true, false)
+          const revisions = await (
+            await fetch(`http://127.0.0.1:3088/api/workflows/${graphic.id}/revisions`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          ).json()
+          assert.equal(revisions.success, true)
+          assert.equal(revisions.data.length, index, JSON.stringify(revisions))
+          if (index === 1) {
+            revisionSnapshot = revisions.data[0]
+            assert.equal(revisionSnapshot.status, 'completed')
+            storedRevision = await revisionModel.findById(revisionSnapshot._id).lean()
+            revisionBytes = Buffer.from(
+              await (await fetch(revisionSnapshot.result.compose.finalImageUrl)).arrayBuffer(),
+            )
+          } else {
+            assert.deepEqual(
+              snapshotContent(
+                revisions.data.find((revision) => revision._id === revisionSnapshot._id),
+              ),
+              snapshotContent(revisionSnapshot),
+            )
+            assert.deepEqual(
+              await revisionModel.findById(revisionSnapshot._id).lean(),
+              storedRevision,
+            )
+            assert.deepEqual(
+              Buffer.from(
+                await (await fetch(revisionSnapshot.result.compose.finalImageUrl)).arrayBuffer(),
+              ),
+              revisionBytes,
+            )
+          }
+        }
+        const works = await (
+          await fetch('http://127.0.0.1:3088/api/works?spaceId=personal', {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        ).json()
+        const work = works.data.find((entry) => entry.workflowId === graphic.id)
+        assert.ok(work)
+        const workDetail = async () =>
+          (
+            await (
+              await fetch(`http://127.0.0.1:3088/api/works/${work._id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+            ).json()
+          ).data
+        const versions = (await workDetail()).versions
+        assert.deepEqual(
+          versions.map((version) => version.versionNo),
+          [3, 2, 1],
+        )
+        assert.equal(new Set(versions.map((version) => version.objectKey)).size, 3)
+        assert.ok(versions[0].sourceRevisionId && versions[1].sourceRevisionId)
+        assert.equal(versions[0].feedback.instruction, '第 2 轮改为蓝色夜景')
+        assert.equal(versions[1].feedback.instruction, '第 1 轮改为蓝色夜景')
+        const another = await request(
+          'workflows/create',
+          {
+            prompt: '并发版本验证底图',
+            spaceId: 'personal',
+            generationConfig: { width: 512, height: 512 },
+          },
+          token,
+        )
+        await complete(another, false, true)
+        const pureWork = works.data.find((item) => item.workflowId === pure.id)
+        const concurrent = await Promise.all(
+          [graphic.id, another.id].map((workflowId) =>
+            request(`works/${pureWork._id}/versions/from-workflow`, { workflowId }, token),
+          ),
+        )
+        assert.deepEqual(concurrent.map((version) => version.versionNo).sort(), [2, 3])
+        assert.equal(new Set(concurrent.map((version) => version.objectKey)).size, 2)
+        await Promise.all(
+          Array.from({ length: 4 }, () =>
+            request(`works/${work._id}/versions/from-workflow`, { workflowId: graphic.id }, token),
+          ),
+        )
+        assert.equal((await workDetail()).versions.length, 3)
+        await page.goto(`http://127.0.0.1:5189/works/${work._id}`)
+        await page.getByRole('combobox', { name: '对比版本' }).click()
+        await page.locator('.ant-select-item-option').filter({ hasText: /^V1$/ }).click()
+        await page.getByAltText('历史对比版本').waitFor()
+        for (const version of versions) {
+          await page.getByRole('button', { name: `V${version.versionNo}`, exact: true }).click()
+          await page.getByAltText(`${work.title} V${version.versionNo}`).waitFor()
+          const [download, response] = await Promise.all([
+            page.waitForEvent('download'),
+            page.waitForResponse((response) =>
+              response.url().endsWith(`/versions/${version._id}/export`),
+            ),
+            page.getByRole('button', { name: '导出 PNG', exact: true }).click(),
+          ])
+          assert.equal(response.ok(), true)
+          assert.ok(download.suggestedFilename().endsWith(`-V${version.versionNo}.png`))
+          const exported = (await response.json()).data
+          const bytes = Buffer.from(await (await fetch(exported.downloadUrl)).arrayBuffer())
+          assert.deepEqual(bytes.subarray(0, 8), png.subarray(0, 8))
+        }
+        assert.deepEqual(pageErrors, [])
+        await session.context.close()
+        console.log(
+          `PASS：${previewMode ? 'production preview' : '开发构建'}真实 Edge 质检失败不可交付并可继续、纯图 skipped、艺术字与 Logo 原图合成、两次优化三版本、Revision 与对象字节不可变、真实 Mongo 并发版本号、重复保存幂等及指定版本 PNG 下载；模型 Demo、对象存储替身`,
+        )
+        return
+      }
       for (const ratio of ['1:1', '16:9']) {
         const page = session.page
         await page.goto('http://127.0.0.1:5189/')
@@ -419,6 +693,7 @@ async function main() {
     )
   } finally {
     core.createCreativeBrief = originalBrief
+    core.evaluateFinalImage = originalEvaluation
     await browser?.close()
     await vite?.close()
     if (app) {

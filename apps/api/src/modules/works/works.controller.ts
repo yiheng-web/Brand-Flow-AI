@@ -101,6 +101,18 @@ export class WorksController {
     return this.worksService.createTrustedVersion(req.user.sub, id, dto.workflowId)
   }
 
+  @Post(':id/versions/:versionId/export')
+  @ApiOperation({ summary: '导出本人作品的指定历史版本 PNG' })
+  @ApiSuccessResponse(ExportWorkResponseDto, '返回指定版本的附件下载地址。')
+  exportVersion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Body() dto: ExportWorkDto,
+  ) {
+    return this.worksService.export(req.user.sub, id, dto, versionId)
+  }
+
   @Post(':id/favorite')
   @ApiOperation({ summary: '设置作品收藏状态' })
   async updateFavorite(

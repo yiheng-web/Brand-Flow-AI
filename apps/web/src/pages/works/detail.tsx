@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons'
-import { Button, Collapse, Descriptions, Image, List, message } from 'antd'
+import { Alert, Button, Collapse, Descriptions, Image, List, Select, Space, message } from 'antd'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { exportWork, getWork, type WorkData } from '@/api/works'
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/design-system/components'
 
 import styles from './detail.module.css'
+import QualityReport from '@/components/QualityReport'
 
 export default function WorkDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const [work, setWork] = useState<WorkData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedVersionId, setSelectedVersionId] = useState<string>()
+  const [compareVersionId, setCompareVersionId] = useState<string>()
+  const [exporting, setExporting] = useState(false)
+  const [exportFailed, setExportFailed] = useState(false)
   const load = useCallback(async () => {
     try {
       setWork(await getWork(id))
@@ -39,13 +44,27 @@ export default function WorkDetailPage() {
   }, [id])
   if (error) return <ErrorState message={error} onRetry={load} />
   if (!work) return <LoadingState />
+  const selectedVersion =
+    work.versions?.find((version) => version._id === selectedVersionId) ?? work.versions?.[0]
+  const comparison = work.versions?.find((version) => version._id === compareVersionId)
+  const quality = selectedVersion?.qualityReport ?? work.qualityReport
+  const preview = selectedVersion?.imageUrl ?? work.finalImageUrl
   const handleExport = async () => {
-    const result = await exportWork(work._id)
-    const anchor = document.createElement('a')
-    anchor.href = result.downloadUrl
-    anchor.download = result.fileName
-    anchor.click()
-    message.success('已通过正式导出接口生成下载')
+    if (exporting) return
+    setExporting(true)
+    setExportFailed(false)
+    try {
+      const result = await exportWork(work._id, selectedVersion?._id)
+      const anchor = document.createElement('a')
+      anchor.href = result.downloadUrl
+      anchor.download = result.fileName
+      anchor.click()
+      message.success('已通过正式导出接口生成下载')
+    } catch {
+      setExportFailed(true)
+    } finally {
+      setExporting(false)
+    }
   }
   return (
     <div className={styles.page}>
@@ -62,16 +81,27 @@ export default function WorkDetailPage() {
         title={work.title}
         description="查看成片、质检结果与创作节点快照"
         actions={
-          <Button type="primary" icon={<DownloadOutlined />} onClick={() => void handleExport()}>
+          <Button
+            aria-label="导出 PNG"
+            loading={exporting}
+            type="primary"
+            icon={<DownloadOutlined aria-hidden />}
+            onClick={() => void handleExport()}
+          >
             导出 PNG
           </Button>
         }
       />
+      {exportFailed && <Alert type="error" title="版本导出失败，请重试" />}
 
       <div className={styles.detailGrid}>
         <section className={styles.previewPanel}>
-          {work.finalImageUrl ? (
-            <Image src={work.finalImageUrl} alt={work.title} className={styles.previewImage} />
+          {preview ? (
+            <Image
+              src={preview}
+              alt={`${work.title} V${selectedVersion?.versionNo ?? 1}`}
+              className={styles.previewImage}
+            />
           ) : (
             <EmptyState description="当前作品暂无预览图" />
           )}
@@ -84,14 +114,24 @@ export default function WorkDetailPage() {
             colon={false}
             items={[
               { key: 'workflow', label: '工作流', children: work.workflowId || '—' },
-              { key: 'score', label: '质检分', children: work.qualityReport?.totalScore ?? '—' },
+              {
+                key: 'version',
+                label: '查看版本',
+                children: `V${selectedVersion?.versionNo ?? 1}`,
+              },
               {
                 key: 'created',
                 label: '创建时间',
-                children: work.createdAt ? new Date(work.createdAt).toLocaleString('zh-CN') : '—',
+                children:
+                  (selectedVersion?.createdAt ?? work.createdAt)
+                    ? new Date(selectedVersion?.createdAt ?? work.createdAt!).toLocaleString(
+                        'zh-CN',
+                      )
+                    : '—',
               },
             ]}
           />
+          {quality && <QualityReport report={quality} />}
         </aside>
       </div>
 
@@ -101,12 +141,21 @@ export default function WorkDetailPage() {
             {
               key: 'nodes',
               label: '节点快照',
-              children: <pre>{JSON.stringify(work.nodesSnapshot, null, 2)}</pre>,
+              children: (
+                <pre>
+                  {JSON.stringify(selectedVersion?.nodesSnapshot ?? work.nodesSnapshot, null, 2)}
+                </pre>
+              ),
             },
             {
-              key: 'quality',
-              label: '质检报告',
-              children: <pre>{JSON.stringify(work.qualityReport, null, 2)}</pre>,
+              key: 'prompt',
+              label: '本版 Prompt 与优化说明',
+              children: (
+                <Space orientation="vertical">
+                  <p>{selectedVersion?.promptPlan?.imagePrompt ?? '此历史版本未记录 Prompt'}</p>
+                  <p>{selectedVersion?.feedback?.instruction ?? '初始创作'}</p>
+                </Space>
+              ),
             },
           ]}
         />
@@ -117,7 +166,15 @@ export default function WorkDetailPage() {
             dataSource={work.versions || []}
             renderItem={(version) => (
               <List.Item>
-                <b>版本 {version.versionNo}</b>
+                <Button
+                  aria-pressed={selectedVersion?._id === version._id}
+                  onClick={() => {
+                    setSelectedVersionId(version._id)
+                    setCompareVersionId(undefined)
+                  }}
+                >
+                  V{version.versionNo}
+                </Button>
                 <span>
                   {version.createdAt
                     ? new Date(version.createdAt).toLocaleString('zh-CN')
@@ -126,6 +183,29 @@ export default function WorkDetailPage() {
               </List.Item>
             )}
           />
+          <Select
+            aria-label="对比版本"
+            placeholder="选择另一版本进行对比"
+            allowClear
+            value={compareVersionId}
+            onChange={setCompareVersionId}
+            options={(work.versions ?? [])
+              .filter((version) => version._id !== selectedVersion?._id)
+              .map((version) => ({ value: version._id, label: `V${version.versionNo}` }))}
+          />
+          {comparison && (
+            <div className={styles.detailGrid}>
+              <section>
+                <h3>V{selectedVersion?.versionNo}</h3>
+                <Image src={preview} alt="当前对比版本" />
+              </section>
+              <section>
+                <h3>V{comparison.versionNo}</h3>
+                <Image src={comparison.imageUrl} alt="历史对比版本" />
+                {comparison.qualityReport && <QualityReport report={comparison.qualityReport} />}
+              </section>
+            </div>
+          )}
         </div>
       </section>
     </div>

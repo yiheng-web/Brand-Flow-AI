@@ -76,6 +76,7 @@ export class WorkflowProcessor extends WorkerHost {
     if (startIndex < 0) throw new Error(`未知节点类型: ${job.data.nodeType}`)
 
     let result: WorkflowResult = (workflow.result as WorkflowResult | undefined) ?? {}
+    result = { ...result, revision: result.revision ?? { round: 0 } }
     await this.saveWorkflow(workflow, {
       status: 'running',
       $unset: { errorMessage: 1 },
@@ -164,10 +165,14 @@ export class WorkflowProcessor extends WorkerHost {
           ((WORKFLOW_NODE_ORDER.indexOf(nodeType) + 1) / WORKFLOW_NODE_ORDER.length) * 100,
         )
         await this.persistProgress(workflow, result)
-        if (nodeType === 'generate') {
+        if (result.revision?.id) {
           await this.workflowRevisionModel.findOneAndUpdate(
-            { workflowId: workflow._id, runVersion: workflow.runVersion, status: 'queued' },
-            { status: 'completed' },
+            {
+              _id: result.revision.id,
+              workflowId: workflow._id,
+              status: { $in: ['queued', 'failed'] },
+            },
+            { result, status: result.finalEvaluation?.passed ? 'completed' : 'queued' },
             { sort: { round: -1 } },
           )
         }
@@ -198,9 +203,11 @@ export class WorkflowProcessor extends WorkerHost {
       }
 
       await this.saveWorkflow(workflow, {
-        status: 'completed',
+        status: result.finalEvaluation?.passed ? 'completed' : 'awaiting_user',
         result,
-        $unset: { awaitingAction: 1 },
+        ...(result.finalEvaluation?.passed
+          ? { $unset: { awaitingAction: 1 } }
+          : { awaitingAction: 'select_candidate' }),
       })
       return result
     } catch (error) {
@@ -239,11 +246,11 @@ export class WorkflowProcessor extends WorkerHost {
         result,
         errorMessage: message,
       })
-      await this.workflowRevisionModel.findOneAndUpdate(
-        { workflowId: workflow._id, runVersion: workflow.runVersion, status: 'queued' },
-        { status: 'failed' },
-        { sort: { round: -1 } },
-      )
+      if (result.revision?.id)
+        await this.workflowRevisionModel.findOneAndUpdate(
+          { workflowId: workflow._id, _id: result.revision.id, status: 'queued' },
+          { status: 'failed' },
+        )
       throw error
     }
   }
@@ -537,7 +544,13 @@ export class WorkflowProcessor extends WorkerHost {
           return {
             ...candidate,
             imageUrl: await this.storageService.getSignedUrl(objectKey),
-            metadata: { ...candidate.metadata, objectKey, persisted: true },
+            metadata: {
+              ...candidate.metadata,
+              objectKey,
+              persisted: true,
+              revisionId: (workflow.result as WorkflowResult | undefined)?.revision?.id,
+              revisionRound: (workflow.result as WorkflowResult | undefined)?.revision?.round ?? 0,
+            },
           }
         }),
       )

@@ -455,11 +455,12 @@ interface UserInfo {
 ### 作品与导出模块 (/works)
 
 - **`POST /works`**
-  - **说明**: 将本人已完成且质检通过的工作流结果保存为私有作品，并自动创建第 1 个作品版本。
+  - **说明**: 将本人已完成且质检通过的工作流结果保存为私有作品；首次创建 V1，同一 Workflow 后续成片追加版本，相同来源重复提交幂等。
   - **Body**:
     ```typescript
     {
       title: string,
+      spaceId: string,
       description?: string,
       finalImageUrl: string,
       objectKey?: string,
@@ -490,6 +491,8 @@ interface UserInfo {
   - **Body**: `{ workflowId: string }`
   - **返回 Data**: `WorkVersion`
   - 作品签名、导出与删除只处理该作品的服务端对象路径；历史污染记录会被拒绝，须人工核查后修复。
+  - 版本号由 Work.versionCounter 原子分配，当前成片指针仅向更高版本推进；失败或并发重复保存可能留下号码间隔，不会重复号码。
+  - 新版本保存 `sourceObjectKey`、`sourceRunVersion`、`sourceRevisionId`、`promptPlan`、`feedback`、`qualityReport` 与 `createdAt`，均从可信服务端工作流获取。来源去重使用 workId/sourceWorkflowId/sourceObjectKey 唯一索引。
 
 - **`GET /works/:id/versions`**
   - **说明**: 获取作品版本列表。
@@ -504,7 +507,8 @@ interface UserInfo {
   - **返回 Data**: `WorkVersion`
 
 - **`POST /works/:id/export`**
-  - **说明**: 导出作品。V1.0 暂仅支持 PNG；接口会记录导出日志并返回下载地址。
+  - **说明**: 导出作品当前成片。暂仅支持 PNG；记录导出日志并返回下载地址。
+  - **返回 Data**: `{ workId, exportLogId, format: 'png', fileName, downloadUrl }`
   - **路径参数**: `id` (作品 ID)
   - **Body**:
     ```typescript
@@ -512,16 +516,21 @@ interface UserInfo {
       format?: 'png'
     }
     ```
-  - **返回 Data**:
-    ```typescript
-    {
-      workId: string,
-      exportLogId: string,
-      format: 'png',
-      fileName: string,
-      downloadUrl: string
-    }
-    ```
+
+- **`POST /works/:id/versions/:versionId/export`**
+  - **说明**: 导出指定历史版本；校验当前用户作品权限、版本所属作品、对象路径和 PNG 文件头，记录含 versionId 的导出日志。
+  - **Body**: `{ format?: 'png' }`
+  - **返回 Data**: `{ workId, versionId, exportLogId, format: 'png', fileName, downloadUrl }`
+  - 附件名称为 `作品标题-V版本号.png`；作品详情读取时为各版本刷新预览签名。
+
+## V1.5 合成与版本闭环
+
+- 合成上传使用 multipart/form-data，PNG 分辨率必须与底图一致；图层数据必须匹配服务端艺术字候选和放置方案。
+- `compose_logo` 原图以 `type: 'logo'`、`assetId` 图层接入；服务端重新核对素材权限、来源和区域。仅允许艺术字与已确认 Logo 区域的像素发生变化。
+- 每次合成使用独立 runs/runVersion/composition/UUID.png，保留历史来源对象，不覆盖或删除旧 Revision 引用。
+- WorkflowResult.revision 记录优化 id/round/feedback；Revision.result 保存本轮候选、合成与质检快照，完成后不再写入。`GET /workflow/:id/revisions` 刷新结果图片短时链接而不改写数据库记录。
+- finalEvaluation 未通过时 Workflow 为 awaiting_user；节点执行完毕不等于可交付完成，只有 completed 且质检通过的结果可保存作品。
+- 执行与验收说明见 [图文合成与作品版本验收](../../docs/compose-versions-v1.md)。
 
 ## V1.1 安全边界
 

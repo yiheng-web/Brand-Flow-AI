@@ -176,7 +176,9 @@ export async function saveComposition(
   form.append('width', String(input.width))
   form.append('height', String(input.height))
   form.append('format', 'png')
-  return apiClient.put(`/workflow/${workflowId}/composition`, form)
+  return apiClient.put(`/workflow/${workflowId}/composition`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 export type { ArtTextCandidate }

@@ -34,9 +34,10 @@ import {
   type BrandRequirementInput,
 } from '@brand-flow/contracts'
 import { Queue, QueueEvents } from 'bullmq'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { Model } from 'mongoose'
 import { Types } from 'mongoose'
+import type { ArtTextRegion } from '@brand-flow/contracts'
 import { WorkflowReferencesService } from './workflow-references.service'
 import { Observable } from 'rxjs'
 import sharp from 'sharp'
@@ -116,6 +117,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     this.queueEvents = new QueueEvents(WORKFLOW_QUEUE, {
       connection: this.workflowQueue.opts.connection,
+      prefix: this.workflowQueue.opts.prefix,
     })
     // 升级前的队列载荷没有版本号，不能再允许其写回；保留任务供用户安全重试。
     const legacyRuns = await this.workflowModel.find({
@@ -276,7 +278,20 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
           imageUrl: await this.storageService.getSignedUrl(reference.objectKey),
         })),
       )
-    const result = response.result as WorkflowResult | undefined
+    response.result = (await this.signResultImages(
+      response.result as WorkflowResult | undefined,
+    )) as Record<string, unknown> | undefined
+    return {
+      workflow: response,
+      nodes,
+    }
+  }
+
+  private async signResultImages(
+    source: WorkflowResult | undefined,
+  ): Promise<WorkflowResult | undefined> {
+    if (!source) return undefined
+    const result = { ...source }
     if (result?.references?.length)
       result.references = await Promise.all(
         result.references.map(async (reference) => ({
@@ -285,25 +300,24 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         })),
       )
     if (result?.generate) {
-      result.generate.candidates = await Promise.all(
-        result.generate.candidates.map(async (candidate) => {
-          const objectKey = candidate.metadata?.objectKey
-          return typeof objectKey === 'string'
-            ? { ...candidate, imageUrl: await this.storageService.getSignedUrl(objectKey) }
-            : candidate
-        }),
-      )
+      result.generate = {
+        ...result.generate,
+        candidates: await Promise.all(
+          result.generate.candidates.map(async (candidate) => {
+            const objectKey = candidate.metadata?.objectKey
+            return typeof objectKey === 'string'
+              ? { ...candidate, imageUrl: await this.storageService.getSignedUrl(objectKey) }
+              : candidate
+          }),
+        ),
+      }
     }
     if (result?.compose && 'objectKey' in result.compose && result.compose.objectKey) {
       const signedUrl = await this.storageService.getSignedUrl(result.compose.objectKey)
       result.compose = { ...result.compose, finalImageUrl: signedUrl }
       result.finalImageUrl = signedUrl
-      response.result = result as unknown as Record<string, unknown>
     }
-    return {
-      workflow: response,
-      nodes,
-    }
+    return result
   }
 
   async confirmBrief(id: string, userId: string, entId?: string) {
@@ -418,6 +432,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         status: 'queued',
       })
       result.prompt = revisedPrompt
+      result.revision = { id: revision._id.toString(), round, feedback }
       this.clearDownstreamResult(result, 'prompt')
       // Prompt 在父工作流认领成功后写入。
       // 下游状态在新版本保存后重置。
@@ -449,7 +464,20 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
   async getRevisions(id: string, userId: string, entId?: string) {
     await this.verifyWorkflowAccess(id, userId, entId)
-    return this.workflowRevisionModel.find({ workflowId: id }).sort({ round: -1 })
+    const revisions = await this.workflowRevisionModel.find({ workflowId: id }).sort({ round: -1 })
+    // 仅刷新返回值中的短时链接，不改写历史快照及其不可变对象键。
+    return Promise.all(
+      revisions.map(async (revision) => {
+        if (
+          revision.result?.compose &&
+          'objectKey' in revision.result.compose &&
+          revision.result.compose.objectKey &&
+          !revision.result.compose.objectKey.startsWith(`workflows/${userId}/${id}/`)
+        )
+          throw new BadRequestException('Revision 成片缺少可信归属')
+        return { ...revision.toObject(), result: await this.signResultImages(revision.result) }
+      }),
+    )
   }
 
   async getResultDownload(id: string, userId: string, entId?: string) {
@@ -674,8 +702,6 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     if (result.compose && result.finalEvaluation?.passed) {
       throw new BadRequestException('当前工作流成片已保存，请勿重复提交')
     }
-    const previousObjectKey =
-      result.compose && 'objectKey' in result.compose ? result.compose.objectKey : undefined
     const draft = result.compositionDraft
     if (
       !draft?.placement ||
@@ -690,6 +716,11 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     this.assertPngFile(file)
     const placement = this.parseJson<ArtTextPlacementPlan>(dto.placement, '放置参数')
     const layers = this.parseJson<CompositionLayer[]>(dto.layers, '图层数据')
+    if (
+      !Array.isArray(layers) ||
+      layers.some((layer) => !layer || typeof layer !== 'object' || Array.isArray(layer))
+    )
+      throw new BadRequestException('图层数据必须为有效对象数组')
     if (JSON.stringify(placement) !== JSON.stringify(draft.placement)) {
       throw new BadRequestException('上传的放置参数与服务端方案不一致')
     }
@@ -728,7 +759,43 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     if (pngWidth !== dto.width || pngHeight !== dto.height) {
       throw new BadRequestException('PNG 实际分辨率与导出参数不一致')
     }
-    await this.assertCompositionPixels(baseObjectKey, file!.buffer!, placement)
+    const logoLayers = layers.filter((layer) => layer.type === 'logo')
+    const logoReferences = (result.references ?? []).filter(
+      (reference) => reference.strategy === 'compose_logo',
+    )
+    if (
+      logoLayers.length !== logoReferences.length ||
+      new Set(logoLayers.map((layer) => layer.assetId)).size !== logoLayers.length
+    )
+      throw new BadRequestException('Logo 图层必须对应本轮已验证的原图素材')
+    for (const layer of logoLayers) {
+      if (
+        !logoReferences.some((reference) => reference.assetId === layer.assetId) ||
+        !layer.visible ||
+        !layer.region ||
+        ![layer.region.x, layer.region.y, layer.region.width, layer.region.height].every(
+          (value) => Number.isFinite(value) && value >= 0,
+        ) ||
+        layer.region.width <= 0 ||
+        layer.region.height <= 0 ||
+        layer.region.width > 0.3 ||
+        layer.region.height > 0.3 ||
+        layer.region.x + layer.region.width > 1 ||
+        layer.region.y + layer.region.height > 1
+      )
+        throw new BadRequestException('Logo 图层来源或区域不合法')
+    }
+    if (logoReferences.length)
+      await this.referencesService!.resolve(
+        logoReferences.map(({ assetId, role }) => ({ assetId, role })),
+        userId,
+      )
+    await this.assertCompositionPixels(
+      baseObjectKey,
+      file!.buffer!,
+      placement,
+      logoLayers.map((layer) => layer.region),
+    )
     const integritySha256 = createHash('sha256')
       .update(file!.buffer!)
       .update(
@@ -747,7 +814,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     let uploadedObjectKey: string | undefined
     let compositionCommitted = false
     try {
-      const objectKey = `workflows/${userId}/${id}/composition/final-${Date.now()}.png`
+      const objectKey = `workflows/${userId}/${id}/runs/${workflow.runVersion}/composition/${randomUUID()}.png`
       await this.storageService.uploadObject({
         key: objectKey,
         body: file!.buffer!,
@@ -815,11 +882,16 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       workflow.markModified('result')
       await this.saveWorkflow(workflow, false)
       compositionCommitted = true
-      if (previousObjectKey && previousObjectKey !== objectKey) {
-        await this.storageService
-          .deleteObject(previousObjectKey)
-          .catch(() => this.logger.warn(`工作流 ${id} 的旧合成对象清理失败`))
-      }
+      // 历史合成对象可能已被 Revision 或作品版本引用，保留不可变来源。
+      if (result.revision?.id)
+        await this.workflowRevisionModel.updateOne(
+          {
+            _id: result.revision.id,
+            workflowId: workflow._id,
+            status: { $in: ['queued', 'failed'] },
+          },
+          { $set: { result, status: finalEvaluation.passed ? 'completed' : 'queued' } },
+        )
       return { composition, finalEvaluation }
     } catch (error) {
       if (uploadedObjectKey && !compositionCommitted) {
@@ -1237,6 +1309,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     baseObjectKey: string,
     finalPng: Buffer,
     placement: ArtTextPlacementPlan,
+    logoRegions: ArtTextRegion[] = [],
   ) {
     const baseObject = await this.storageService.getObject(baseObjectKey)
     if (baseObject.contentType !== 'image/png') {
@@ -1272,7 +1345,16 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         }
         if (maxChannelDiff <= 8) continue
         if (x >= left && x < right && y >= top && y < bottom) changedInside += 1
-        else changedOutside += 1
+        else if (
+          !logoRegions.some(
+            (region) =>
+              x >= Math.floor(region.x * width) &&
+              x < Math.ceil((region.x + region.width) * width) &&
+              y >= Math.floor(region.y * height) &&
+              y < Math.ceil((region.y + region.height) * height),
+          )
+        )
+          changedOutside += 1
       }
     }
     const regionPixels = Math.max(1, (right - left) * (bottom - top))

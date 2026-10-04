@@ -6,6 +6,7 @@ import type {
   ArtTextRegion,
   CandidateImage,
   CompositionLayer,
+  ResolvedWorkflowReference,
 } from '@brand-flow/contracts'
 import type { TPointerEvent } from 'fabric'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -27,12 +28,14 @@ interface ArtTextComposerProps {
   baseCandidate: CandidateImage
   draft?: ArtTextCompositionDraft
   onChanged: () => Promise<void>
+  references?: ResolvedWorkflowReference[]
 }
 
 const DISPLAY_MAX_WIDTH = 760
 const DISPLAY_MAX_HEIGHT = 560
 const MIN_REGION_WIDTH = 0.08
 const MIN_REGION_HEIGHT = 0.05
+const NO_REFERENCES: ResolvedWorkflowReference[] = []
 
 const getThemeColor = (name: string, fallback: string) => {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -60,13 +63,16 @@ function createTextObject(candidate: ArtTextCandidate, width: number, height: nu
       })
     : spec.fill
   return new Textbox(candidate.textContent, {
+    originX: 'left',
+    originY: 'top',
     width,
     fontFamily: spec.fontFamily,
     fontWeight: spec.fontWeight,
     textAlign: spec.textAlign,
     fill,
     stroke: spec.stroke,
-    strokeWidth: spec.strokeWidth,
+    // 未定义描边不能覆盖 Fabric 的数值默认值，否则包围盒和缓存尺寸会变成 NaN。
+    strokeWidth: spec.strokeWidth ?? 0,
     paintFirst: spec.stroke ? 'stroke' : 'fill',
     fontSize: Math.max(18, height * 0.42),
     lineHeight: 1.05,
@@ -90,6 +96,8 @@ function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: 
     if (decoration.type === 'highlight') {
       return [
         new Rect({
+          originX: 'left',
+          originY: 'top',
           left: width * 0.04,
           top: height * 0.3 + offset,
           width: width * 0.92,
@@ -104,6 +112,8 @@ function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: 
     if (decoration.type === 'line') {
       return [
         new Rect({
+          originX: 'left',
+          originY: 'top',
           left: width * 0.08,
           top: Math.max(0, height * 0.88 - offset),
           width: width * 0.84,
@@ -117,6 +127,8 @@ function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: 
     const size = Math.max(5, height * 0.1)
     return [
       new Rect({
+        originX: 'left',
+        originY: 'top',
         left: width * 0.02 + offset,
         top: height * 0.12,
         width: size,
@@ -125,6 +137,8 @@ function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: 
         fill: decoration.color,
       }),
       new Rect({
+        originX: 'left',
+        originY: 'top',
         left: width * 0.94 - offset,
         top: height * 0.72,
         width: size,
@@ -135,6 +149,8 @@ function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: 
     ]
   })
   const group = new Group([...decorations, text], {
+    originX: 'left',
+    originY: 'top',
     selectable: false,
     evented: false,
     subTargetCheck: false,
@@ -143,11 +159,14 @@ function createArtTextGroup(candidate: ArtTextCandidate, width: number, height: 
 }
 
 function ArtTextPreview({ candidate }: { candidate: ArtTextCandidate }) {
-  const ref = useRef<HTMLCanvasElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!ref.current) return
-    const canvas = new StaticCanvas(ref.current, { width: 280, height: 120 })
+    const host = ref.current
+    const element = document.createElement('canvas')
+    host.replaceChildren(element)
+    const canvas = new StaticCanvas(element, { width: 280, height: 120 })
     const { group } = createArtTextGroup(candidate, 244, 90)
     group.set({ left: 18, top: 15 })
     const scale = Math.min(1, 244 / Math.max(group.width, 1), 90 / Math.max(group.height, 1))
@@ -155,11 +174,13 @@ function ArtTextPreview({ candidate }: { candidate: ArtTextCandidate }) {
     canvas.add(group)
     canvas.renderAll()
     return () => {
-      void canvas.dispose()
+      canvas.cancelRequestedRender()
+      host.replaceChildren()
+      void canvas.dispose().catch((error: unknown) => console.error('艺术字预览释放失败', error))
     }
   }, [candidate])
 
-  return <canvas ref={ref} className={styles.previewCanvas} aria-label="艺术字候选预览" />
+  return <div ref={ref} className={styles.previewCanvas} aria-label="艺术字候选预览" />
 }
 
 function dataUrlToFile(dataUrl: string): Promise<File> {
@@ -173,8 +194,9 @@ export default function ArtTextComposer({
   baseCandidate,
   draft,
   onChanged,
+  references = NO_REFERENCES,
 }: ArtTextComposerProps) {
-  const canvasElementRef = useRef<HTMLCanvasElement>(null)
+  const canvasElementRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<Canvas | null>(null)
   const regionObjectRef = useRef<Rect | null>(null)
   const safeMarginObjectRef = useRef<Rect | null>(null)
@@ -191,162 +213,264 @@ export default function ArtTextComposer({
   const [placement, setPlacement] = useState<ArtTextPlacementPlan | null>(draft?.placement ?? null)
   const [loading, setLoading] = useState(false)
   const [canvasReady, setCanvasReady] = useState(false)
+  const [canvasError, setCanvasError] = useState<string | null>(null)
+  const [canvasAttempt, setCanvasAttempt] = useState(0)
+  const logoLayersRef = useRef<CompositionLayer[]>([])
   const selectedCandidate = useMemo(
     () => draft?.candidates.find((item) => item.id === draft.selectedArtTextCandidateId),
     [draft],
   )
+  const hasSelectedCandidate = Boolean(selectedCandidate)
 
   useEffect(() => {
-    if (!canvasElementRef.current) return
+    const host = canvasElementRef.current
+    if (!host) return
     let disposed = false
-    const canvas = new Canvas(canvasElementRef.current, {
-      preserveObjectStacking: true,
-      selection: false,
-    })
-    canvasRef.current = canvas
+    let initialized = false
+    let release = () => {}
+    const abort = new AbortController()
+    const initialize = () => {
+      try {
+        const bounds = host.getBoundingClientRect()
+        if (disposed || initialized || bounds.width < 1 || bounds.height < 1) return
+        initialized = true
+        const element = document.createElement('canvas')
+        host.replaceChildren(element)
+        const canvas = new Canvas(element, {
+          width: Math.min(DISPLAY_MAX_WIDTH, bounds.width),
+          height: 120,
+          preserveObjectStacking: true,
+          selection: false,
+        })
+        canvasRef.current = canvas
+        queueMicrotask(() => {
+          if (!disposed) {
+            setCanvasReady(false)
+            setCanvasError(null)
+          }
+        })
 
-    const syncRegion = (rect: Rect) => {
-      const width = canvas.getWidth()
-      const height = canvas.getHeight()
-      const next = {
-        x: Math.max(0, rect.left / width),
-        y: Math.max(0, rect.top / height),
-        width: Math.min(1, rect.getScaledWidth() / width),
-        height: Math.min(1, rect.getScaledHeight() / height),
+        const syncRegion = (rect: Rect) => {
+          const width = canvas.getWidth()
+          const height = canvas.getHeight()
+          if (disposed || width <= 0 || height <= 0) return
+          const next = {
+            x: Math.max(0, rect.left / width),
+            y: Math.max(0, rect.top / height),
+            width: Math.min(1, rect.getScaledWidth() / width),
+            height: Math.min(1, rect.getScaledHeight() / height),
+          }
+          next.x = Math.min(next.x, 1 - next.width)
+          next.y = Math.min(next.y, 1 - next.height)
+          setRegion(next)
+          setPlacement(null)
+        }
+
+        const loadBase = async () => {
+          const image = await FabricImage.fromURL(baseCandidate.imageUrl, {
+            crossOrigin: 'anonymous',
+            signal: abort.signal,
+          })
+          if (disposed) return
+          const originalWidth = image.width
+          const originalHeight = image.height
+          if (originalWidth <= 0 || originalHeight <= 0) throw new Error('底图尺寸无效')
+          originalSizeRef.current = { width: originalWidth, height: originalHeight }
+          const scale = Math.min(
+            DISPLAY_MAX_WIDTH / originalWidth,
+            bounds.width / originalWidth,
+            DISPLAY_MAX_HEIGHT / originalHeight,
+            1,
+          )
+          canvas.setDimensions({
+            width: originalWidth * scale,
+            height: originalHeight * scale,
+          })
+          image.set({
+            originX: 'left',
+            originY: 'top',
+            left: 0,
+            top: 0,
+            scaleX: scale,
+            scaleY: scale,
+            selectable: false,
+            evented: false,
+          })
+          canvas.add(image)
+          canvas.sendObjectToBack(image)
+          logoLayersRef.current = []
+          const logos = references.filter((reference) => reference.strategy === 'compose_logo')
+          for (const [index, reference] of logos.entries()) {
+            const logo = await FabricImage.fromURL(reference.imageUrl, {
+              crossOrigin: 'anonymous',
+              signal: abort.signal,
+            })
+            if (disposed) return
+            if (logo.width <= 0 || logo.height <= 0) throw new Error('Logo 尺寸无效')
+            const logoScale = Math.min(
+              (canvas.getWidth() * 0.15) / logo.width,
+              (canvas.getHeight() * 0.12) / logo.height,
+            )
+            const region = {
+              x: 0.8,
+              y: 0.05 + index * 0.16,
+              width: (logo.width * logoScale) / canvas.getWidth(),
+              height: (logo.height * logoScale) / canvas.getHeight(),
+            }
+            logo.set({
+              originX: 'left',
+              originY: 'top',
+              left: region.x * canvas.getWidth(),
+              top: region.y * canvas.getHeight(),
+              scaleX: logoScale,
+              scaleY: logoScale,
+              selectable: false,
+              evented: false,
+            })
+            canvas.add(logo)
+            logoLayersRef.current.push({
+              id: `logo-${reference.assetId}`,
+              type: 'logo',
+              assetId: reference.assetId,
+              name: reference.name,
+              visible: true,
+              locked: true,
+              region,
+            })
+          }
+          const safeMargin = new Rect({
+            originX: 'left',
+            originY: 'top',
+            left: canvas.getWidth() * 0.05,
+            top: canvas.getHeight() * 0.05,
+            width: canvas.getWidth() * 0.9,
+            height: canvas.getHeight() * 0.9,
+            fill: 'transparent',
+            stroke: getThemeColor('--color-white', colorTokens.white),
+            strokeWidth: 1,
+            strokeDashArray: [5, 5],
+            opacity: 0.7,
+            selectable: false,
+            evented: false,
+          })
+          safeMarginObjectRef.current = safeMargin
+          canvas.add(safeMargin)
+          canvas.renderAll()
+          setCanvasReady(true)
+        }
+        void loadBase().catch((reason: unknown) => {
+          if (!disposed) setCanvasError(reason instanceof Error ? reason.message : '底图加载失败')
+        })
+
+        const handleMouseDown = (event: { e: TPointerEvent; target?: unknown }) => {
+          if (!regionModeRef.current || event.target === regionObjectRef.current) return
+          const point = canvas.getScenePoint(event.e)
+          if (regionObjectRef.current) canvas.remove(regionObjectRef.current)
+          if (artTextObjectRef.current) canvas.remove(artTextObjectRef.current)
+          const rect = new Rect({
+            originX: 'left',
+            originY: 'top',
+            left: point.x,
+            top: point.y,
+            width: 1,
+            height: 1,
+            fill: getThemeColor('--color-primary-shadow-soft', colorTokens.primaryOverlaySoft),
+            stroke: getThemeColor('--color-primary', colorTokens.primary),
+            strokeWidth: 2,
+            strokeDashArray: [8, 6],
+            lockRotation: true,
+          })
+          regionObjectRef.current = rect
+          drawingRef.current = { startX: point.x, startY: point.y }
+          canvas.add(rect)
+          canvas.setActiveObject(rect)
+        }
+        const handleMouseMove = (event: { e: TPointerEvent }) => {
+          const drawing = drawingRef.current
+          const rect = regionObjectRef.current
+          if (!drawing || !rect) return
+          const point = canvas.getScenePoint(event.e)
+          const x = Math.max(0, Math.min(point.x, canvas.getWidth()))
+          const y = Math.max(0, Math.min(point.y, canvas.getHeight()))
+          rect.set({
+            left: Math.min(x, drawing.startX),
+            top: Math.min(y, drawing.startY),
+            width: Math.abs(x - drawing.startX),
+            height: Math.abs(y - drawing.startY),
+          })
+          rect.setCoords()
+          canvas.requestRenderAll()
+        }
+        const handleMouseUp = () => {
+          const rect = regionObjectRef.current
+          if (!drawingRef.current || !rect) return
+          drawingRef.current = null
+          regionModeRef.current = false
+          if (
+            rect.width / canvas.getWidth() < MIN_REGION_WIDTH ||
+            rect.height / canvas.getHeight() < MIN_REGION_HEIGHT
+          ) {
+            canvas.remove(rect)
+            regionObjectRef.current = null
+            setRegion(null)
+            message.warning('框选区域过小，请重新框选')
+            return
+          }
+          syncRegion(rect)
+        }
+        const handleObjectModified = (event: { target?: unknown }) => {
+          if (event.target !== regionObjectRef.current || !regionObjectRef.current) return
+          const rect = regionObjectRef.current
+          const minScaleX = (canvas.getWidth() * MIN_REGION_WIDTH) / Math.max(rect.width, 1)
+          const minScaleY = (canvas.getHeight() * MIN_REGION_HEIGHT) / Math.max(rect.height, 1)
+          const maxScaleX = canvas.getWidth() / Math.max(rect.width, 1)
+          const maxScaleY = canvas.getHeight() / Math.max(rect.height, 1)
+          rect.set({
+            scaleX: Math.max(minScaleX, Math.min(rect.scaleX, maxScaleX)),
+            scaleY: Math.max(minScaleY, Math.min(rect.scaleY, maxScaleY)),
+          })
+          const maxLeft = canvas.getWidth() - rect.getScaledWidth()
+          const maxTop = canvas.getHeight() - rect.getScaledHeight()
+          rect.set({
+            left: Math.max(0, Math.min(rect.left, maxLeft)),
+            top: Math.max(0, Math.min(rect.top, maxTop)),
+          })
+          rect.setCoords()
+          syncRegion(rect)
+        }
+        canvas.on('mouse:down', handleMouseDown)
+        canvas.on('mouse:move', handleMouseMove)
+        canvas.on('mouse:up', handleMouseUp)
+        canvas.on('object:modified', handleObjectModified)
+
+        release = () => {
+          canvas.off()
+          canvas.cancelRequestedRender()
+          if (canvasRef.current === canvas) canvasRef.current = null
+          void canvas.dispose().catch((error: unknown) => console.error('合成画布释放失败', error))
+        }
+      } catch (reason: unknown) {
+        if (!disposed) setCanvasError(reason instanceof Error ? reason.message : '画布初始化失败')
+        release()
       }
-      next.x = Math.min(next.x, 1 - next.width)
-      next.y = Math.min(next.y, 1 - next.height)
-      setRegion(next)
-      setPlacement(null)
     }
-
-    const loadBase = async () => {
-      const image = await FabricImage.fromURL(baseCandidate.imageUrl, { crossOrigin: 'anonymous' })
-      if (disposed) return
-      const originalWidth = image.width || 1024
-      const originalHeight = image.height || 1024
-      originalSizeRef.current = { width: originalWidth, height: originalHeight }
-      const scale = Math.min(
-        DISPLAY_MAX_WIDTH / originalWidth,
-        DISPLAY_MAX_HEIGHT / originalHeight,
-        1,
-      )
-      canvas.setDimensions({ width: originalWidth * scale, height: originalHeight * scale })
-      image.set({
-        left: 0,
-        top: 0,
-        scaleX: scale,
-        scaleY: scale,
-        selectable: false,
-        evented: false,
-      })
-      canvas.add(image)
-      canvas.sendObjectToBack(image)
-      const safeMargin = new Rect({
-        left: canvas.getWidth() * 0.05,
-        top: canvas.getHeight() * 0.05,
-        width: canvas.getWidth() * 0.9,
-        height: canvas.getHeight() * 0.9,
-        fill: 'transparent',
-        stroke: getThemeColor('--color-white', colorTokens.white),
-        strokeWidth: 1,
-        strokeDashArray: [5, 5],
-        opacity: 0.7,
-        selectable: false,
-        evented: false,
-      })
-      safeMarginObjectRef.current = safeMargin
-      canvas.add(safeMargin)
-      canvas.renderAll()
-      setCanvasReady(true)
-    }
-    void loadBase().catch(() => message.error('底图加载失败，无法进入框选模式'))
-
-    const handleMouseDown = (event: { e: TPointerEvent; target?: unknown }) => {
-      if (!regionModeRef.current || event.target === regionObjectRef.current) return
-      const point = canvas.getScenePoint(event.e)
-      if (regionObjectRef.current) canvas.remove(regionObjectRef.current)
-      if (artTextObjectRef.current) canvas.remove(artTextObjectRef.current)
-      const rect = new Rect({
-        left: point.x,
-        top: point.y,
-        width: 1,
-        height: 1,
-        fill: getThemeColor('--color-primary-shadow-soft', colorTokens.primaryOverlaySoft),
-        stroke: getThemeColor('--color-primary', colorTokens.primary),
-        strokeWidth: 2,
-        strokeDashArray: [8, 6],
-        lockRotation: true,
-      })
-      regionObjectRef.current = rect
-      drawingRef.current = { startX: point.x, startY: point.y }
-      canvas.add(rect)
-      canvas.setActiveObject(rect)
-    }
-    const handleMouseMove = (event: { e: TPointerEvent }) => {
-      const drawing = drawingRef.current
-      const rect = regionObjectRef.current
-      if (!drawing || !rect) return
-      const point = canvas.getScenePoint(event.e)
-      const x = Math.max(0, Math.min(point.x, canvas.getWidth()))
-      const y = Math.max(0, Math.min(point.y, canvas.getHeight()))
-      rect.set({
-        left: Math.min(x, drawing.startX),
-        top: Math.min(y, drawing.startY),
-        width: Math.abs(x - drawing.startX),
-        height: Math.abs(y - drawing.startY),
-      })
-      rect.setCoords()
-      canvas.requestRenderAll()
-    }
-    const handleMouseUp = () => {
-      const rect = regionObjectRef.current
-      if (!drawingRef.current || !rect) return
-      drawingRef.current = null
-      regionModeRef.current = false
-      if (
-        rect.width / canvas.getWidth() < MIN_REGION_WIDTH ||
-        rect.height / canvas.getHeight() < MIN_REGION_HEIGHT
-      ) {
-        canvas.remove(rect)
-        regionObjectRef.current = null
-        setRegion(null)
-        message.warning('框选区域过小，请重新框选')
-        return
-      }
-      syncRegion(rect)
-    }
-    const handleObjectModified = (event: { target?: unknown }) => {
-      if (event.target !== regionObjectRef.current || !regionObjectRef.current) return
-      const rect = regionObjectRef.current
-      const minScaleX = (canvas.getWidth() * MIN_REGION_WIDTH) / Math.max(rect.width, 1)
-      const minScaleY = (canvas.getHeight() * MIN_REGION_HEIGHT) / Math.max(rect.height, 1)
-      const maxScaleX = canvas.getWidth() / Math.max(rect.width, 1)
-      const maxScaleY = canvas.getHeight() / Math.max(rect.height, 1)
-      rect.set({
-        scaleX: Math.max(minScaleX, Math.min(rect.scaleX, maxScaleX)),
-        scaleY: Math.max(minScaleY, Math.min(rect.scaleY, maxScaleY)),
-      })
-      const maxLeft = canvas.getWidth() - rect.getScaledWidth()
-      const maxTop = canvas.getHeight() - rect.getScaledHeight()
-      rect.set({
-        left: Math.max(0, Math.min(rect.left, maxLeft)),
-        top: Math.max(0, Math.min(rect.top, maxTop)),
-      })
-      rect.setCoords()
-      syncRegion(rect)
-    }
-    canvas.on('mouse:down', handleMouseDown)
-    canvas.on('mouse:move', handleMouseMove)
-    canvas.on('mouse:up', handleMouseUp)
-    canvas.on('object:modified', handleObjectModified)
-
+    const observer = new ResizeObserver(initialize)
+    observer.observe(host)
+    initialize()
     return () => {
       disposed = true
-      canvas.dispose()
-      canvasRef.current = null
+      abort.abort()
+      observer.disconnect()
+      release()
+      regionObjectRef.current = null
+      safeMarginObjectRef.current = null
+      artTextObjectRef.current = null
+      backplateObjectRef.current = null
+      logoLayersRef.current = []
+      drawingRef.current = null
+      host.replaceChildren()
     }
-  }, [baseCandidate.id, baseCandidate.imageUrl])
+  }, [baseCandidate.id, baseCandidate.imageUrl, hasSelectedCandidate, canvasAttempt, references])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -354,6 +478,8 @@ export default function ArtTextComposer({
     const existing = regionObjectRef.current
     if (existing) canvas.remove(existing)
     const rect = new Rect({
+      originX: 'left',
+      originY: 'top',
       left: region.x * canvas.getWidth(),
       top: region.y * canvas.getHeight(),
       width: region.width * canvas.getWidth(),
@@ -416,6 +542,24 @@ export default function ArtTextComposer({
       evented: false,
     })
     text.set({ textAlign: plan.horizontalAlign })
+    // 阴影和描边也必须留在用户确认的区域内，避免导出像素越界。
+    group.set({
+      clipPath: new Rect({
+        originX: 'left',
+        originY: 'top',
+        left: regionLeft,
+        top: regionTop,
+        width: regionWidth,
+        height: regionHeight,
+        strokeWidth: 0,
+        absolutePositioned: true,
+      }),
+    })
+    // Fabric 会因子对象阴影关闭 Group 缓存，但 clipPath 渲染必须拥有缓存上下文。
+    group.shouldCache = function () {
+      this.ownCaching = true
+      return true
+    }
     if (plan.contrastEnhancement?.type === 'shadow' && !candidate.vectorSpec.shadow) {
       text.set({
         shadow: new Shadow({
@@ -438,6 +582,8 @@ export default function ArtTextComposer({
     }
     if (plan.contrastEnhancement?.type === 'backplate') {
       const backplate = new Rect({
+        originX: 'left',
+        originY: 'top',
         left: plan.region.x * canvas.getWidth(),
         top: plan.region.y * canvas.getHeight(),
         width: regionWidth,
@@ -529,7 +675,16 @@ export default function ArtTextComposer({
 
   const handleExport = async () => {
     const canvas = canvasRef.current
-    if (!canvas || !selectedCandidate || !placement || !artTextObjectRef.current) return
+    if (
+      !canvasReady ||
+      !canvas ||
+      canvas.getWidth() <= 0 ||
+      canvas.getHeight() <= 0 ||
+      !selectedCandidate ||
+      !placement ||
+      !artTextObjectRef.current
+    )
+      return
     setLoading(true)
     try {
       const regionObject = regionObjectRef.current
@@ -541,13 +696,20 @@ export default function ArtTextComposer({
       let file: File
       try {
         const multiplier = originalSizeRef.current.width / canvas.getWidth()
-        file = await dataUrlToFile(canvas.toDataURL({ format: 'png', multiplier }))
+        file = await dataUrlToFile(
+          canvas.toDataURL({
+            format: 'png',
+            multiplier,
+            width: originalSizeRef.current.width / multiplier,
+            height: originalSizeRef.current.height / multiplier,
+          }),
+        )
       } finally {
         regionObject?.set({ visible: true })
         safeMarginObject?.set({ visible: true })
         canvas.renderAll()
       }
-      const layers: CompositionLayer[] = []
+      const layers: CompositionLayer[] = [...logoLayersRef.current]
       if (placement.contrastEnhancement?.type === 'backplate') {
         layers.push({
           id: 'backplate',
@@ -686,6 +848,7 @@ export default function ArtTextComposer({
               </div>
               <Space wrap>
                 <Button
+                  disabled={!canvasReady || loading}
                   onClick={() => {
                     regionModeRef.current = true
                     message.info('请在底图上拖拽框选')
@@ -696,14 +859,27 @@ export default function ArtTextComposer({
                 <Button icon={<DeleteOutlined />} disabled={!region} onClick={handleDeleteRegion}>
                   删除区域
                 </Button>
-                <Button disabled={!region} onClick={() => void handlePlan()}>
+                <Button
+                  disabled={!region || !canvasReady || loading}
+                  onClick={() => void handlePlan()}
+                >
                   AI 计算放置方案
                 </Button>
               </Space>
             </div>
             <div className={styles.canvasShell}>
-              <canvas ref={canvasElementRef} />
+              <div ref={canvasElementRef} className={styles.canvasHost} aria-label="图文合成画布" />
             </div>
+            {canvasError && (
+              <Alert
+                type="error"
+                title="画布加载失败"
+                description={canvasError}
+                action={
+                  <Button onClick={() => setCanvasAttempt((value) => value + 1)}>重试画布</Button>
+                }
+              />
+            )}
             {!region && (
               <Alert type="info" showIcon message="请先点击“开始框选”，再在底图上拖拽区域" />
             )}
@@ -712,7 +888,11 @@ export default function ArtTextComposer({
                 <span>
                   缩放 {placement.scale} · 旋转 {placement.rotation}° · {placement.horizontalAlign}
                 </span>
-                <Button type="primary" onClick={() => void handleExport()}>
+                <Button
+                  disabled={!canvasReady || loading}
+                  type="primary"
+                  onClick={() => void handleExport()}
+                >
                   确认合成并生成 PNG
                 </Button>
               </div>

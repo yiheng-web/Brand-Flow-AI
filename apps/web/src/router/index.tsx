@@ -22,6 +22,7 @@ import Home from '@/pages/home/home'
 import LoginPage from '@/pages/login/login'
 import RegisterPage from '@/pages/login/register'
 import { LoadingState } from '@/design-system/components'
+import RouteError from './RouteError'
 
 const Workspace = lazy(() => import('@/pages/workspace/workspace'))
 const BrandPage = lazy(() => import('@/pages/brand'))
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <AuthGuard />,
+    errorElement: <RouteError />,
     children: [
       {
         element: <AppLayout />,

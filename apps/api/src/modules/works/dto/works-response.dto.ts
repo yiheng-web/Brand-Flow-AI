@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { OwnerType, Visibility } from '@/common/enums'
+import type { PromptPlan, OptimizationFeedback, FinalEvaluationResult } from '@brand-flow/contracts'
 
 export class WorkVersionResponseDto {
   @ApiProperty({ description: '作品版本 ID' })
@@ -20,11 +21,29 @@ export class WorkVersionResponseDto {
   @ApiPropertyOptional({ description: '来源工作流 ID' })
   sourceWorkflowId?: string
 
+  @ApiPropertyOptional({ description: '不可变的工作流成片来源对象键' })
+  sourceObjectKey?: string
+
+  @ApiPropertyOptional({ description: '来源执行版本' })
+  sourceRunVersion?: number
+
+  @ApiPropertyOptional({ description: '来源优化 Revision ID' })
+  sourceRevisionId?: string
+
+  @ApiPropertyOptional({ description: '本版本 Prompt 快照' })
+  promptPlan?: PromptPlan
+
+  @ApiPropertyOptional({ description: '本版本优化反馈' })
+  feedback?: OptimizationFeedback
+
+  @ApiPropertyOptional({ description: '版本创建时间' })
+  createdAt?: string
+
   @ApiPropertyOptional({ description: '节点快照' })
-  nodesSnapshot?: Record<string, any>
+  nodesSnapshot?: Record<string, unknown>
 
   @ApiPropertyOptional({ description: '品牌质检报告' })
-  qualityReport?: Record<string, any>
+  qualityReport?: FinalEvaluationResult
 
   @ApiProperty({ description: '创建者用户 ID' })
   createdBy!: string
@@ -65,13 +84,13 @@ export class WorkResponseDto {
   enterpriseId!: string
 
   @ApiPropertyOptional({ description: '品牌质检报告' })
-  qualityReport?: Record<string, any>
+  qualityReport?: FinalEvaluationResult
 
   @ApiPropertyOptional({ description: '节点快照' })
-  nodesSnapshot?: Record<string, any>
+  nodesSnapshot?: Record<string, unknown>
 
   @ApiPropertyOptional({ description: '扩展信息' })
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export class WorkDetailResponseDto extends WorkResponseDto {
@@ -80,6 +99,8 @@ export class WorkDetailResponseDto extends WorkResponseDto {
 }
 
 export class ExportWorkResponseDto {
+  @ApiPropertyOptional({ description: '指定导出的版本 ID' })
+  versionId?: string
   @ApiProperty({ description: '作品 ID' })
   workId!: string
 

@@ -294,6 +294,7 @@ export interface WorkflowRevisionSnapshot {
   revisedPrompt: PromptPlan
   status: 'queued' | 'completed' | 'failed'
   createdAt: string
+  result?: WorkflowResult
 }
 
 export interface PromptPlan {
@@ -424,6 +425,7 @@ export interface CompositionLayer {
   content?: string
   candidateId?: string
   vectorSpec?: ArtTextVectorSpec
+  assetId?: string
 }
 
 export interface CompositionOutput {
@@ -506,6 +508,7 @@ export interface WorkflowNodeSnapshot {
 }
 
 export interface WorkflowResult {
+  revision?: { id?: string; round: number; feedback?: OptimizationFeedback }
   references?: ResolvedWorkflowReference[]
   brief?: CreativeBrief
   briefReview?: BriefReview

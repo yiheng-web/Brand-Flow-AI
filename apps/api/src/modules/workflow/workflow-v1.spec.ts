@@ -5,8 +5,15 @@ import { validate } from 'class-validator'
 
 import { OptimizeWorkflowDto } from './dto/brief-review.dto'
 import { CreateWorkflowDto, StartWorkflowDto } from './dto/create-workflow.dto'
+import { WorkflowRevisionSchema } from './schemas/workflow-revision.schema'
+import { WorkVersionSchema } from '../works/schemas/work-version.schema'
 
 describe('Workflow V1 DTO', () => {
+  it('Revision 与版本关联使用真正 ObjectId Schema，字符串查询可被转换', () => {
+    expect(WorkflowRevisionSchema.path('workflowId').instance).toBe('ObjectId')
+    for (const field of ['workId', 'sourceWorkflowId', 'sourceRevisionId', 'createdBy'])
+      expect(WorkVersionSchema.path(field).instance).toBe('ObjectId')
+  })
   it('接受素材 ID 用途和真实生成参数，拒绝伪造用途、外链 ID 与非法尺寸', async () => {
     const valid = plainToInstance(CreateWorkflowDto, {
       prompt: '产品图',

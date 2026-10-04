@@ -1,13 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
-import type { OptimizationFeedback, PromptPlan } from '@brand-flow/contracts'
+import { Document, Schema as MongooseSchema, Types } from 'mongoose'
+import type { OptimizationFeedback, PromptPlan, WorkflowResult } from '@brand-flow/contracts'
 
 export type WorkflowRevisionDocument = WorkflowRevision &
   Document & { createdAt: Date; updatedAt: Date }
 
 @Schema({ timestamps: true })
 export class WorkflowRevision {
-  @Prop({ type: Types.ObjectId, ref: 'Workflow', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Workflow', required: true, index: true })
   workflowId!: Types.ObjectId
 
   @Prop({ required: true })
@@ -30,6 +30,9 @@ export class WorkflowRevision {
 
   @Prop({ type: String, enum: ['queued', 'completed', 'failed'], default: 'queued' })
   status!: 'queued' | 'completed' | 'failed'
+
+  @Prop({ type: Object })
+  result?: WorkflowResult
 }
 
 export const WorkflowRevisionSchema = SchemaFactory.createForClass(WorkflowRevision)

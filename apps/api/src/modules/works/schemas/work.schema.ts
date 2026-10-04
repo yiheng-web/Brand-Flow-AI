@@ -61,6 +61,12 @@ export class Work {
 
   @Prop({ type: Object })
   metadata!: Record<string, unknown>
+
+  @Prop({ type: Number, default: 1 })
+  versionCounter!: number
+
+  @Prop({ type: Number, default: 1 })
+  currentVersionNo!: number
 }
 
 export const WorkSchema = SchemaFactory.createForClass(Work)

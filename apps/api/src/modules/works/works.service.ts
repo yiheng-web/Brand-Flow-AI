@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
@@ -64,7 +70,10 @@ export class WorksService {
     }
     const space = await this.orgService.getAccessibleSpace(userId, dto.spaceId)
     const existing = await this.workModel.findOne({ workflowId: workflow._id })
-    if (existing) return this.findOne(userId, existing._id.toString())
+    if (existing) {
+      await this.createTrustedVersion(userId, existing._id.toString(), dto.workflowId)
+      return this.findOne(userId, existing._id.toString())
+    }
     const nodes = await this.workflowNodeModel.find({ workflowId: dto.workflowId }).sort({
       createdAt: 1,
     })
@@ -134,6 +143,11 @@ export class WorksService {
         imageUrl: trustedImageUrl,
         objectKey: workObjectKey,
         sourceWorkflowId: workflow._id,
+        sourceObjectKey: trustedObjectKey,
+        sourceRunVersion: workflow.runVersion,
+        sourceRevisionId: result.revision?.id,
+        promptPlan: result.prompt,
+        feedback: result.revision?.feedback,
         nodesSnapshot,
         qualityReport: result.finalEvaluation,
         createdBy: new Types.ObjectId(userId),
@@ -223,9 +237,27 @@ export class WorksService {
     }
     const source = await this.storageService.getObject(sourceKey)
     if (source.contentType !== 'image/png') throw new BadRequestException('工作流成片不是有效 PNG')
+    const sourceFilter = {
+      workId: work._id,
+      sourceWorkflowId: workflow._id,
+      sourceObjectKey: sourceKey,
+    }
+    const duplicate = await this.workVersionModel.findOne(sourceFilter)
+    if (duplicate) return duplicate
     const latest = await this.workVersionModel.findOne({ workId: work._id }).sort({ versionNo: -1 })
-    const versionNo = (latest?.versionNo || 0) + 1
-    // 并发版本写入不能覆盖同名对象，数据库唯一索引仍负责版本号冲突。
+    if (!latest) throw new ConflictException('作品初始版本正在保存，请稍后重试')
+    // 为旧作品补齐计数，再原子分配版本号；并发请求不能取得同一个号码。
+    await this.workModel.updateOne(
+      { _id: work._id },
+      { $max: { versionCounter: latest.versionNo } },
+    )
+    const allocated = await this.workModel.findOneAndUpdate(
+      { _id: work._id, ...personalCreatorFilter(userId) },
+      { $inc: { versionCounter: 1 } },
+      { new: true },
+    )
+    if (!allocated) throw new NotFoundException('作品不存在或无权访问')
+    const versionNo = allocated.versionCounter
     const objectKey = `works/${userId}/${work._id.toString()}/versions/${versionNo}-${randomUUID()}.png`
     await this.storageService.uploadObject({
       key: objectKey,
@@ -247,17 +279,31 @@ export class WorksService {
         imageUrl,
         objectKey,
         sourceWorkflowId: workflow._id,
+        sourceObjectKey: sourceKey,
+        sourceRunVersion: workflow.runVersion,
+        sourceRevisionId: result.revision?.id,
+        promptPlan: result.prompt,
+        feedback: result.revision?.feedback,
         nodesSnapshot,
         qualityReport: result.finalEvaluation,
         createdBy: new Types.ObjectId(userId),
       })
       createdVersion = version
-      work.finalImageUrl = imageUrl
-      work.objectKey = objectKey
-      work.workflowId = workflow._id
-      work.nodesSnapshot = nodesSnapshot
-      work.qualityReport = result.finalEvaluation as unknown as Record<string, unknown>
-      await work.save()
+      await this.workModel.updateOne(
+        {
+          _id: work._id,
+          $or: [{ currentVersionNo: { $lt: versionNo } }, { currentVersionNo: { $exists: false } }],
+        },
+        {
+          $set: {
+            finalImageUrl: imageUrl,
+            objectKey,
+            nodesSnapshot,
+            qualityReport: result.finalEvaluation,
+            currentVersionNo: versionNo,
+          },
+        },
+      )
       return version
     } catch (error) {
       if (createdVersion) await this.workVersionModel.deleteOne({ _id: createdVersion._id })
@@ -268,6 +314,10 @@ export class WorksService {
           '作品版本写入失败后的对象清理失败',
           cleanupError instanceof Error ? cleanupError.stack : undefined,
         )
+      }
+      if (error && typeof error === 'object' && Reflect.get(error, 'code') === 11000) {
+        const completed = await this.workVersionModel.findOne(sourceFilter)
+        if (completed) return completed
       }
       throw error
     }
@@ -309,17 +359,19 @@ export class WorksService {
     return version
   }
 
-  async export(userId: string, id: string, dto: ExportWorkDto) {
+  async export(userId: string, id: string, dto: ExportWorkDto, versionId?: string) {
     const format = dto.format || 'png'
     if (format !== 'png') {
       throw new BadRequestException('V1.0 暂仅支持 PNG 导出')
     }
 
     const work = await this.findAccessibleWork(userId, id)
-    this.assertWorkObject(work, work.objectKey)
-    await this.assertPngExport(work.objectKey)
-    const fileName = `${this.sanitizeFileName(work.title)}.png`
-    const downloadUrl = await this.storageService.getSignedUrl(work.objectKey, {
+    const version = versionId ? await this.findVersion(userId, id, versionId) : undefined
+    const objectKey = version?.objectKey ?? work.objectKey
+    this.assertWorkObject(work, objectKey)
+    await this.assertPngExport(objectKey)
+    const fileName = `${this.sanitizeFileName(work.title)}${version ? `-V${version.versionNo}` : ''}.png`
+    const downloadUrl = await this.storageService.getSignedUrl(objectKey, {
       expiresIn: 60 * 10,
       downloadName: fileName,
     })
@@ -333,13 +385,15 @@ export class WorksService {
       fileName,
       downloadUrl,
       metadata: {
-        objectKey: work.objectKey,
+        objectKey,
+        versionId: version?._id,
         visibility: work.visibility,
       },
     })
 
     return {
       workId: work._id,
+      versionId: version?._id,
       exportLogId: log._id,
       format,
       fileName,

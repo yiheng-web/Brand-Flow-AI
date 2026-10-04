@@ -1,4 +1,5 @@
 import type { FinalEvaluationResult } from '@brand-flow/contracts'
+import type { PromptPlan, OptimizationFeedback } from '@brand-flow/contracts'
 import apiClient from './index'
 
 export interface WorkVersionData {
@@ -6,6 +7,13 @@ export interface WorkVersionData {
   versionNo: number
   imageUrl: string
   createdAt?: string
+  objectKey?: string
+  qualityReport?: FinalEvaluationResult
+  promptPlan?: PromptPlan
+  feedback?: OptimizationFeedback
+  sourceRevisionId?: string
+  sourceRunVersion?: number
+  nodesSnapshot?: Record<string, unknown>
 }
 export interface WorkData {
   _id: string
@@ -36,8 +44,13 @@ export const getWorks = (spaceId: string): Promise<WorkData[]> =>
 export const getWork = (id: string): Promise<WorkData> => apiClient.get(`/works/${id}`)
 export const deleteWork = (id: string): Promise<{ success: true }> =>
   apiClient.delete(`/works/${id}`)
-export const exportWork = (id: string): Promise<{ fileName: string; downloadUrl: string }> =>
-  apiClient.post(`/works/${id}/export`, { format: 'png' })
+export const exportWork = (
+  id: string,
+  versionId?: string,
+): Promise<{ fileName: string; downloadUrl: string }> =>
+  apiClient.post(versionId ? `/works/${id}/versions/${versionId}/export` : `/works/${id}/export`, {
+    format: 'png',
+  })
 export const createTrustedWorkVersion = (
   id: string,
   workflowId: string,

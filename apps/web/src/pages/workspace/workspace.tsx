@@ -29,7 +29,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ReactFlowProvider } from 'reactflow'
 
-import { createTrustedWorkVersion, createWork, exportWork, updateWorkFavorite } from '@/api/works'
+import { createWork, exportWork, updateWorkFavorite } from '@/api/works'
 import {
   getWorkflowDetail,
   optimizeWorkflow,
@@ -44,6 +44,8 @@ import { createAuthEventSource } from '@/utils/sse'
 
 import FlowView from './components/FlowView'
 import ArtTextComposer from './components/ArtTextComposer'
+import RenderErrorBoundary from '@/components/RenderErrorBoundary'
+import QualityReport from '@/components/QualityReport'
 import CandidateDownloadButton from './components/CandidateDownloadButton'
 import BriefReviewPanel from './components/BriefReviewPanel'
 import CreativeDirectionPanel from './components/CreativeDirectionPanel'
@@ -99,6 +101,7 @@ export default function Workspace() {
   const [selectedNodeId, setSelectedNodeId] = useState<FlowNodeId>('brief')
   const [submitting, setSubmitting] = useState(false)
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
+  const [runVersion, setRunVersion] = useState(0)
   const [workflowSpaceId, setWorkflowSpaceId] = useState(currentSpaceId)
   const [needsComposition, setNeedsComposition] = useState<boolean | undefined>()
   const [awaitingAction, setAwaitingAction] = useState<string | undefined>()
@@ -110,7 +113,7 @@ export default function Workspace() {
   const [feedbackInstruction, setFeedbackInstruction] = useState('')
   const connectionRef = useRef<{ close: () => void } | null>(null)
   const recoverRef = useRef<(workflowId: string) => Promise<void>>(async () => undefined)
-  const lastSnapshotRef = useRef<{ id: string; sequence: number } | null>(null)
+  const lastSnapshotRef = useRef<{ id: string; sequence: number; runVersion: number } | null>(null)
   const initializedWorkflowRef = useRef<string | null>(null)
   const autoSaveWorkflowRef = useRef<string | null>(null)
   const userPrompt = navState?.prompt || workflowPrompt
@@ -121,9 +124,14 @@ export default function Workspace() {
       const previous = lastSnapshotRef.current
       if (previous?.id === detail.workflow.id && detail.workflow.eventSequence < previous.sequence)
         return
-      lastSnapshotRef.current = { id: detail.workflow.id, sequence: detail.workflow.eventSequence }
+      lastSnapshotRef.current = {
+        id: detail.workflow.id,
+        sequence: detail.workflow.eventSequence,
+        runVersion: detail.workflow.runVersion,
+      }
       setError(detail.workflow.errorMessage ?? null)
       setStatus(detail.workflow.status)
+      setRunVersion(detail.workflow.runVersion)
       setWorkflowSpaceId(detail.workflow.spaceId)
       setNeedsComposition(
         detail.workflow.result?.brief?.needsComposition ?? detail.workflow.needsComposition,
@@ -335,11 +343,6 @@ export default function Workspace() {
   }
   const saveWork = useCallback(async (): Promise<string | null> => {
     if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return null
-    if (savedWorkId) {
-      await createTrustedWorkVersion(savedWorkId, workflowId)
-      message.success('作品新版本已保存')
-      return savedWorkId
-    }
     const work = await createWork({
       title: userPrompt.slice(0, 40) || '未命名作品',
       spaceId: workflowSpaceId,
@@ -356,9 +359,11 @@ export default function Workspace() {
       },
     })
     if (useWorkflowStore.getState().workflowId === workflowId) setSavedWorkId(work._id)
-    message.success('作品与初始版本已保存')
+    message.success('作品版本已保存')
     return work._id
-  }, [nodeStreamData, result, savedWorkId, userPrompt, workflowId, workflowSpaceId])
+  }, [nodeStreamData, result, userPrompt, workflowId, workflowSpaceId])
+
+  const completedRunKey = `${workflowId}:${runVersion}`
 
   useEffect(() => {
     if (
@@ -366,11 +371,11 @@ export default function Workspace() {
       lastSnapshotRef.current?.id !== workflowId ||
       !workflowId ||
       !result?.finalEvaluation?.passed ||
-      autoSaveWorkflowRef.current === workflowId
+      autoSaveWorkflowRef.current === completedRunKey
     ) {
       return
     }
-    autoSaveWorkflowRef.current = workflowId
+    autoSaveWorkflowRef.current = completedRunKey
     setAutoSaveFailed(false)
     void saveWork()
       .then((workId) => {
@@ -381,7 +386,7 @@ export default function Workspace() {
         setAutoSaveFailed(true)
         message.error('工作流已完成，但作品自动保存失败，请重试')
       })
-  }, [result?.finalEvaluation?.passed, saveWork, workflowId, workflowStatus])
+  }, [completedRunKey, result?.finalEvaluation?.passed, saveWork, workflowId, workflowStatus])
   const formalExport = async () => {
     if (!savedWorkId) return
     const exported = await exportWork(savedWorkId)
@@ -449,7 +454,7 @@ export default function Workspace() {
           {autoSaveFailed && !savedWorkId && (
             <Button
               onClick={() => {
-                autoSaveWorkflowRef.current = workflowId
+                autoSaveWorkflowRef.current = completedRunKey
                 setAutoSaveFailed(false)
                 void saveWork()
                   .then((workId) => {
@@ -521,17 +526,21 @@ export default function Workspace() {
               />
             </ReactFlowProvider>
             {selectedNodeId === 'compose' &&
+              needsComposition !== false &&
               workflowId &&
               baseCandidate &&
               workflowStatus !== 'cancelled' && (
                 <div className={styles.composerOverlay}>
-                  <ArtTextComposer
-                    key={baseCandidate.id}
-                    workflowId={workflowId}
-                    baseCandidate={baseCandidate}
-                    draft={result?.compositionDraft}
-                    onChanged={() => recover(workflowId)}
-                  />
+                  <RenderErrorBoundary key={baseCandidate.id}>
+                    <ArtTextComposer
+                      key={baseCandidate.id}
+                      workflowId={workflowId}
+                      baseCandidate={baseCandidate}
+                      draft={result?.compositionDraft}
+                      references={result?.references}
+                      onChanged={() => recover(workflowId)}
+                    />
+                  </RenderErrorBoundary>
                 </div>
               )}
           </div>
@@ -549,6 +558,12 @@ export default function Workspace() {
             </div>
           </div>
           <div className={styles.inspectorContent}>
+            {result?.finalEvaluation && selectedNodeId !== 'finalEvaluation' && (
+              <QualityReport
+                report={result.finalEvaluation}
+                onOptimize={() => setSelectedNodeId('generate')}
+              />
+            )}
             <div className={styles.inspectorPanel}>
               <StatusBadge
                 status={NODE_STATUS_MAP[nodeExecStatuses[selectedNodeId]] ?? 'unconfigured'}
@@ -667,6 +682,11 @@ export default function Workspace() {
                     </p>
                   </Modal>
                 </>
+              ) : selectedNodeId === 'finalEvaluation' && result?.finalEvaluation ? (
+                <QualityReport
+                  report={result.finalEvaluation}
+                  onOptimize={() => setSelectedNodeId('generate')}
+                />
               ) : (
                 <pre className={styles.outputPreview}>
                   {JSON.stringify(selectedOutput || {}, null, 2)}

@@ -149,6 +149,39 @@ describe('Works 对象归属', () => {
     expect(storage.deleteObject).toHaveBeenCalledWith(ownKey)
   })
 
+  it('指定版本导出使用该版本对象和文件名，不使用当前版本', async () => {
+    Reflect.set(service, 'exportLogModel', {
+      create: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }),
+    })
+    Reflect.set(
+      storage,
+      'getObjectPrefix',
+      jest.fn().mockResolvedValue({
+        contentType: 'image/png',
+        bytes: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      }),
+    )
+    const versionId = new Types.ObjectId()
+    versions.findOne.mockResolvedValue({ _id: versionId, versionNo: 1, objectKey: ownKey })
+    storage.getSignedUrl.mockResolvedValue('version-download')
+    await expect(
+      service.export(a, workId.toString(), { format: 'png' }, versionId.toString()),
+    ).resolves.toMatchObject({ versionId, fileName: '咖啡作品-V1.png' })
+    expect(versions.findOne).toHaveBeenCalledWith({ _id: versionId.toString(), workId })
+    expect(storage.getSignedUrl).toHaveBeenCalledWith(ownKey, {
+      expiresIn: 600,
+      downloadName: '咖啡作品-V1.png',
+    })
+  })
+
+  it('其他作品的版本不能借当前作品导出', async () => {
+    versions.findOne.mockResolvedValue(null)
+    await expect(
+      service.export(a, workId.toString(), { format: 'png' }, new Types.ObjectId().toString()),
+    ).rejects.toBeInstanceOf(NotFoundException)
+    expect(storage.getSignedUrl).not.toHaveBeenCalled()
+  })
+
   it('可信工作流中混入 B 的对象也不可引用', async () => {
     workflows.findOne.mockResolvedValue({
       status: 'completed',

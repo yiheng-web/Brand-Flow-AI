@@ -73,6 +73,15 @@
   overflow: auto;
 }
 
+.canvasHost {
+  width: 100%;
+  min-height: 120px;
+}
+
+.canvasHost :global(.canvas-container) {
+  margin: auto;
+}
+
 .confirmBar {
   padding: 14px 16px;
   border-radius: 12px;

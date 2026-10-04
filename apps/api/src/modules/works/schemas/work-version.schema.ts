@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, Schema as MongooseSchema, Types } from 'mongoose'
 
 export type WorkVersionDocument = WorkVersion &
   Document & {
@@ -9,7 +9,7 @@ export type WorkVersionDocument = WorkVersion &
 
 @Schema({ timestamps: true })
 export class WorkVersion {
-  @Prop({ type: Types.ObjectId, ref: 'Work', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Work', required: true, index: true })
   workId!: Types.ObjectId
 
   @Prop({ required: true })
@@ -21,18 +21,37 @@ export class WorkVersion {
   @Prop()
   objectKey?: string
 
-  @Prop({ type: Types.ObjectId, ref: 'Workflow', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Workflow', index: true })
   sourceWorkflowId?: Types.ObjectId
 
   @Prop({ type: Object })
-  nodesSnapshot?: Record<string, any>
+  nodesSnapshot?: Record<string, unknown>
 
   @Prop({ type: Object })
-  qualityReport?: Record<string, any>
+  qualityReport?: Record<string, unknown>
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop()
+  sourceObjectKey?: string
+
+  @Prop({ type: Number })
+  sourceRunVersion?: number
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'WorkflowRevision' })
+  sourceRevisionId?: Types.ObjectId
+
+  @Prop({ type: Object })
+  promptPlan?: Record<string, unknown>
+
+  @Prop({ type: Object })
+  feedback?: Record<string, unknown>
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   createdBy!: Types.ObjectId
 }
 
 export const WorkVersionSchema = SchemaFactory.createForClass(WorkVersion)
 WorkVersionSchema.index({ workId: 1, versionNo: 1 }, { unique: true })
+WorkVersionSchema.index(
+  { workId: 1, sourceWorkflowId: 1, sourceObjectKey: 1 },
+  { unique: true, partialFilterExpression: { sourceObjectKey: { $type: 'string' } } },
+)

@@ -43,6 +43,23 @@ const createService = () => {
 }
 
 describe('WorkflowService.start', () => {
+  it('读取历史 Revision 刷新成片链接，但不改写持久化结果', async () => {
+    const { service, workflowModel } = createService()
+    const workflow = createWorkflow('completed')
+    workflowModel.findOne.mockResolvedValue(workflow)
+    const objectKey = `workflows/${workflow.userId}/${workflow._id}/runs/4/composition/final.png`
+    const result = { compose: { objectKey, finalImageUrl: 'expired' }, finalImageUrl: 'expired' }
+    const revision = { result, toObject: () => ({ result }) }
+    const find = jest.fn(() => ({ sort: jest.fn().mockResolvedValue([revision]) }))
+    Reflect.set(service, 'workflowRevisionModel', { find })
+    const getSignedUrl = jest.fn().mockResolvedValue('fresh-signed')
+    Reflect.set(service, 'storageService', { getSignedUrl })
+    const revisions = await service.getRevisions(workflow._id.toString(), workflow.userId)
+    expect(revisions[0].result?.finalImageUrl).toBe('fresh-signed')
+    expect(getSignedUrl).toHaveBeenCalledWith(objectKey)
+    expect(result.finalImageUrl).toBe('expired')
+    expect(result.compose.finalImageUrl).toBe('expired')
+  })
   it('未选择最终候选时仍可下载指定预览候选，拒绝他人和过期候选', async () => {
     const { service, workflowModel } = createService()
     const workflow = createWorkflow('awaiting_user')
