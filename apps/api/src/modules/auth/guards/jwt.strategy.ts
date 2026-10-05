@@ -27,13 +27,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.userModel.findById(payload.sub)
     if (!user || user.status !== 'active') throw new UnauthorizedException('账号不存在或已停用')
     const membership = user.memberships.find(
-      (item) => item.enterpriseId.toString() === payload.entId,
+      (item) => !item.teamId && item.enterpriseId.toString() === payload.entId,
     )
-    if (payload.entId && !membership) throw new UnauthorizedException('企业身份已失效')
+    // 退出组织只撤销企业上下文，账号仍可使用个人空间与邀请中心。
     return {
       sub: payload.sub,
       email: user.email,
-      entId: payload.entId,
+      entId: membership ? payload.entId : undefined,
       role: membership?.role ?? null,
     }
   }

@@ -10,7 +10,7 @@ export type { SpaceType } from '@brand-flow/contracts'
  */
 
 import { create } from 'zustand'
-import type { EnterpriseData } from '@/api/org'
+import { getMyEnterprises, getMySpaces, type EnterpriseData, type SpaceData } from '@/api/org'
 
 /** 空间类型 */
 
@@ -25,11 +25,24 @@ export interface SpaceItem {
   enterpriseId?: string
 }
 
+export function normalizeSpaces(spaces: SpaceData[]): SpaceItem[] {
+  return spaces.map((space) => ({
+    id: space.spaceId,
+    name: space.name,
+    type: space.type,
+    enterpriseId: space.enterpriseId,
+    permissions: space.permissions,
+    description:
+      space.description || (space.type === 'personal' ? '作品和知识归你所有' : '组织协作空间'),
+  }))
+}
+
 interface UserState {
+  refreshOrganizations: () => Promise<void>
   // ---- 企业相关（保留兼容）----
   currentEnterpriseId: string | null
   enterprises: EnterpriseData[]
-  setCurrentEnterpriseId: (enterpriseId: string) => void
+  setCurrentEnterpriseId: (enterpriseId: string | null) => void
   setEnterprises: (enterprises: EnterpriseData[]) => void
 
   // ---- 空间相关（新增）----
@@ -47,18 +60,25 @@ interface UserState {
   setCurrentSpace: (spaceId: string) => void
 }
 
-export const useUserStore = create<UserState>((set) => ({
+export const useUserStore = create<UserState>((set, get) => ({
+  refreshOrganizations: async () => {
+    const [enterprises, spaces] = await Promise.all([getMyEnterprises(), getMySpaces()])
+    get().setEnterprises(enterprises)
+    get().setSpaces(normalizeSpaces(spaces))
+  },
   // ---- 企业状态 ----
   currentEnterpriseId: null,
   enterprises: [],
   setCurrentEnterpriseId: (enterpriseId) => set({ currentEnterpriseId: enterpriseId }),
   setEnterprises: (enterprises) => {
-    set({ enterprises })
-    if (enterprises.length > 0) {
-      set((state) => ({
-        currentEnterpriseId: state.currentEnterpriseId || enterprises[0].enterpriseId,
-      }))
-    }
+    set((state) => ({
+      enterprises,
+      currentEnterpriseId: enterprises.some(
+        (item) => item.enterpriseId === state.currentEnterpriseId,
+      )
+        ? state.currentEnterpriseId
+        : (enterprises[0]?.enterpriseId ?? null),
+    }))
   },
 
   // ---- 空间状态 ----
@@ -67,15 +87,18 @@ export const useUserStore = create<UserState>((set) => ({
   currentSpaceType: 'personal',
   spaces: [],
   setSpaces: (spaces) => {
-    set({ spaces })
-    // 自动选中第一个空间（如果还没有）
-    if (spaces.length > 0) {
-      set((state) => ({
-        currentSpaceId: state.currentSpaceId || spaces[0].id,
-        currentSpaceName: state.currentSpaceId ? state.currentSpaceName : spaces[0].name,
-        currentSpaceType: state.currentSpaceId ? state.currentSpaceType : spaces[0].type,
-      }))
-    }
+    set((state) => {
+      const space =
+        spaces.find((item) => item.id === state.currentSpaceId) ??
+        spaces.find((item) => item.type === 'personal') ??
+        spaces[0]
+      return {
+        spaces,
+        currentSpaceId: space?.id ?? null,
+        currentSpaceName: space?.name ?? '个人空间',
+        currentSpaceType: space?.type ?? 'personal',
+      }
+    })
   },
   setCurrentSpace: (spaceId) => {
     set((state) => {

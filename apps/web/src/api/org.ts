@@ -1,7 +1,15 @@
 // 组织 / 企业 / 团队 / 空间管理
 import apiClient from './index'
 
-import type { RoleValue as Role, SpaceType, SpacePermissions } from '@brand-flow/contracts'
+import type {
+  RoleValue as Role,
+  SpaceType,
+  SpacePermissions,
+  CreateInvitationResult,
+  InvitationData,
+  EnterpriseStatus,
+  TeamStatus,
+} from '@brand-flow/contracts'
 export type { RoleValue as Role, SpaceType } from '@brand-flow/contracts'
 
 // 创建企业请求参数
@@ -15,8 +23,9 @@ export interface EnterpriseData {
   enterpriseId: string
   name: string
   logo?: string
-  status: string
+  status: EnterpriseStatus
   role: Role
+  permissions: SpacePermissions
 }
 
 // 切换企业结果
@@ -28,6 +37,7 @@ export interface SwitchEnterpriseResult {
 
 // 创建团队请求参数
 export interface CreateTeamParams {
+  enterpriseId?: string
   name: string
   description?: string
 }
@@ -40,6 +50,9 @@ export interface TeamData {
   description?: string
   createdAt?: string
   updatedAt?: string
+  status: TeamStatus
+  role: Role
+  permissions: SpacePermissions
 }
 
 // 空间数据（后端 GET /org/spaces 返回）
@@ -94,7 +107,7 @@ export async function getSpaceMembers(spaceId: string): Promise<SpaceMemberData[
 export async function inviteSpaceMember(
   spaceId: string,
   params: InviteSpaceMemberParams,
-): Promise<{ success: boolean; spaceId: string; userId: string; email: string; role: Role }> {
+): Promise<CreateInvitationResult> {
   return apiClient.post(`/org/spaces/${spaceId}/invitations`, params)
 }
 
@@ -104,6 +117,51 @@ export async function createTeam(params: CreateTeamParams) {
 }
 
 // 获取当前企业下的团队列表
-export async function getTeams(): Promise<TeamData[]> {
-  return apiClient.get('/org/teams')
+export async function getTeams(enterpriseId?: string): Promise<TeamData[]> {
+  return apiClient.get('/org/teams', { params: { enterpriseId } })
+}
+
+export function updateEnterprise(
+  id: string,
+  params: Partial<CreateEnterpriseParams> & { status?: 'active' | 'disabled' },
+) {
+  return apiClient.put(`/org/enterprise/${id}`, params)
+}
+
+export function updateTeam(
+  id: string,
+  params: Partial<Omit<CreateTeamParams, 'enterpriseId'>> & { status?: 'active' | 'archived' },
+) {
+  return apiClient.put(`/org/team/${id}`, params)
+}
+
+export function deleteTeam(id: string) {
+  return apiClient.delete(`/org/team/${id}`)
+}
+
+export function changeMemberRole(spaceId: string, userId: string, role: Role) {
+  return apiClient.put(`/org/spaces/${spaceId}/members/${userId}`, { role })
+}
+
+export function removeMember(spaceId: string, userId: string) {
+  return apiClient.delete(`/org/spaces/${spaceId}/members/${userId}`)
+}
+
+export function leaveSpace(spaceId: string) {
+  return apiClient.post(`/org/spaces/${spaceId}/leave`)
+}
+
+export function transferOwner(enterpriseId: string, targetUserId: string) {
+  return apiClient.put(`/org/enterprise/${enterpriseId}/owner`, { targetUserId })
+}
+
+export function getInvitations(direction: 'received' | 'sent'): Promise<InvitationData[]> {
+  return apiClient.get('/org/invitations', { params: { direction } })
+}
+
+export function respondInvitation(
+  id: string,
+  action: 'accept' | 'reject' | 'cancel',
+): Promise<InvitationData> {
+  return apiClient.post(`/org/invitations/${id}/${action}`, {})
 }

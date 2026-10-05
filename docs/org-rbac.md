@@ -8,7 +8,7 @@
 - TeamMembership：User.memberships 中包含 `teamId` 的条目；权限必须同时匹配团队及其真实企业。
 - SpaceRef：contracts 中的 personal（ownerId）、team（enterpriseId + teamId）、enterprise（enterpriseId）联合类型。
 
-保持嵌入式成员存储，不新增 collection，不需要数据迁移。历史仅有团队 membership 的用户，
+V2.1 使用嵌入式成员存储；V2.2 新增 Invitation collection，并修正组织 ObjectId Schema，升级迁移见 [组织生命周期](org-lifecycle.md)。历史仅有团队 membership 的用户，
 企业权限按 VIEWER 解释，不能把团队管理员角色当成企业管理员。
 
 ## 权限矩阵
@@ -28,12 +28,11 @@ membership 才能访问团队。企业 VIEWER 即使持有历史团队 ADMIN/OWN
 任何角色都不能穿透其他企业。个人空间不允许成员邀请或任务分配。
 
 创建企业时初始化首位 OWNER；创建团队时记录创建者的团队 ADMIN 角色。邀请路径对所有操作者
-拒绝授予 OWNER，包括 OWNER 本人；所有权变更只能由 OWNER 通过专门转移路径处理，当前不开放
-所有权变更入口。任务分配仅提供 Policy 方法，具体任务接口属于后续阶段。
+拒绝授予 OWNER，包括 OWNER 本人；所有权变更只能由 OWNER 通过专门转移路径处理；V2.2 已开放企业 OWNER 转移入口。任务分配仅提供 Policy 方法，具体任务接口属于后续阶段。
 
 ## 服务端边界
 
-AuthorizationService 导出七个空间权限断言。Org、Assets、Workflow、Knowledge、Works 均复用
+AuthorizationService 导出资源与组织生命周期权限断言。Org、Assets、Workflow、Knowledge、Works 均复用
 该 Policy；JWT 中的角色和前端按钮不作为服务端授权依据。
 
 - Workflow 详情、版本、下载、SSE 为读取；创建、启动、确认、修改、重跑、取消、重试必须有写权限。
@@ -46,7 +45,7 @@ AuthorizationService 导出七个空间权限断言。Org、Assets、Workflow、
 ## 契约与客户端
 
 `GET /org/spaces` 在原字段上增加 `permissions`，由后端 Policy 计算；包括 `read/write`、
-`manageMembers/manageKnowledge/manageAssets/manageWorks/assignTasks`。角色仍使用小写既有值。
+`manageMembers/manageKnowledge/manageAssets/manageWorks/assignTasks/manageOrganization/transferOwnership`。角色仍使用小写既有值。
 Web 空间 Store 保留此结果，组织、素材、知识库、作品和工作流写入口按相应权限禁用。
 缺少权限结果时默认禁用写入口；服务端仍会重新检查 DB 成员关系。
 

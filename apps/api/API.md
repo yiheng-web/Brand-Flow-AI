@@ -8,9 +8,9 @@
 ## V2.1 组织权限契约
 
 `GET /org/spaces` 保持原有空间字段，并增加后端计算的 `permissions` 对象：
-`read`、`write`、`manageMembers`、`manageKnowledge`、`manageAssets`、`manageWorks`、`assignTasks`。
+`read`、`write`、`manageMembers`、`manageKnowledge`、`manageAssets`、`manageWorks`、`assignTasks`、`manageOrganization`、`transferOwnership`。
 企业 OWNER/ADMIN 可管理本企业团队；其他角色必须有显式团队成员关系。VIEWER 只读。
-所有邀请均禁止授予 OWNER，返回 403；团队邀请要求目标用户已属于团队所在企业。
+所有邀请均禁止授予 OWNER，返回 403；团队邀请支持未注册邮箱，接受时补齐最低必要的企业 MEMBER/VIEWER 关系。
 素材 public 不绕过权限或租户限制，ownerType 与 visibility 必须匹配。
 完整模型与矩阵见 [组织 RBAC](../../docs/org-rbac.md)，拒绝测试示例见
 [org-rbac.http](rest-client/org-rbac.http)。前端权限结果仅用于界面，后端每次以 DB 关系重新授权。
@@ -105,47 +105,40 @@ interface UserInfo {
 
 ### 组织与团队模块 (/org)
 
-- **`POST /org/enterprise`**
-  - **Body**:
-    ```typescript
-    {
-      name: string,     // 企业名称，长度 <= 50
-      logo?: string     // 企业 Logo 图片的 URL（选填）
-    }
-    ```
+所有路由需 JWT。角色和租户从数据库重查，不信任客户端角色或旧 JWT。
 
-- **`GET /org/enterprises`**
-  - **返回 Data**:
-    ```typescript
-    Array<{
-      id: string // 企业唯一 ID
-      name: string // 企业名称
-      logo?: string // 企业 Logo URL（选填）
-    }>
-    ```
+| 方法与路径                                    | 入参                                            | 返回 Data / 约束                                                                                                  |
+| --------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| POST `/org/enterprise`                        | `{name, logo?}`                                 | Enterprise 文档（`_id/name/logo/status/membershipVersion`）；同事务创建 OWNER；`ORG_MAX_OWNED_ENTERPRISES` 默认 5 |
+| GET `/org/enterprises`                        | 无                                              | `{enterpriseId,name,logo?,status,role,permissions}[]`，包括已停用企业                                             |
+| GET `/org/enterprise/:id`                     | 企业 ID                                         | 同上单个企业；成员可查看组织资料                                                                                  |
+| PUT `/org/enterprise/:id`                     | `{name?,logo?,status?:active\|disabled}`        | 更新后的 Enterprise 文档；OWNER/ADMIN；停用保留资源并阻止业务访问，仍可恢复                                       |
+| PUT `/org/enterprise/:id/switch`              | 企业 ID                                         | `{success,currentEnterpriseId,access_token}`；仅活动企业                                                          |
+| PUT `/org/enterprise/:id/owner`               | `{targetUserId}`                                | `{success:true}`；仅 OWNER，目标必须为已有企业成员且未超拥有额度；原 OWNER 降为 ADMIN                             |
+| POST `/org/team`                              | `{enterpriseId?,name,description?}`             | Team 文档（`_id/enterpriseId/name/description/status`）；缺省企业取 JWT，上述企业仍须数据库授权                   |
+| GET `/org/teams`                              | `enterpriseId?`（query）                        | Team 文档与 `role/permissions` 数组；管理者查看全部，其他成员只看所属团队；包含归档团队                           |
+| GET `/org/team/:id`                           | 团队 ID                                         | Team 文档与 `role/permissions`；验证真实所属企业                                                                  |
+| PUT `/org/team/:id`                           | `{name?,description?,status?:active\|archived}` | 更新后的 Team 文档；团队管理权限；不可变更 enterpriseId                                                           |
+| DELETE `/org/team/:id`                        | 团队 ID                                         | 归档后的 Team 文档；软删除，不删除知识库、作品、素材或成员                                                        |
+| GET `/org/spaces`                             | 无                                              | 原空间字段与服务端 `permissions`；不返回停用企业/归档团队                                                         |
+| GET `/org/spaces/:spaceId/members`            | 空间 ID                                         | `{userId,email,nickname?,avatar?,role}[]`                                                                         |
+| PUT `/org/spaces/:spaceId/members/:userId`    | `{role:admin\|member\|viewer}`                  | `{success:true}`；ADMIN 只能操作普通成员并授予 MEMBER/VIEWER；OWNER 不能经此路径降级                              |
+| DELETE `/org/spaces/:spaceId/members/:userId` | 用户 ID                                         | `{success:true}`；移出企业同时移出该企业所有团队；不得移除 OWNER                                                  |
+| POST `/org/spaces/:spaceId/leave`             | 无                                              | `{success:true}`；只能退出本人；OWNER 必须先转移所有权                                                            |
+| POST `/org/spaces/:spaceId/invitations`       | `{email,role?:admin\|member\|viewer}`           | `{invitation:InvitationData,inviteCode}`；不直接加入；仅 OWNER 可授予 ADMIN                                       |
+| GET `/org/invitations`                        | `direction=received\|sent`，默认 received       | `InvitationData[]`；只查看本人邮箱收到/本人发出的邀请                                                             |
+| POST `/org/invitations/:id/accept`            | `{inviteCode?}`                                 | `InvitationData`；邮箱匹配且邀请人仍有授权；事务保存成员与 accepted 状态                                          |
+| POST `/org/invitations/:id/reject`            | `{inviteCode?}`                                 | `InvitationData`；邮箱匹配；拒绝不加成员                                                                          |
+| POST `/org/invitations/:id/cancel`            | 无                                              | `InvitationData`；本人发出的 pending 邀请且仍有管理权限                                                           |
 
-- **`PUT /org/enterprise/:id/switch`**
-  - **路径参数**: `id` (需要切换到的目标企业 ID)
-  - **返回 Data**: `{ success: boolean }` // 切换成功标识
+`InvitationData`：`id/spaceId/spaceName/enterpriseId/teamId?/inviterId/inviteeEmail/targetRole/status/expiresAt/canRespond/canCancel`。
+`status` 使用 contracts 的 `pending/accepted/rejected/expired/cancelled`；有效期 7 天，过期在读取和处理时持久化，保留历史。
+邀请只通过站内邀请中心送达，不发送邮件；已登录账号按邮箱验证即可处理，邀请码为可选附加校验，仅创建响应提供原文，数据库只存 SHA-256 哈希。
+同空间/邮箱的 pending 邀请唯一；重复创建 409；重复接受相同终态幂等，不会在退出后重新加入，也不覆盖后来调整的角色。
+邀请过期/撤销/已处理返回 409；操作无权限 403；其他账号的邀请 404；DTO/目标成员不合法 400。
+退出企业后旧 JWT 清除失效企业上下文，账号仍可使用个人空间；停用账号仍返回 401。
 
-- **`POST /org/team`** `[需 OWNER 或 ADMIN 角色]`
-  - **Body**:
-    ```typescript
-    {
-      name: string,           // 团队名称，长度 <= 50
-      description?: string    // 团队描述信息，长度 <= 200（选填）
-    }
-    ```
-
-- **`GET /org/teams`**
-  - **返回 Data**:
-    ```typescript
-    Array<{
-      id: string // 团队唯一 ID
-      name: string // 团队名称
-      description?: string // 团队描述信息（选填）
-    }>
-    ```
+部署需要 Mongo 副本集与旧组织 ID 迁移，详见 [组织生命周期与升级](../../docs/org-lifecycle.md)。
 
 ---
 

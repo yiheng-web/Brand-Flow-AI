@@ -82,10 +82,10 @@ describe('账号状态鉴权', () => {
     expect(findById).not.toHaveBeenCalled()
   })
 
-  it('撤销企业成员关系后旧企业 JWT 不再可用', async () => {
+  it('退出企业后旧 JWT 清除企业上下文，个人身份保留', async () => {
     findById.mockResolvedValue(user)
     await expect(
       strategy.validate({ sub: userId, entId: new Types.ObjectId().toString() }),
-    ).rejects.toBeInstanceOf(UnauthorizedException)
+    ).resolves.toMatchObject({ sub: userId, entId: undefined, role: null })
   })
 })

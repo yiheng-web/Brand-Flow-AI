@@ -11,7 +11,10 @@ export class Enterprise {
   @Prop()
   logo!: string
 
-  @Prop({ default: 'active' })
+  @Prop({ default: 0 })
+  membershipVersion!: number
+
+  @Prop({ enum: ['active', 'disabled'], default: 'active' })
   status!: string
 }
 

@@ -14,9 +14,12 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto) {
-    const { email, password, nickname } = registerDto
+    const { password, nickname } = registerDto
+    const email = registerDto.email.trim().toLowerCase()
 
-    const exists = await this.userModel.findOne({ email })
+    const exists = await this.userModel.findOne({
+      email: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+    })
     if (exists) {
       throw new BadRequestException('该邮箱已被注册')
     }
@@ -37,9 +40,14 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const { email, password } = loginDto
+    const { password } = loginDto
+    const email = loginDto.email.trim().toLowerCase()
 
-    const user = await this.userModel.findOne({ email }).select('+password')
+    const user = await this.userModel
+      .findOne({
+        email: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+      })
+      .select('+password')
     if (!user || user.status !== 'active') {
       throw new UnauthorizedException('邮箱或密码错误')
     }
@@ -50,7 +58,7 @@ export class AuthService {
     }
 
     const currentMembership = user.memberships.find(
-      (m) => m.enterpriseId.toString() === user.currentEnterpriseId?.toString(),
+      (m) => !m.teamId && m.enterpriseId.toString() === user.currentEnterpriseId?.toString(),
     )
 
     const payload = {

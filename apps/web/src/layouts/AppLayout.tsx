@@ -10,9 +10,9 @@ import {
 import { message } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
-import { getMySpaces, switchEnterprise, type SpaceData } from '@/api/org'
+import { getMySpaces, switchEnterprise } from '@/api/org'
 import { useAuthStore } from '@/store/useAuthStore'
-import { useUserStore, type SpaceItem } from '@/store/useUserStore'
+import { useUserStore, normalizeSpaces, type SpaceItem } from '@/store/useUserStore'
 
 import styles from './AppLayout.module.css'
 
@@ -24,6 +24,8 @@ interface NavigationItem {
 }
 
 const NAVIGATION_ITEMS: NavigationItem[] = [
+  { key: 'organization', label: '我的组织', path: '/organization', icon: <ApartmentOutlined /> },
+  { key: 'invitations', label: '邀请中心', path: '/invitations', icon: <UserOutlined /> },
   { key: 'home', label: '首页', path: '/home', icon: <HomeOutlined /> },
   { key: 'workspace', label: '节点流', path: '/workspace', icon: <ApartmentOutlined /> },
   { key: 'tasks', label: '创作任务', path: '/tasks', icon: <ApartmentOutlined /> },
@@ -39,35 +41,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/brand': '品牌资产',
   '/works': '作品空间',
   '/profile': '个人中心',
-  '/organization': '组织详情',
-}
-
-function normalizeSpaces(spaces: SpaceData[]): SpaceItem[] {
-  const items: SpaceItem[] = [
-    {
-      id: 'personal',
-      name: '个人空间',
-      type: 'personal',
-      description: '作品和知识归你所有',
-      permissions: spaces.find((space) => space.type === 'personal')?.permissions,
-    },
-  ]
-
-  for (const space of spaces) {
-    if (space.type === 'personal') continue
-    items.push({
-      id: space.spaceId,
-      permissions: space.permissions,
-      name: space.name,
-      type: space.type,
-      enterpriseId: space.enterpriseId,
-      description:
-        space.description ||
-        (space.type === 'team' ? '团队品牌知识与协作空间' : '企业统一规则与资产空间'),
-    })
-  }
-
-  return items
+  '/organization': '我的组织',
+  '/invitations': '邀请中心',
 }
 
 const AppLayout = () => {

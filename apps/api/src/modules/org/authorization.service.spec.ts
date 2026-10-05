@@ -14,7 +14,7 @@ describe('组织空间统一 RBAC', () => {
   const teamId = new Types.ObjectId().toString()
   const foreignEnterpriseId = new Types.ObjectId().toString()
   const foreignTeamId = new Types.ObjectId().toString()
-  const userModel = { findById: jest.fn(), findOne: jest.fn() }
+  const userModel = { findById: jest.fn(), findOne: jest.fn(), find: jest.fn() }
   const teamModel = { findById: jest.fn() }
   const enterpriseModel = { findById: jest.fn() }
   const policy = new AuthorizationService(
@@ -28,6 +28,9 @@ describe('组织空间统一 RBAC', () => {
     teamModel as never,
     {} as never,
     policy,
+    {} as never,
+    {} as never,
+    {} as never,
   )
   const model = { create: jest.fn(), findOne: jest.fn(), findByIdAndDelete: jest.fn() }
   const assets = new AssetsService(model as never, policy, {} as never, {} as never)
@@ -87,6 +90,8 @@ describe('组织空间统一 RBAC', () => {
           manageAssets: manager,
           manageWorks: write,
           assignTasks: type !== 'personal' && manager,
+          manageOrganization: type !== 'personal' && manager,
+          transferOwnership: type === 'enterprise' && expectedRole === Role.OWNER,
         })
         for (const [action, allowed] of [
           [policy.assertCanWriteSpace, write],
@@ -287,5 +292,14 @@ describe('组织空间统一 RBAC', () => {
     await expect(policy.assertCanReadSpace(userId, foreignTeamId)).rejects.toBeInstanceOf(
       ForbiddenException,
     )
+  })
+
+  it('团队成员列表要求同一 membership 同时匹配企业与团队', async () => {
+    member(Role.OWNER)
+    userModel.find.mockResolvedValue([])
+    await org.getSpaceMembers(userId, teamId)
+    expect(userModel.find).toHaveBeenCalledWith({
+      memberships: { $elemMatch: { enterpriseId: new Types.ObjectId(enterpriseId), teamId } },
+    })
   })
 })

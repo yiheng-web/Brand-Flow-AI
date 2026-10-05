@@ -1,14 +1,23 @@
-import { AuthorizationService } from './authorization.service'
-import { assertObjectId } from '@/common/personal-scope'
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { InjectModel } from '@nestjs/mongoose'
-import { Model, Types } from 'mongoose'
-import { Enterprise, EnterpriseDocument } from './schemas/enterprise.schema'
-import { User, UserDocument } from './schemas/user.schema'
-import { Team, TeamDocument } from './schemas/team.schema'
-import { Role } from '@/common/enums'
-import { CreateEnterpriseDto, CreateTeamDto, InviteSpaceMemberDto } from './dto/org.dto'
 import { JwtService } from '@nestjs/jwt'
+import { Model, Types } from 'mongoose'
+import { Role } from '@/common/enums'
+import { assertObjectId } from '@/common/personal-scope'
+import { AuthorizationService } from './authorization.service'
+import { MembershipService } from './membership.service'
+import { InvitationService } from './invitation.service'
+import type {
+  CreateEnterpriseDto,
+  CreateTeamDto,
+  InviteSpaceMemberDto,
+  UpdateEnterpriseDto,
+  UpdateTeamDto,
+} from './dto/org.dto'
+import { Enterprise, type EnterpriseDocument } from './schemas/enterprise.schema'
+import { User, type UserDocument } from './schemas/user.schema'
+import { Team, type TeamDocument } from './schemas/team.schema'
 
 interface PopulatedMembership {
   role: Role
@@ -24,34 +33,99 @@ export class OrgService {
     @InjectModel(Team.name) private teamModel: Model<TeamDocument>,
     private readonly jwtService: JwtService,
     readonly authorization: AuthorizationService,
+    readonly memberships: MembershipService,
+    readonly invitations: InvitationService,
+    private readonly config: ConfigService,
   ) {}
 
   async createEnterprise(userId: string, createDto: CreateEnterpriseDto) {
-    const { name, logo } = createDto
+    assertObjectId(userId)
+    const limit = Number(this.config.get('ORG_MAX_OWNED_ENTERPRISES', 5))
+    if (!Number.isInteger(limit) || limit < 1) throw new BadRequestException('企业创建上限配置无效')
+    return this.memberships.atomic(async (session) => {
+      const user = await this.userModel.findById(userId, null, { session })
+      if (!user) throw new NotFoundException('用户不存在')
+      if (
+        user.memberships.filter((item) => !item.teamId && item.role === Role.OWNER).length >= limit
+      )
+        throw new BadRequestException(`最多拥有 ${limit} 家企业`)
+      const name = createDto.name.trim()
+      if (await this.enterpriseModel.findOne({ name }, null, { session }))
+        throw new BadRequestException('该企业名称已被使用')
+      const [enterprise] = await this.enterpriseModel.create(
+        [{ ...createDto, name, status: 'active' }],
+        { session },
+      )
+      user.memberships.push({ enterpriseId: enterprise._id, role: Role.OWNER })
+      user.currentEnterpriseId = enterprise._id
+      await user.save({ session })
+      return enterprise
+    })
+  }
 
-    const exists = await this.enterpriseModel.findOne({ name })
-    if (exists) {
-      throw new BadRequestException('该企业名称已被使用')
+  async getEnterprise(userId: string, id: string) {
+    const space = await this.authorization.assertCanReadOrganization(userId, id)
+    if (space.spaceType !== 'enterprise') throw new BadRequestException('目标必须为企业')
+    const enterprise = await this.enterpriseModel.findById(id)
+    return {
+      enterpriseId: id,
+      name: enterprise!.name,
+      logo: enterprise!.logo,
+      status: enterprise!.status,
+      role: space.role,
+      permissions: space.permissions,
     }
+  }
 
-    // TODO: 后续若加入企业注册审核流，此处 status 可改为 'pending'
-    const enterprise = await this.enterpriseModel.create({
-      name,
-      logo,
-      status: 'active',
+  async updateEnterprise(userId: string, id: string, dto: UpdateEnterpriseDto) {
+    const initial = await this.authorization.assertCanManageOrganization(userId, id)
+    if (initial.spaceType !== 'enterprise') throw new BadRequestException('目标必须为企业')
+    return this.memberships.transaction(id, async (session) => {
+      await this.authorization.assertCanManageOrganization(userId, id, session)
+      const update = { ...dto, ...(dto.name !== undefined ? { name: dto.name.trim() } : {}) }
+      if (
+        dto.name &&
+        (await this.enterpriseModel.findOne({ _id: { $ne: id }, name: update.name }, null, {
+          session,
+        }))
+      )
+        throw new BadRequestException('该企业名称已被使用')
+      return this.enterpriseModel.findByIdAndUpdate(
+        id,
+        { $set: update },
+        { new: true, session, runValidators: true },
+      )
     })
+  }
 
-    await this.userModel.findByIdAndUpdate(userId, {
-      $push: {
-        memberships: {
-          enterpriseId: enterprise._id,
-          role: Role.OWNER,
-        },
-      },
-      currentEnterpriseId: enterprise._id,
+  async getTeam(userId: string, id: string) {
+    const space = await this.authorization.assertCanReadOrganization(userId, id)
+    if (space.spaceType !== 'team') throw new BadRequestException('目标必须为团队')
+    const team = await this.teamModel.findOne({ _id: id, enterpriseId: space.enterpriseId })
+    return { ...team!.toObject(), role: space.role, permissions: space.permissions }
+  }
+
+  async updateTeam(userId: string, id: string, dto: UpdateTeamDto) {
+    const initial = await this.authorization.assertCanManageOrganization(userId, id)
+    if (initial.spaceType !== 'team') throw new BadRequestException('目标必须为团队')
+    return this.memberships.transaction(initial.enterpriseId!, async (session) => {
+      const space = await this.authorization.assertCanManageOrganization(userId, id, session)
+      const update = { ...dto, ...(dto.name !== undefined ? { name: dto.name.trim() } : {}) }
+      if (
+        dto.name &&
+        (await this.teamModel.findOne(
+          { _id: { $ne: id }, enterpriseId: space.enterpriseId, name: update.name },
+          null,
+          { session },
+        ))
+      )
+        throw new BadRequestException('该企业下已存在同名团队')
+      return this.teamModel.findOneAndUpdate(
+        { _id: id, enterpriseId: space.enterpriseId },
+        { $set: update },
+        { new: true, session, runValidators: true },
+      )
     })
-
-    return enterprise
   }
 
   async getMyEnterprises(userId: string) {
@@ -71,7 +145,7 @@ export class OrgService {
     }
     return Promise.all(
       [...enterprises].map(async ([id, enterprise]) => ({
-        role: (await this.authorization.assertCanReadSpace(userId, id)).role,
+        ...(await this.authorization.assertCanReadOrganization(userId, id)),
         enterpriseId: id,
         name: enterprise.name,
         logo: enterprise.logo,
@@ -107,36 +181,24 @@ export class OrgService {
   }
 
   async createTeam(userId: string, enterpriseId: string, createDto: CreateTeamDto) {
-    const { name, description } = createDto
-
-    if (!enterpriseId) {
-      throw new BadRequestException('请先选择或切换到一家企业再创建团队')
-    }
-
-    const space = await this.authorization.assertCanManageMembers(userId, enterpriseId)
-    if (space.spaceType !== 'enterprise') throw new BadRequestException('目标必须为企业')
-    const exists = await this.teamModel.findOne({ enterpriseId, name })
-    if (exists) {
-      throw new BadRequestException('该企业下已存在同名团队')
-    }
-
-    const team = await this.teamModel.create({
-      enterpriseId,
-      name,
-      description,
+    if (!enterpriseId) throw new BadRequestException('请先选择企业')
+    const initial = await this.authorization.assertCanManageMembers(userId, enterpriseId)
+    if (initial.spaceType !== 'enterprise') throw new BadRequestException('目标必须为企业')
+    return this.memberships.transaction(enterpriseId, async (session) => {
+      await this.authorization.assertCanManageMembers(userId, enterpriseId, session)
+      const name = createDto.name.trim()
+      if (await this.teamModel.findOne({ enterpriseId, name }, null, { session }))
+        throw new BadRequestException('该企业下已存在同名团队')
+      const [team] = await this.teamModel.create([{ ...createDto, name, enterpriseId }], {
+        session,
+      })
+      await this.userModel.findByIdAndUpdate(
+        userId,
+        { $push: { memberships: { enterpriseId, teamId: team._id, role: Role.ADMIN } } },
+        { session },
+      )
+      return team
     })
-
-    await this.userModel.findByIdAndUpdate(userId, {
-      $push: {
-        memberships: {
-          enterpriseId: enterpriseId,
-          teamId: team._id,
-          role: Role.ADMIN,
-        },
-      },
-    })
-
-    return team
   }
 
   async getTeams(enterpriseId: string, userId: string) {
@@ -144,15 +206,23 @@ export class OrgService {
       throw new BadRequestException('请先选择或切换到一家企业')
     }
 
-    const space = await this.authorization.assertCanReadSpace(userId, enterpriseId)
+    const space = await this.authorization.assertCanReadOrganization(userId, enterpriseId)
     if (space.spaceType !== 'enterprise') throw new BadRequestException('目标必须为企业')
-    if (space.permissions.manageMembers) return this.teamModel.find({ enterpriseId })
     const user = await this.userModel.findById(userId)
     const teamIds =
       user?.memberships
         .filter((item) => item.enterpriseId.toString() === enterpriseId && item.teamId)
         .map((item) => item.teamId) ?? []
-    return this.teamModel.find({ enterpriseId, _id: { $in: teamIds } })
+    const teams = await this.teamModel.find({
+      enterpriseId,
+      ...(!space.permissions.manageOrganization ? { _id: { $in: teamIds } } : {}),
+    })
+    return Promise.all(
+      teams.map(async (team) => ({
+        ...team.toObject(),
+        ...(await this.authorization.assertCanReadOrganization(userId, team._id.toString())),
+      })),
+    )
   }
 
   async getMySpaces(userId: string) {
@@ -204,7 +274,7 @@ export class OrgService {
         }
       }
 
-      if (team?._id) {
+      if (team?._id && enterprise?._id) {
         const teamSpaceId = team._id.toString()
         if (!seen.has(teamSpaceId)) {
           seen.add(teamSpaceId)
@@ -224,13 +294,16 @@ export class OrgService {
     const authorizedSpaces = await Promise.all(
       spaces.map(async (space) => ({
         ...space,
-        ...(await this.authorization.assertCanReadSpace(userId, space.spaceId)),
+        ...(await this.authorization.assertCanReadOrganization(userId, space.spaceId)),
       })),
     )
     const managedEnterprises = authorizedSpaces
       .filter((space) => space.type === 'enterprise' && space.permissions.manageMembers)
       .map((space) => new Types.ObjectId(space.spaceId))
-    const teams = await this.teamModel.find({ enterpriseId: { $in: managedEnterprises } })
+    const teams = await this.teamModel.find({
+      enterpriseId: { $in: managedEnterprises },
+      status: { $ne: 'archived' },
+    })
     for (const team of teams) {
       const id = team._id.toString()
       if (!seen.has(id)) {
@@ -238,13 +311,12 @@ export class OrgService {
         authorizedSpaces.push({
           id,
           type: 'team',
-          name: team.name,
           teamId: id,
           ...(await this.authorization.assertCanReadSpace(userId, id)),
         })
       }
     }
-    return authorizedSpaces
+    return authorizedSpaces.filter((space) => space.permissions.read)
   }
 
   async getAccessibleSpace(userId: string, spaceId: string) {
@@ -270,11 +342,15 @@ export class OrgService {
     }
 
     const space = await this.resolveSpace(spaceId)
-    await this.authorization.assertCanReadSpace(userId, spaceId)
+    await this.authorization.assertCanReadOrganization(userId, spaceId)
 
     const users =
       space.type === 'team'
-        ? await this.userModel.find({ 'memberships.teamId': space.team._id })
+        ? await this.userModel.find({
+            memberships: {
+              $elemMatch: { enterpriseId: space.enterprise._id, teamId: space.team._id },
+            },
+          })
         : await this.userModel.find({ 'memberships.enterpriseId': space.enterprise._id })
 
     return users.map((user) => {
@@ -291,48 +367,9 @@ export class OrgService {
   }
 
   async inviteSpaceMember(userId: string, spaceId: string, inviteDto: InviteSpaceMemberDto) {
-    if (spaceId === 'personal') {
-      throw new BadRequestException('个人空间不支持邀请成员')
-    }
-
-    const space = await this.resolveSpace(spaceId)
     await this.authorization.assertCanManageMembers(userId, spaceId)
     this.authorization.assertInvitableRole(inviteDto.role)
-
-    const targetUser = await this.userModel.findOne({ email: inviteDto.email })
-    if (!targetUser) {
-      throw new NotFoundException('被邀请用户不存在，请先注册账号')
-    }
-
-    if (
-      space.type === 'team' &&
-      !targetUser.memberships.some(
-        (item) => item.enterpriseId.toString() === space.enterprise._id.toString(),
-      )
-    )
-      throw new BadRequestException('请先将用户加入团队所属企业')
-
-    const exists = this.findSpaceMembership(targetUser, space)
-    if (exists) {
-      throw new BadRequestException('该用户已经在空间中')
-    }
-
-    const membership = {
-      enterpriseId: space.enterprise._id as Types.ObjectId,
-      ...(space.type === 'team' ? { teamId: space.team._id as Types.ObjectId } : {}),
-      role: inviteDto.role ?? Role.MEMBER,
-    } as UserDocument['memberships'][number]
-    targetUser.memberships.push(membership)
-
-    await targetUser.save()
-
-    return {
-      success: true,
-      spaceId,
-      userId: targetUser._id,
-      email: targetUser.email,
-      role: inviteDto.role ?? Role.MEMBER,
-    }
+    return this.invitations.create(userId, spaceId, inviteDto)
   }
 
   private async resolveSpace(spaceId: string) {

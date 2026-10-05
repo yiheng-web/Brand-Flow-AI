@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model } from 'mongoose'
+import type { ClientSession } from 'mongoose'
 import { Role, spacePermissions } from '@brand-flow/contracts'
 import type { SpacePermissions, SpaceType } from '@brand-flow/contracts'
 import { assertObjectId } from '@/common/personal-scope'
@@ -19,6 +20,8 @@ export interface AuthorizedSpace {
   enterpriseId?: string
   role: Role
   permissions: SpacePermissions
+  status: string
+  name: string
 }
 
 @Injectable()
@@ -29,15 +32,29 @@ export class AuthorizationService {
     @InjectModel(Enterprise.name) private readonly enterpriseModel: Model<EnterpriseDocument>,
   ) {}
 
-  async assertCanReadSpace(userId: string, spaceId: string): Promise<AuthorizedSpace> {
+  async assertCanReadSpace(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    const space = await this.assertCanReadOrganization(userId, spaceId, session)
+    if (!space.permissions.read) throw new ForbiddenException('空间已停用或归档')
+    return space
+  }
+
+  async assertCanReadOrganization(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
     assertObjectId(userId)
     if (spaceId === 'personal') return this.result(spaceId, 'personal', Role.OWNER)
     assertObjectId(spaceId)
-    const user = await this.userModel.findById(userId)
+    const user = await this.userModel.findById(userId, null, { session })
     if (!user) throw new ForbiddenException('用户不存在')
-    const team = await this.teamModel.findById(spaceId)
+    const team = await this.teamModel.findById(spaceId, null, { session })
     const enterpriseId = team ? team.enterpriseId.toString() : spaceId
-    const enterprise = await this.enterpriseModel.findById(enterpriseId)
+    const enterprise = await this.enterpriseModel.findById(enterpriseId, null, { session })
     if (!enterprise) throw new NotFoundException('空间所属企业不存在')
     const enterpriseMembership = user.memberships.find(
       (item) => !item.teamId && item.enterpriseId.toString() === enterpriseId,
@@ -65,31 +82,102 @@ export class AuthorizationService {
       }
     }
     if (!role) throw new ForbiddenException('您不属于该空间')
-    return this.result(spaceId, team ? 'team' : 'enterprise', role, enterpriseId)
+    const result = this.result(spaceId, team ? 'team' : 'enterprise', role, enterpriseId)
+    result.name = team?.name ?? enterprise.name
+    result.status = team?.status ?? enterprise.status ?? 'active'
+    if (enterprise.status === 'disabled' || team?.status === 'archived') {
+      for (const permission of [
+        'read',
+        'write',
+        'manageMembers',
+        'manageKnowledge',
+        'manageAssets',
+        'manageWorks',
+        'assignTasks',
+        'transferOwnership',
+      ] as const) {
+        result.permissions[permission] = false
+      }
+      if (team && enterprise.status === 'disabled') result.permissions.manageOrganization = false
+    }
+    return result
   }
 
-  assertCanWriteSpace(userId: string, spaceId: string): Promise<AuthorizedSpace> {
-    return this.assertPermission(userId, spaceId, 'write')
+  assertCanWriteSpace(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'write', session)
   }
 
-  assertCanManageMembers(userId: string, spaceId: string): Promise<AuthorizedSpace> {
-    return this.assertPermission(userId, spaceId, 'manageMembers')
+  assertCanManageMembers(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'manageMembers', session)
   }
 
-  assertCanManageKnowledge(userId: string, spaceId: string): Promise<AuthorizedSpace> {
-    return this.assertPermission(userId, spaceId, 'manageKnowledge')
+  assertCanManageKnowledge(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'manageKnowledge', session)
   }
 
-  assertCanManageAssets(userId: string, spaceId: string): Promise<AuthorizedSpace> {
-    return this.assertPermission(userId, spaceId, 'manageAssets')
+  assertCanManageAssets(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'manageAssets', session)
   }
 
-  assertCanManageWorks(userId: string, spaceId: string): Promise<AuthorizedSpace> {
-    return this.assertPermission(userId, spaceId, 'manageWorks')
+  assertCanManageWorks(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'manageWorks', session)
   }
 
-  assertCanAssignTasks(userId: string, spaceId: string): Promise<AuthorizedSpace> {
-    return this.assertPermission(userId, spaceId, 'assignTasks')
+  assertCanAssignTasks(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'assignTasks', session)
+  }
+
+  assertCanManageOrganization(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'manageOrganization', session)
+  }
+
+  assertCanTransferOwnership(
+    userId: string,
+    spaceId: string,
+    session?: ClientSession,
+  ): Promise<AuthorizedSpace> {
+    return this.assertPermission(userId, spaceId, 'transferOwnership', session)
+  }
+
+  assertCanGrantRole(space: AuthorizedSpace, role: Role): void {
+    this.assertInvitableRole(role)
+    if (role === Role.ADMIN && space.role !== Role.OWNER)
+      throw new ForbiddenException('仅 OWNER 可授予 ADMIN')
+  }
+
+  assertCanChangeMember(space: AuthorizedSpace, currentRole: Role, nextRole?: Role): void {
+    if (currentRole === Role.OWNER) throw new ForbiddenException('OWNER 必须先转移所有权')
+    if (currentRole === Role.ADMIN && space.role !== Role.OWNER)
+      throw new ForbiddenException('ADMIN 不能操作其他管理员')
+    if (nextRole) this.assertCanGrantRole(space, nextRole)
   }
 
   assertInvitableRole(role: Role = Role.MEMBER): void {
@@ -116,8 +204,9 @@ export class AuthorizationService {
     userId: string,
     spaceId: string,
     permission: keyof SpacePermissions,
+    session?: ClientSession,
   ) {
-    const space = await this.assertCanReadSpace(userId, spaceId)
+    const space = await this.assertCanReadOrganization(userId, spaceId, session)
     if (!space.permissions[permission]) throw new ForbiddenException('您无权执行此空间操作')
     return space
   }
@@ -134,6 +223,8 @@ export class AuthorizationService {
       enterpriseId,
       role,
       permissions: spacePermissions(spaceType, role),
+      name: spaceType === 'personal' ? '个人空间' : '',
+      status: 'active',
     }
   }
 }

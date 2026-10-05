@@ -29,6 +29,8 @@ export interface SpacePermissions {
   manageAssets: boolean
   manageWorks: boolean
   assignTasks: boolean
+  manageOrganization: boolean
+  transferOwnership: boolean
 }
 
 export function spacePermissions(
@@ -45,5 +47,7 @@ export function spacePermissions(
     manageAssets: manager,
     manageWorks: write,
     assignTasks: type !== 'personal' && manager,
+    manageOrganization: type !== 'personal' && manager,
+    transferOwnership: type === 'enterprise' && role === Role.OWNER,
   }
 }

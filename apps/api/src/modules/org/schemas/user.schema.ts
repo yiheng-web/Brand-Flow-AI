@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, Types, Schema as MongooseSchema } from 'mongoose'
 import { Role } from '@/common/enums'
 
 export type UserDocument = User & Document
@@ -7,10 +7,10 @@ export type UserDocument = User & Document
 // 无 teamId 表示企业成员；有 teamId 表示该企业下的团队成员，角色不能替代企业角色。
 @Schema()
 class Membership {
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise', required: true })
   enterpriseId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Team' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Team' })
   teamId?: Types.ObjectId
 
   @Prop({ type: String, enum: Role, default: Role.MEMBER })
@@ -36,7 +36,7 @@ export class User {
   @Prop({ type: [MembershipSchema], default: [] })
   memberships!: Membership[]
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise' })
   currentEnterpriseId!: Types.ObjectId
 
   @Prop({ default: 'active' })

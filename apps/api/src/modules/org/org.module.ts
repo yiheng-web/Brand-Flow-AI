@@ -1,3 +1,6 @@
+import { MembershipService } from './membership.service'
+import { InvitationService } from './invitation.service'
+import { Invitation, InvitationSchema } from './schemas/invitation.schema'
 import { AuthorizationService } from './authorization.service'
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
@@ -21,12 +24,13 @@ import { OrgController } from './org.controller'
     }),
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
+      { name: Invitation.name, schema: InvitationSchema },
       { name: Team.name, schema: TeamSchema },
       { name: Enterprise.name, schema: EnterpriseSchema },
     ]),
   ],
   controllers: [OrgController],
-  providers: [OrgService, AuthorizationService],
+  providers: [OrgService, AuthorizationService, MembershipService, InvitationService],
   exports: [MongooseModule, OrgService, AuthorizationService],
 })
 export class OrgModule {}

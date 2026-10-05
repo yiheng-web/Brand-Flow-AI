@@ -1,6 +1,6 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NTcxMCwiZXhwIjoxNzgxMjgwNTEwfQ.X6SHfp0pNPalubLeRIkVkqa75Akh-FisoZ94lkiyvg0
+@accessToken = paste-access_token-here
 @enterpriseId = 6a22f3c98568f26d09d55767
 @spaceId = personal
 
@@ -28,6 +28,7 @@ Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
+  "enterpriseId": "{{enterpriseId}}",
   "name": "设计团队",
   "description": "负责品牌设计与物料生成"
 }
@@ -54,3 +55,69 @@ Authorization: Bearer {{accessToken}}
   "role": "admin"
 }
 
+
+@teamId = replace-team-id
+@targetUserId = replace-user-id
+@invitationId = replace-invitation-id
+
+### 编辑 / 停用 / 恢复企业（status 可改为 disabled）
+PUT {{baseUrl}}/org/enterprise/{{enterpriseId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"name":"企业新名称","status":"active"}
+
+### 编辑 / 归档 / 恢复团队
+PUT {{baseUrl}}/org/team/{{teamId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"name":"团队新名称","description":"团队描述","status":"archived"}
+
+### 删除团队：软归档，不删除资源
+DELETE {{baseUrl}}/org/team/{{teamId}}
+Authorization: Bearer {{accessToken}}
+
+### 修改成员角色（OWNER 才能授予 admin，禁止 owner）
+PUT {{baseUrl}}/org/spaces/{{spaceId}}/members/{{targetUserId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"role":"viewer"}
+
+### 移除成员（企业移除同时移除团队关系）
+DELETE {{baseUrl}}/org/spaces/{{spaceId}}/members/{{targetUserId}}
+Authorization: Bearer {{accessToken}}
+
+### 退出本人空间（OWNER 先转移）
+POST {{baseUrl}}/org/spaces/{{spaceId}}/leave
+Authorization: Bearer {{accessToken}}
+
+### 企业 OWNER 转移至已有企业成员
+PUT {{baseUrl}}/org/enterprise/{{enterpriseId}}/owner
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"targetUserId":"{{targetUserId}}"}
+
+### 查看收到的邀请（改为 sent 可查看本人发出）
+GET {{baseUrl}}/org/invitations?direction=received
+Authorization: Bearer {{accessToken}}
+
+### 接受本人邮箱的邀请（也可添加 inviteCode 字段）
+POST {{baseUrl}}/org/invitations/{{invitationId}}/accept
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+### 拒绝本人邮箱邀请
+POST {{baseUrl}}/org/invitations/{{invitationId}}/reject
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+### 撤销本人发出的邀请
+POST {{baseUrl}}/org/invitations/{{invitationId}}/cancel
+Authorization: Bearer {{accessToken}}

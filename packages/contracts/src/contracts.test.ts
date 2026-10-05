@@ -181,4 +181,7 @@ test('空间权限契约区分只读、创作与管理权限', () => {
   assert.equal(spacePermissions('team', Role.MEMBER).manageWorks, true)
   assert.equal(spacePermissions('enterprise', Role.ADMIN).manageMembers, true)
   assert.equal(spacePermissions('personal', Role.OWNER).assignTasks, false)
+  assert.equal(spacePermissions('personal', Role.OWNER).manageOrganization, false)
+  assert.equal(spacePermissions('enterprise', Role.OWNER).transferOwnership, true)
+  assert.equal(spacePermissions('enterprise', Role.ADMIN).transferOwnership, false)
 })
