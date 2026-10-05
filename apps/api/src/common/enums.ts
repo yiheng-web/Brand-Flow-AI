@@ -19,5 +19,4 @@ export enum Visibility {
   PRIVATE = 'private',
   TEAM = 'team',
   ENTERPRISE = 'enterprise',
-  PUBLIC = 'public',
 }

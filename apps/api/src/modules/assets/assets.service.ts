@@ -143,7 +143,7 @@ export class AssetsService {
       throw error
     }
 
-    return this.attachSignedUrl(asset)
+    return this.attachSignedUrl(asset, userId)
   }
 
   async getAssets(userId: string, enterpriseId?: string, spaceId?: string) {
@@ -157,7 +157,7 @@ export class AssetsService {
           visibility: Visibility.PRIVATE,
         })
         .sort({ createdAt: -1 })
-      return Promise.all(personalAssets.map((asset) => this.attachSignedUrl(asset)))
+      return Promise.all(personalAssets.map((asset) => this.attachSignedUrl(asset, userId)))
     }
 
     const space = await this.authorization.assertCanReadSpace(
@@ -170,20 +170,29 @@ export class AssetsService {
       const teamAssets = await this.assetModel
         .find({
           enterpriseId: new Types.ObjectId(enterpriseId),
-          ownerType: OwnerType.TEAM,
-          ownerId: new Types.ObjectId(spaceId),
-          visibility: Visibility.TEAM,
+          $or: [
+            {
+              ownerType: OwnerType.TEAM,
+              ownerId: new Types.ObjectId(space.spaceId),
+              visibility: Visibility.TEAM,
+            },
+            {
+              ownerType: OwnerType.ENTERPRISE,
+              ownerId: new Types.ObjectId(space.enterpriseId),
+              visibility: Visibility.ENTERPRISE,
+            },
+          ],
         })
         .populate('creatorId', 'email profile')
         .sort({ createdAt: -1 })
-      return Promise.all(teamAssets.map((asset) => this.attachSignedUrl(asset)))
+      return Promise.all(teamAssets.map((asset) => this.attachSignedUrl(asset, userId)))
     }
 
     const query = {
       enterpriseId: new Types.ObjectId(enterpriseId),
       ownerId: new Types.ObjectId(enterpriseId),
       ownerType: OwnerType.ENTERPRISE,
-      visibility: { $in: [Visibility.PUBLIC, Visibility.ENTERPRISE] },
+      visibility: Visibility.ENTERPRISE,
     }
 
     const assets = await this.assetModel
@@ -191,7 +200,7 @@ export class AssetsService {
       .populate('creatorId', 'email profile')
       .sort({ createdAt: -1 })
 
-    return Promise.all(assets.map((asset) => this.attachSignedUrl(asset)))
+    return Promise.all(assets.map((asset) => this.attachSignedUrl(asset, userId)))
   }
 
   async deleteAsset(userId: string, assetId: string) {
@@ -262,18 +271,23 @@ export class AssetsService {
       .filter(Boolean)
       .join('\n')
 
-    const result = await this.knowledgeService.createItemFromAsset(userId, dto.knowledgeId, {
-      title: asset.name,
-      content,
-      assetId: asset._id.toString(),
-      tags,
-      metadata: {
-        assetType: asset.type,
-        assetUrl: asset.url,
-        objectKey: asset.objectKey,
-        description: dto.description || asset.metadata?.description,
+    const result = await this.knowledgeService.createItemFromAsset(
+      userId,
+      dto.knowledgeId,
+      {
+        title: asset.name,
+        content,
+        assetId: asset._id.toString(),
+        tags,
+        metadata: {
+          assetType: asset.type,
+          assetUrl: asset.url,
+          objectKey: asset.objectKey,
+          description: dto.description || asset.metadata?.description,
+        },
       },
-    })
+      asset.ownerType === OwnerType.USER ? 'personal' : asset.ownerId.toString(),
+    )
 
     asset.metadata = {
       ...(asset.metadata || {}),
@@ -396,8 +410,12 @@ export class AssetsService {
     }
   }
 
-  private async attachSignedUrl(asset: AssetDocument) {
-    const assetObject = asset.toObject()
+  private async attachSignedUrl(asset: AssetDocument, userId: string) {
+    const scope = await this.authorization.assertCanReadSpace(
+      userId,
+      asset.ownerType === OwnerType.USER ? 'personal' : asset.ownerId.toString(),
+    )
+    const assetObject = { ...asset.toObject(), canManage: scope.permissions.manageAssets }
 
     if (!asset.objectKey) {
       return assetObject

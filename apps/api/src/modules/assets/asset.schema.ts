@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, Schema as MongooseSchema, Types } from 'mongoose'
 import { OwnerType, Visibility } from '@/common/enums'
 
 export type AssetDocument = Asset & Document
@@ -33,7 +33,7 @@ export class Asset {
   @Prop()
   thumbnailObjectKey?: string
 
-  @Prop({ type: Types.ObjectId, required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
   ownerId!: Types.ObjectId
 
   @Prop({ type: String, enum: OwnerType, required: true })
@@ -42,10 +42,10 @@ export class Asset {
   @Prop({ type: String, enum: Visibility, default: Visibility.PRIVATE })
   visibility!: Visibility
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   creatorId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise', index: true })
   enterpriseId?: Types.ObjectId
 
   @Prop({ type: Object })

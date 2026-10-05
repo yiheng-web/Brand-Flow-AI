@@ -47,6 +47,7 @@ describe('可信作品版本并发与来源去重', () => {
     const workflowModel = {
       findOne: jest.fn(async (filter) => ({
         _id: new Types.ObjectId(filter._id),
+        userId,
         spaceId: 'personal',
         status: 'completed',
         runVersion: 7,

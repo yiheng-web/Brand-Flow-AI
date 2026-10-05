@@ -239,9 +239,12 @@ export class KnowledgeService implements OnModuleInit {
       tags?: string[]
       metadata?: Record<string, unknown>
     },
+    sourceSpaceId?: string,
   ) {
     const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     const scope = await this.assertCanManage(userId, knowledge)
+    if (sourceSpaceId && knowledge.spaceId !== sourceSpaceId)
+      throw new BadRequestException('素材只能保存到同一空间的知识库，请先上传到目标空间')
     const constraintLevel =
       payload.metadata?.constraintLevel === 'required' ||
       payload.metadata?.constraintLevel === 'optional'

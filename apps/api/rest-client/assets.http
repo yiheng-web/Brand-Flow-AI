@@ -1,12 +1,15 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
-@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YTIyZjIxNDg1NjhmMjZkMDlkNTU3NTkiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJlbnRJZCI6IjZhMjJmM2EzODU2OGYyNmQwOWQ1NTc1ZiIsInJvbGUiOiJvd25lciIsImlhdCI6MTc4MDY3NzM1MCwiZXhwIjoxNzgxMjgyMTUwfQ.ahRQhtM3AubyHHjwcQvQtkwYQ3IHPd-E8wb6kgMrXtg
+@accessToken = <登录后填写JWT>
+@spaceId = personal
+@teamId = <当前企业团队ID>
+@enterpriseId = <当前企业ID>
 @userId = 6a22f2148568f26d09d55759
 @assetId = 6a22fd13c7d4d75941634bbe
 @knowledgeId = 6a22f6a57468d83197c53eec
 
 ### 获取素材列表
-GET {{baseUrl}}/assets
+GET {{baseUrl}}/assets?spaceId={{spaceId}}
 Authorization: Bearer {{accessToken}}
 
 ### 创建素材

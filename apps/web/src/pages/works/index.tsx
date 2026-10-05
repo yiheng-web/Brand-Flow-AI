@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DeleteOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Modal, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
@@ -19,6 +19,8 @@ export default function WorksPage() {
       state.spaces.find((space) => space.id === spaceId)?.permissions?.manageWorks ?? false,
   )
   const spaceName = useUserStore((state) => state.currentSpaceName)
+  const requestRef = useRef(0)
+  const [loadedSpaceId, setLoadedSpaceId] = useState('')
   const [works, setWorks] = useState<WorkData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -26,36 +28,35 @@ export default function WorksPage() {
   const visibleWorks = filter === 'favorite' ? works.filter((work) => work.isFavorite) : works
 
   const load = useCallback(async () => {
+    if (spaceId !== (useUserStore.getState().currentSpaceId || 'personal')) return
+    const request = ++requestRef.current
     setLoading(true)
     try {
-      setWorks(await getWorks(spaceId))
+      const data = await getWorks(spaceId)
+      if (request !== requestRef.current) return
+      setWorks(data)
       setError(null)
     } catch (reason) {
+      if (request !== requestRef.current) return
       setError(reason instanceof Error ? reason.message : '无法加载作品')
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) {
+        setLoadedSpaceId(spaceId)
+        setLoading(false)
+      }
     }
   }, [spaceId])
 
   useEffect(() => {
     let active = true
-    getWorks(spaceId)
-      .then((data) => {
-        if (!active) return
-        setWorks(data)
-        setError(null)
-      })
-      .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : '无法加载作品')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-
+    queueMicrotask(() => {
+      if (active) void load()
+    })
     return () => {
       active = false
+      requestRef.current += 1
     }
-  }, [spaceId])
+  }, [load])
 
   const handleDelete = (work: WorkData) => {
     Modal.confirm({
@@ -72,14 +73,14 @@ export default function WorksPage() {
     })
   }
 
-  if (loading) return <LoadingState label="正在加载作品…" />
+  if (loading || loadedSpaceId !== spaceId) return <LoadingState label="正在加载作品…" />
   if (error) return <ErrorState message={error} onRetry={load} />
 
   return (
     <div className={styles.page}>
       <PageHeader
         title="作品空间"
-        description={`已保存的作品与版本 · ${spaceName}；未完成创作请前往创作任务`}
+        description={`当前空间：${spaceName} · 通过左侧空间菜单切换个人、团队、企业；未完成创作请前往创作任务`}
         actions={
           <Button
             type="primary"
@@ -145,6 +146,16 @@ export default function WorksPage() {
               <div className={styles.cardBody}>
                 <div>
                   <h2>{work.title}</h2>
+                  {work.creatorId && (
+                    <p>
+                      创建者：
+                      {typeof work.creatorId === 'string'
+                        ? work.creatorId
+                        : work.creatorId.profile?.name ||
+                          work.creatorId.email ||
+                          work.creatorId._id}
+                    </p>
+                  )}
                   <p>
                     {work.createdAt ? new Date(work.createdAt).toLocaleString('zh-CN') : '时间未知'}
                   </p>
@@ -161,7 +172,7 @@ export default function WorksPage() {
                     danger
                     aria-label={`删除${work.title}`}
                     icon={<DeleteOutlined />}
-                    disabled={!canWrite}
+                    disabled={!canWrite || !(work.canEdit ?? spaceId === 'personal')}
                     onClick={() => handleDelete(work)}
                   />
                 </div>

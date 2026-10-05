@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ReferencePicker from './ReferencePicker'
+import { useUserStore } from '@/store/useUserStore'
 const api = vi.hoisted(() => ({ getAssets: vi.fn() }))
 vi.mock('@/api/assets', () => api)
 const assets = Array.from({ length: 5 }, (_, index) => ({
@@ -12,11 +13,19 @@ const assets = Array.from({ length: 5 }, (_, index) => ({
 }))
 describe('个人参考素材选择', () => {
   beforeEach(() => {
+    useUserStore.setState({ currentSpaceId: 'personal' })
     vi.clearAllMocks()
     api.getAssets.mockReset()
     api.getAssets.mockResolvedValue(assets)
   })
   afterEach(cleanup)
+  it('组织参考素材查询当前团队，不回退到个人空间', async () => {
+    useUserStore.setState({ currentSpaceId: 'team-test' })
+    render(<ReferencePicker value={[]} onChange={vi.fn()} disabled={false} />)
+    await screen.findByLabelText('参考素材 产品0')
+    expect(api.getAssets).toHaveBeenCalledWith('team-test')
+    expect(api.getAssets).not.toHaveBeenCalledWith('personal')
+  })
   it('只查询个人上传图片，提交 ID 与用途，不提交地址', async () => {
     const onChange = vi.fn()
     render(<ReferencePicker value={[]} onChange={onChange} disabled={false} />)

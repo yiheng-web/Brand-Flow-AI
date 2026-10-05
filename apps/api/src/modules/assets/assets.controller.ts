@@ -83,7 +83,7 @@ export class AssetsController {
         type: { type: 'string', example: 'background' },
         ownerId: { type: 'string', description: '归属方 ID' },
         ownerType: { type: 'string', enum: ['user', 'team', 'enterprise'] },
-        visibility: { type: 'string', enum: ['private', 'team', 'enterprise', 'public'] },
+        visibility: { type: 'string', enum: ['private', 'team', 'enterprise'] },
         tags: { type: 'string', example: '海报,夏季,背景' },
         description: { type: 'string', example: '适合夏季促销海报的背景图' },
         metadata: { type: 'string', example: '{"source":"designer-upload"}' },
@@ -104,7 +104,7 @@ export class AssetsController {
   @Get()
   @ApiOperation({
     summary: '获取可访问资产列表',
-    description: '返回当前用户在当前企业下可见的素材，包括本人私有、团队、企业和公开素材。',
+    description: '个人空间返回本人私有素材，企业返回企业素材，团队返回本团队及所属企业素材。',
   })
   @ApiSuccessArrayResponse(AssetResponseDto, '返回封装后的资产列表。')
   async getAssets(@Req() req: AuthenticatedRequest, @Query('spaceId') spaceId?: string) {

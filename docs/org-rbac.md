@@ -37,10 +37,10 @@ AuthorizationService 导出资源与组织生命周期权限断言。Org、Asset
 
 - Workflow 详情、版本、下载、SSE 为读取；创建、启动、确认、修改、重跑、取消、重试必须有写权限。
 - Knowledge 创建及全部知识项写操作必须有管理权限，创建者身份不能绕过角色降级。
-- Assets 创建、上传、删除、沉淀知识库必须有素材管理权限；public 不绕过任何租户或写权限。
+- Assets 创建、上传、删除、沉淀知识库必须有素材管理权限；V2.4 将企业内 public 统一迁移为 enterprise。
 - ownerId 只指定目标；团队所属企业从 DB 解析并与登录企业上下文比较，企业 ownerId 必须指向企业。
-- 素材只允许 user/private、team/team、enterprise/enterprise 或 enterprise/public 组合。
-- Works 保留现有本人作品访问约束，所有作品变更另外检查当前空间的作品写权限。
+- 素材只允许 user/private、team/team、enterprise/enterprise 组合；团队读取本团队和所属企业素材。
+- Works 个人仅本人，组织成员按当前角色共享浏览；创建者或空间 OWNER/ADMIN 可编辑，Viewer 仅浏览/导出。版本继承作品空间并校验同空间 Workflow 来源。
 
 ## 契约与客户端
 

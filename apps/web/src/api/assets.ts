@@ -1,7 +1,7 @@
 //资产管理
 import apiClient from './index'
 export type OwnerType = 'user' | 'team' | 'enterprise'
-export type Visibility = 'private' | 'team' | 'enterprise' | 'public'
+export type Visibility = 'private' | 'team' | 'enterprise'
 
 //创建资产请求参数
 export interface CreateAssetParams {
@@ -16,6 +16,7 @@ export interface CreateAssetParams {
 
 // 资产数据
 export interface AssetData {
+  canManage?: boolean
   objectKey?: string
   mimeType?: string
   signedUrl?: string

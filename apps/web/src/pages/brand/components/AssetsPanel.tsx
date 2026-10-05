@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Card, Space, Tag, Image, message } from 'antd'
 import {
   PlusOutlined,
@@ -23,6 +23,8 @@ import styles from './AssetsPanel.module.css'
 /** 资产对象结构（与后端约定） */
 interface AssetItem {
   id: string
+  canManage: boolean
+  sourceSpaceId: string
   name: string
   type: 'image' | 'document' | 'video' | 'other'
   description?: string
@@ -55,6 +57,8 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
   )
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const currentSpaceType = useUserStore((state) => state.currentSpaceType)
+  const requestRef = useRef(0)
+  const [loadedSpaceId, setLoadedSpaceId] = useState<string | null>(null)
   const [assets, setAssets] = useState<AssetItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +67,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null)
   const ownerId = currentSpaceType === 'personal' ? userId || '' : currentSpaceId || ''
   const ownerType = currentSpaceType === 'personal' ? 'user' : currentSpaceType
@@ -75,12 +80,17 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
 
   /** 加载资产列表 */
   const fetchAssets = useCallback(async () => {
+    if (currentSpaceId !== useUserStore.getState().currentSpaceId) return
+    const request = ++requestRef.current
     setLoading(true)
     try {
       const data = await getAssets(currentSpaceId || 'personal')
+      if (request !== requestRef.current) return
       setAssets(
         data.map((asset) => ({
           id: asset._id,
+          canManage: asset.canManage ?? canWrite,
+          sourceSpaceId: asset.ownerType === 'user' ? 'personal' : asset.ownerId,
           name: asset.name,
           type: ['image', 'document', 'video'].includes(asset.type)
             ? (asset.type as AssetItem['type'])
@@ -99,28 +109,48 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
       )
       setError(null)
     } catch (err) {
+      if (request !== requestRef.current) return
       setError(err instanceof Error ? err.message : '无法加载品牌资产')
       if (err instanceof Error) {
         message.error(err.message)
       }
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) {
+        setLoadedSpaceId(currentSpaceId)
+        setLoading(false)
+      }
     }
-  }, [currentSpaceId])
+  }, [currentSpaceId, canWrite])
   const visibleAssets = filter === 'all' ? assets : assets.filter((asset) => asset.type === filter)
 
   useEffect(() => {
-    queueMicrotask(() => void fetchAssets())
+    let active = true
+    queueMicrotask(() => {
+      if (active) {
+        setCreateModalOpen(false)
+        setUploadModalOpen(false)
+        setSaveModalOpen(false)
+        void fetchAssets()
+      }
+    })
+    return () => {
+      active = false
+      requestRef.current += 1
+    }
   }, [fetchAssets])
 
   /** 删除资产 */
   const handleDelete = async (asset: AssetItem) => {
+    if (deletingId) return
+    setDeletingId(asset.id)
     try {
       await deleteAsset(asset.id)
       message.success(`已删除「${asset.name}」`)
       setAssets((prev) => prev.filter((a) => a.id !== asset.id))
     } catch {
       message.error('删除素材失败')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -162,6 +192,9 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
           </div>
           <Space size={4}>
             <Tag color={typeCfg.color}>{TYPE_LABELS[asset.type] || asset.type}</Tag>
+            {currentSpaceType === 'team' && asset.sourceSpaceId !== currentSpaceId && (
+              <Tag>来自企业</Tag>
+            )}
             {sizeStr && <span className={styles.fileSize}>{sizeStr}</span>}
           </Space>
         </div>
@@ -171,7 +204,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
             type="link"
             size="small"
             icon={<SaveOutlined />}
-            disabled={!canWrite}
+            disabled={!asset.canManage}
             onClick={() => handleSaveToKnowledge(asset)}
           >
             保存到知识库
@@ -181,7 +214,8 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
             size="small"
             danger
             icon={<DeleteOutlined />}
-            disabled={!canWrite}
+            loading={deletingId === asset.id}
+            disabled={!asset.canManage || Boolean(deletingId)}
             onClick={() => handleDelete(asset)}
           >
             删除
@@ -196,7 +230,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
       <div className={styles.panelHeader}>
         <div>
           <h2>{filter === 'all' ? '全部内容' : TYPE_LABELS[filter]}</h2>
-          <p>{visibleAssets.length} 项内容</p>
+          <p>{visibleAssets.length} 项内容 · 通过左侧当前空间切换个人、团队、企业</p>
         </div>
         <Space>
           <Button
@@ -217,7 +251,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
         </Space>
       </div>
 
-      {loading ? (
+      {loading || loadedSpaceId !== currentSpaceId ? (
         <LoadingState label="正在加载品牌资产…" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void fetchAssets()} />
@@ -269,6 +303,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
         open={saveModalOpen}
         onClose={() => setSaveModalOpen(false)}
         assetId={selectedAsset?.id || null}
+        sourceSpaceId={selectedAsset?.sourceSpaceId}
         assetName={selectedAsset?.name || ''}
       />
     </div>

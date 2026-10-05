@@ -11,9 +11,17 @@
 `read`、`write`、`manageMembers`、`manageKnowledge`、`manageAssets`、`manageWorks`、`assignTasks`、`manageOrganization`、`transferOwnership`。
 企业 OWNER/ADMIN 可管理本企业团队；其他角色必须有显式团队成员关系。VIEWER 只读。
 所有邀请均禁止授予 OWNER，返回 403；团队邀请支持未注册邮箱，接受时补齐最低必要的企业 MEMBER/VIEWER 关系。
-素材 public 不绕过权限或租户限制，ownerType 与 visibility 必须匹配。
+素材可见性统一为 private/team/enterprise，ownerType 与 visibility 必须匹配；旧 public 企业素材部署前迁移为 enterprise。
 完整模型与矩阵见 [组织 RBAC](../../docs/org-rbac.md)，拒绝测试示例见
 [org-rbac.http](rest-client/org-rbac.http)。前端权限结果仅用于界面，后端每次以 DB 关系重新授权。
+
+## V2.4 共享素材与作品
+
+- `GET /assets?spaceId=personal|团队ID|企业ID`：个人仅本人；团队包含本团队和所属企业；企业仅本企业。响应增加 `canManage`，团队管理员不自动获得企业素材管理权。旧 `public` 不再接受。
+- 组织素材创建/上传/删除仍按 `manageAssets`（OWNER/ADMIN）；成员可读取及用于本空间工作流，Viewer 不可创建工作流或修改资源。
+- `POST /assets/:id/save-to-knowledge` 仅允许同一空间，避免将个人或团队素材地址泄露给更大组织范围。
+- 对象签名先验证资源权限和对象路径；Workflow/Revision 刷新参考图片时重新按当前空间查素材，并保留已分析的视觉约束。
+- 迁移、权限矩阵与集成验收见 [组织共享资源](../../docs/collab-resources.md)。
 
 ## V1 闭环新增接口
 
@@ -53,7 +61,7 @@
 ```typescript
 type Role = 'owner' | 'admin' | 'member' | 'viewer'
 type OwnerType = 'user' | 'team' | 'enterprise'
-type Visibility = 'private' | 'team' | 'enterprise' | 'public'
+type Visibility = 'private' | 'team' | 'enterprise'
 type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 interface UserInfo {
@@ -229,7 +237,7 @@ interface UserInfo {
   - 最终作品使用 `POST /works/:id/export`，候选下载不能代替正式作品导出。
 
 - **参考图与参数规则**
-  - 仅接受 `assetId + role`，创建及执行时均校验个人私有图片归属，不接受外链或客户端对象键。
+  - 仅接受 `assetId + role`，创建、执行及签名时均校验素材与 Workflow 空间的真实归属；个人使用本人私有素材，团队使用本团队及所属企业素材，企业仅使用本企业素材。个人图片须先上传到组织空间，不自动共享，不接受外链或客户端对象键。
   - 产品、人物及风格图通过视觉模型提取结构化特征进入 Brief/Prompt；Logo 保留原图合成来源，底图不模仿 Logo。
   - 详情快照返回 references；执行特征保存在 `result.references.visualConstraints`，不持久化图片 Base64。
   - Kolors：1:1→1024×1024，16:9→1280×720；Qwen-Image：1:1→1328×1328，16:9→1664×928。其他支持范围见 `docs/create-v1.md`；不支持的模型、尺寸或比例明确拒绝。
@@ -467,7 +475,7 @@ interface UserInfo {
 ### 作品与导出模块 (/works)
 
 - **`POST /works`**
-  - **说明**: 将本人已完成且质检通过的工作流结果保存为私有作品；首次创建 V1，同一 Workflow 后续成片追加版本，相同来源重复提交幂等。
+  - **说明**: 将当前空间已完成且质检通过的工作流结果保存为同空间作品；个人私有，组织共享。首次创建 V1；同一 Workflow 后续成片仅创建者或管理员可追加版本，相同来源重复提交幂等，其他成员重复保存只返回已有作品。
   - **Body**:
     ```typescript
     {
@@ -485,8 +493,9 @@ interface UserInfo {
   - **返回 Data**: `Work & { versions: WorkVersion[] }`
 
 - **`GET /works`**
-  - **说明**: 获取当前用户在指定 Space 中创建的私有作品列表。
-  - **返回 Data**: `Array<Work>`
+  - **说明**: 个人空间只返回本人作品，组织空间返回有权限浏览的共享作品；列表填充 creatorId（含 email/profile），返回当前请求者的 canEdit。
+  - **查询参数**: `spaceId`（默认 personal，其他值为团队/企业 ID）
+  - **返回 Data**: `Array<Work & { canEdit: boolean }>`。Work 持久化真实 `spaceType/spaceId/enterpriseId/creatorId`，组织 ownerType/visibility 与空间一致；WorkVersion 继承同一 scope。
 
 - **`GET /works/:id`**
   - **说明**: 获取作品详情和全部版本。
@@ -494,12 +503,12 @@ interface UserInfo {
   - **返回 Data**: `Work & { versions: WorkVersion[] }`
 
 - **`DELETE /works/:id`**
-  - **说明**: 删除作品及其版本记录。
+  - **说明**: 创建者或空间 OWNER/ADMIN 可删除作品及版本记录，Member 不可删除他人作品，Viewer 只读。
   - **路径参数**: `id` (作品 ID)
   - **返回 Data**: `{ success: boolean }`
 
 - **`POST /works/:id/versions`** / **`POST /works/:id/versions/from-workflow`**
-  - **说明**: 两个入口均只依据本人同一空间中已完成且质检通过的工作流创建版本。旧客户端提交 imageUrl/objectKey/qualityReport 不再有效。
+  - **说明**: 两个入口仅允许作品创建者或空间 OWNER/ADMIN，从同一空间已完成且质检通过的工作流创建版本；VIEWER 仅浏览/导出。旧客户端提交 imageUrl/objectKey/qualityReport 不再有效。
   - **Body**: `{ workflowId: string }`
   - **返回 Data**: `WorkVersion`
   - 作品签名、导出与删除只处理该作品的服务端对象路径；历史污染记录会被拒绝，须人工核查后修复。

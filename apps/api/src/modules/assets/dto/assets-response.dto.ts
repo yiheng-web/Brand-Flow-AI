@@ -2,6 +2,24 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { OwnerType, Visibility } from '@/common/enums'
 
 export class AssetResponseDto {
+  @ApiProperty({
+    description: '个人列表为创建者 ID；组织列表填充 _id/email/profile',
+    oneOf: [
+      { type: 'string' },
+      {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          email: { type: 'string' },
+          profile: { type: 'object' },
+        },
+      },
+    ],
+  })
+  creatorId!: string | { _id: string; email?: string; profile?: Record<string, unknown> }
+
+  @ApiPropertyOptional({ description: '当前请求者能否管理该素材' })
+  canManage?: boolean
   @ApiProperty({ description: '资产 ID' })
   _id!: string
 
@@ -23,11 +41,8 @@ export class AssetResponseDto {
   @ApiProperty({ enum: Visibility, description: '资产可见性' })
   visibility!: Visibility
 
-  @ApiProperty({ description: '创建者用户 ID' })
-  creatorId!: string
-
-  @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  @ApiPropertyOptional({ description: '企业 ID；个人素材不设置' })
+  enterpriseId?: string
 
   @ApiPropertyOptional({ description: '对象存储 bucket' })
   bucket?: string

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, Schema as MongooseSchema, Types } from 'mongoose'
 
 export type ExportLogDocument = ExportLog &
   Document & {
@@ -9,16 +9,16 @@ export type ExportLogDocument = ExportLog &
 
 @Schema({ timestamps: true })
 export class ExportLog {
-  @Prop({ type: Types.ObjectId, ref: 'Work', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Work', required: true, index: true })
   workId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise', index: true })
   enterpriseId?: Types.ObjectId
 
   @Prop({ required: true, index: true })
   spaceId!: string
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   exportedBy!: Types.ObjectId
 
   @Prop({ required: true })

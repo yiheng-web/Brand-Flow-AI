@@ -307,7 +307,11 @@ export class WorkflowProcessor extends WorkerHost {
   ): Promise<{ result: WorkflowResult; nodeOutput: Record<string, unknown> }> {
     if (nodeType === 'brief') {
       const executionReferences = workflow.references?.length
-        ? await this.referencesService!.forExecution(workflow.references, workflow.userId)
+        ? await this.referencesService!.forExecution(
+            workflow.references,
+            workflow.userId,
+            workflow.spaceId,
+          )
         : []
       const analyzed = await Promise.all(executionReferences.map(extractReferenceConstraints))
       const references = analyzed.map((reference) => ({ ...reference, imageUrl: '' }))

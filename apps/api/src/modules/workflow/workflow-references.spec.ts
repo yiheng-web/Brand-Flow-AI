@@ -1,5 +1,6 @@
 import { Types } from 'mongoose'
 import { WorkflowReferencesService } from './workflow-references.service'
+import { AuthorizationService } from '../org/authorization.service'
 
 describe('个人参考素材解析', () => {
   const userId = new Types.ObjectId().toString()
@@ -10,10 +11,20 @@ describe('个人参考素材解析', () => {
     getSignedUrl: jest.fn().mockResolvedValue('signed-server-url'),
     getObject: jest.fn().mockResolvedValue({ bytes: Buffer.from('png') }),
   }
-  const service = new WorkflowReferencesService(model as never, storage as never)
+  const service = new WorkflowReferencesService(
+    model as never,
+    storage as never,
+    new AuthorizationService({} as never, {} as never, {} as never),
+  )
   beforeEach(() => {
     jest.clearAllMocks()
-    model.findOne.mockResolvedValue({ name: '产品原图', objectKey, mimeType: 'image/png' })
+    model.findOne.mockResolvedValue({
+      name: '产品原图',
+      ownerType: 'user',
+      ownerId: userId,
+      objectKey,
+      mimeType: 'image/png',
+    })
   })
   it('归属条件包含本人、个人私有空间，地址由服务端生成，执行时重新验证', async () => {
     const references = await service.resolve([{ assetId, role: 'product' }], userId)
@@ -43,14 +54,14 @@ describe('个人参考素材解析', () => {
     )
     model.findOne.mockResolvedValueOnce({ url: 'https://foreign.example/image.png' })
     await expect(service.resolve([{ assetId, role: 'style' }], userId)).rejects.toThrow(
-      '上传到个人空间',
+      '上传到当前空间',
     )
     model.findOne.mockResolvedValueOnce({
       objectKey: 'other-user/image.png',
       mimeType: 'image/png',
     })
     await expect(service.resolve([{ assetId, role: 'person' }], userId)).rejects.toThrow(
-      '上传到个人空间',
+      '上传到当前空间',
     )
     expect((await service.resolve([{ assetId, role: 'logo' }], userId))[0].strategy).toBe(
       'compose_logo',

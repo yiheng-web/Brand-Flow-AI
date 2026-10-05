@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, Schema as MongooseSchema, Types } from 'mongoose'
 import { OwnerType, Visibility } from '@/common/enums'
 import type { SpaceType } from '@brand-flow/contracts'
 
@@ -23,7 +23,7 @@ export class Work {
   @Prop()
   objectKey?: string
 
-  @Prop({ type: Types.ObjectId, ref: 'Workflow' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Workflow' })
   workflowId?: Types.ObjectId
 
   @Prop({ required: true, index: true })
@@ -44,7 +44,7 @@ export class Work {
   @Prop({ type: Boolean, default: false, index: true })
   isFavorite!: boolean
 
-  @Prop({ type: Types.ObjectId, required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
   ownerId!: Types.ObjectId
 
   @Prop({ type: String, enum: OwnerType, required: true })
@@ -53,10 +53,10 @@ export class Work {
   @Prop({ type: String, enum: Visibility, default: Visibility.PRIVATE })
   visibility!: Visibility
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   creatorId!: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise', index: true })
   enterpriseId?: Types.ObjectId
 
   @Prop({ type: Object })

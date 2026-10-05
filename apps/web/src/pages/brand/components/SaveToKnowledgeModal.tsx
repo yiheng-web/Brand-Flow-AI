@@ -11,10 +11,17 @@ interface SaveToKnowledgeModalProps {
   open: boolean
   onClose: () => void
   assetId: string | null
+  sourceSpaceId?: string
   assetName: string
 }
 
-const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowledgeModalProps) => {
+const SaveToKnowledgeModal = ({
+  open,
+  onClose,
+  assetId,
+  assetName,
+  sourceSpaceId,
+}: SaveToKnowledgeModalProps) => {
   const [loading, setLoading] = useState(false)
   const [knowledgeList, setKnowledgeList] = useState<KnowledgeData[]>([])
   const [knowledgeId, setKnowledgeId] = useState<string>()
@@ -22,13 +29,28 @@ const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowl
 
   useEffect(() => {
     if (!open) return
-    void getKnowledgeList(spaceId)
-      .then(setKnowledgeList)
-      .catch(() => message.error('知识库列表加载失败'))
-  }, [open, spaceId])
+    let active = true
+    queueMicrotask(() => {
+      if (active) {
+        setKnowledgeList([])
+        setKnowledgeId(undefined)
+      }
+    })
+    void getKnowledgeList(sourceSpaceId || spaceId)
+      .then((data) => {
+        if (active)
+          setKnowledgeList(data.filter((item) => item.spaceId === (sourceSpaceId || spaceId)))
+      })
+      .catch(() => {
+        if (active) message.error('知识库列表加载失败')
+      })
+    return () => {
+      active = false
+    }
+  }, [open, spaceId, sourceSpaceId])
 
   const handleSave = async () => {
-    if (!assetId || !knowledgeId) return
+    if (!assetId || !knowledgeId || loading) return
 
     setLoading(true)
     try {
@@ -51,6 +73,7 @@ const SaveToKnowledgeModal = ({ open, onClose, assetId, assetName }: SaveToKnowl
       onCancel={onClose}
       onOk={handleSave}
       confirmLoading={loading}
+      okButtonProps={{ disabled: !knowledgeId || loading }}
       okText="确认保存"
       cancelText="取消"
       destroyOnClose

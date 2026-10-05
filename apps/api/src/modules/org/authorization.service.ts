@@ -194,7 +194,7 @@ export class AuthorizationService {
     const allowed: Record<string, string[]> = {
       user: ['private'],
       team: ['team'],
-      enterprise: ['enterprise', 'public'],
+      enterprise: ['enterprise'],
     }
     if (!allowed[ownerType]?.includes(visibility))
       throw new BadRequestException('素材归属与可见性不一致')

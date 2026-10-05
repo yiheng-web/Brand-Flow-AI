@@ -9,6 +9,15 @@ export type WorkVersionDocument = WorkVersion &
 
 @Schema({ timestamps: true })
 export class WorkVersion {
+  @Prop({ type: String, enum: ['personal', 'team', 'enterprise'] })
+  spaceType?: 'personal' | 'team' | 'enterprise'
+
+  @Prop({ index: true })
+  spaceId?: string
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise', index: true })
+  enterpriseId?: Types.ObjectId
+
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Work', required: true, index: true })
   workId!: Types.ObjectId
 

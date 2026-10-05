@@ -5,7 +5,7 @@
 @spaceId = personal
 @knowledgeId = 6a22f6a57468d83197c53eec
 @nodeType = creativeDirection
-@assetId = <个人上传图片的 Asset ID>
+@assetId = <本人个人、本团队或所属企业已上传图片的 Asset ID>
 @candidateId = <当前轮候选 ID>
 
 ### 创建待启动工作流

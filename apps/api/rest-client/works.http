@@ -1,11 +1,12 @@
 ### 变量
 @baseUrl = http://localhost:3000/api
 @accessToken = <登录后填写JWT>
+@spaceId = personal
 @workId = 6a22f9ef7468d83197c53f55
 @versionId = 6a22f9ef7468d83197c53f57
 
 ### 获取作品列表
-GET {{baseUrl}}/works?spaceId=personal
+GET {{baseUrl}}/works?spaceId={{spaceId}}
 Authorization: Bearer {{accessToken}}
 
 ### 获取作品详情
@@ -13,10 +14,14 @@ GET {{baseUrl}}/works/{{workId}}
 Authorization: Bearer {{accessToken}}
 
 ### 创建作品
-POST {
+POST {{baseUrl}}/works
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
   "title": "测试作品",
   "description": "保存已完成且质检通过的可信工作流",
-  "spaceId": "personal",
+  "spaceId": "{{spaceId}}",
   "finalImageUrl": "https://example.invalid/ignored-client-preview.png",
   "workflowId": "6a22f9dc7468d83197c53f4c"
 }

@@ -161,15 +161,15 @@ describe('组织空间统一 RBAC', () => {
     expect(userModel.findOne).not.toHaveBeenCalled()
   })
 
-  it('viewer 无法创建、删除 enterprise public asset，创建者不能绕过当前角色', async () => {
+  it('viewer 无法创建、删除 enterprise asset，创建者不能绕过当前角色', async () => {
     member(Role.VIEWER)
     const dto = {
-      name: 'public',
+      name: 'enterprise',
       type: 'logo',
       url: 'test',
       ownerType: OwnerType.ENTERPRISE,
       ownerId: enterpriseId,
-      visibility: Visibility.PUBLIC,
+      visibility: Visibility.ENTERPRISE,
     }
     await expect(assets.createAsset(userId, enterpriseId, dto)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -209,7 +209,7 @@ describe('组织空间统一 RBAC', () => {
       assets.createAsset(userId, enterpriseId, {
         ...dto,
         ownerId: teamId,
-        visibility: Visibility.PUBLIC,
+        visibility: Visibility.ENTERPRISE,
       }),
     ).rejects.toThrow()
     expect(model.create).not.toHaveBeenCalled()

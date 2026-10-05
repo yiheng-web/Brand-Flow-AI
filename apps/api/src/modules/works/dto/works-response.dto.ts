@@ -3,6 +3,15 @@ import { OwnerType, Visibility } from '@/common/enums'
 import type { PromptPlan, OptimizationFeedback, FinalEvaluationResult } from '@brand-flow/contracts'
 
 export class WorkVersionResponseDto {
+  @ApiPropertyOptional()
+  spaceId?: string
+
+  @ApiPropertyOptional({ enum: ['personal', 'team', 'enterprise'] })
+  spaceType?: 'personal' | 'team' | 'enterprise'
+
+  @ApiPropertyOptional()
+  enterpriseId?: string
+
   @ApiProperty({ description: '作品版本 ID' })
   _id!: string
 
@@ -50,6 +59,15 @@ export class WorkVersionResponseDto {
 }
 
 export class WorkResponseDto {
+  @ApiProperty()
+  spaceId!: string
+
+  @ApiProperty({ enum: ['personal', 'team', 'enterprise'] })
+  spaceType!: 'personal' | 'team' | 'enterprise'
+
+  @ApiProperty({ description: '当前请求者能否编辑该作品' })
+  canEdit!: boolean
+
   @ApiProperty({ description: '作品 ID' })
   _id!: string
 
@@ -77,11 +95,24 @@ export class WorkResponseDto {
   @ApiProperty({ enum: Visibility, description: '作品可见性' })
   visibility!: Visibility
 
-  @ApiProperty({ description: '创建者用户 ID' })
-  creatorId!: string
+  @ApiProperty({
+    description: '详情为创建者 ID；列表填充 _id/email/profile',
+    oneOf: [
+      { type: 'string' },
+      {
+        type: 'object',
+        properties: {
+          _id: { type: 'string' },
+          email: { type: 'string' },
+          profile: { type: 'object' },
+        },
+      },
+    ],
+  })
+  creatorId!: string | { _id: string; email?: string; profile?: Record<string, unknown> }
 
-  @ApiProperty({ description: '企业 ID' })
-  enterpriseId!: string
+  @ApiPropertyOptional({ description: '企业 ID；个人作品不设置' })
+  enterpriseId?: string
 
   @ApiPropertyOptional({ description: '品牌质检报告' })
   qualityReport?: FinalEvaluationResult

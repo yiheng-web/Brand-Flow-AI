@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,7 +9,9 @@ import {
 import { randomUUID } from 'node:crypto'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
+import { Role } from '@brand-flow/contracts'
 import type { WorkflowResult } from '@brand-flow/contracts'
+import type { AuthorizedSpace } from '../org/authorization.service'
 import { OwnerType, Visibility } from '@/common/enums'
 import { OrgService } from '@/modules/org/org.service'
 import { StorageService } from '@/modules/storage/storage.service'
@@ -40,7 +43,13 @@ export class WorksService {
     if (!Types.ObjectId.isValid(dto.workflowId)) {
       throw new BadRequestException('来源工作流 ID 格式不正确')
     }
-    const workflow = await this.workflowModel.findOne({ _id: dto.workflowId, userId })
+    const space = await this.orgService.authorization.assertCanManageWorks(userId, dto.spaceId)
+    const workflow = await this.workflowModel.findOne({
+      _id: dto.workflowId,
+      ...(space.spaceType === 'personal' ? { userId } : {}),
+      spaceId: dto.spaceId,
+      ...(space.enterpriseId ? { entId: space.enterpriseId } : {}),
+    })
     if (!workflow) throw new NotFoundException('来源工作流不存在或无权访问')
     const result = workflow?.result as WorkflowResult | undefined
     if (
@@ -50,7 +59,7 @@ export class WorksService {
       !result?.finalEvaluation?.passed ||
       !result.compose
     ) {
-      throw new BadRequestException('只能保存本人当前 Space 中已完成且质检通过的工作流')
+      throw new BadRequestException('只能保存当前 Space 中已完成且质检通过的工作流')
     }
     const selectedCandidate = result.generate?.candidates.find(
       (candidate) => candidate.id === result.generate?.selectedCandidateId,
@@ -61,17 +70,21 @@ export class WorksService {
       (typeof selectedCandidateKey === 'string' ? selectedCandidateKey : undefined)
     if (
       !trustedObjectKey ||
-      !trustedObjectKey.startsWith(`workflows/${userId}/${dto.workflowId}/`)
+      !trustedObjectKey.startsWith(`workflows/${workflow.userId}/${dto.workflowId}/`) ||
+      trustedObjectKey.includes('..')
     ) {
       throw new BadRequestException('工作流成片缺少可信对象存储来源')
     }
     if (dto.objectKey && dto.objectKey !== trustedObjectKey) {
       throw new BadRequestException('作品对象与工作流成片不一致')
     }
-    const space = await this.orgService.authorization.assertCanManageWorks(userId, dto.spaceId)
-    const existing = await this.workModel.findOne({ workflowId: workflow._id })
+    const existing = await this.workModel.findOne({
+      workflowId: workflow._id,
+      ...this.workScope(userId, space),
+    })
     if (existing) {
-      await this.createTrustedVersion(userId, existing._id.toString(), dto.workflowId)
+      if (this.canEdit(userId, existing, space))
+        await this.createTrustedVersion(userId, existing._id.toString(), dto.workflowId)
       return this.findOne(userId, existing._id.toString())
     }
     const nodes = await this.workflowNodeModel.find({ workflowId: dto.workflowId }).sort({
@@ -93,9 +106,10 @@ export class WorksService {
       contentType: 'image/png',
       metadata: { workflowId: dto.workflowId, sourceObjectKey: trustedObjectKey },
     })
-    const trustedImageUrl = await this.storageService.getSignedUrl(workObjectKey)
+    let trustedImageUrl: string
     let work: WorkDocument
     try {
+      trustedImageUrl = await this.storageService.getSignedUrl(workObjectKey)
       work = await this.workModel.create({
         _id: workId,
         title: dto.title,
@@ -108,9 +122,19 @@ export class WorksService {
         selectedCandidateId: result.generate?.selectedCandidateId || undefined,
         qualityReport: result.finalEvaluation,
         nodesSnapshot,
-        ownerId: new Types.ObjectId(userId),
-        ownerType: OwnerType.USER,
-        visibility: Visibility.PRIVATE,
+        ownerId: new Types.ObjectId(space.spaceType === 'personal' ? userId : space.spaceId),
+        ownerType:
+          space.spaceType === 'personal'
+            ? OwnerType.USER
+            : space.spaceType === 'team'
+              ? OwnerType.TEAM
+              : OwnerType.ENTERPRISE,
+        visibility:
+          space.spaceType === 'personal'
+            ? Visibility.PRIVATE
+            : space.spaceType === 'team'
+              ? Visibility.TEAM
+              : Visibility.ENTERPRISE,
         creatorId: new Types.ObjectId(userId),
         enterpriseId: space.enterpriseId ? new Types.ObjectId(space.enterpriseId) : undefined,
         metadata: {
@@ -126,19 +150,25 @@ export class WorksService {
         'code' in error &&
         Reflect.get(error, 'code') === 11000
       ) {
-        const duplicate = await this.workModel.findOne({ workflowId: workflow._id })
+        const duplicate = await this.workModel.findOne({
+          workflowId: workflow._id,
+          ...this.workScope(userId, space),
+        })
         if (duplicate) {
-          await this.storageService.deleteObject(workObjectKey).catch(() => undefined)
+          await this.cleanupUploadedObject(workObjectKey)
           return this.findOne(userId, duplicate._id.toString())
         }
       }
-      await this.storageService.deleteObject(workObjectKey).catch(() => undefined)
+      await this.cleanupUploadedObject(workObjectKey)
       throw error
     }
 
     try {
       await this.workVersionModel.create({
         workId: work._id,
+        spaceId: work.spaceId,
+        spaceType: work.spaceType,
+        enterpriseId: work.enterpriseId,
         versionNo: 1,
         imageUrl: trustedImageUrl,
         objectKey: workObjectKey,
@@ -154,7 +184,7 @@ export class WorksService {
       })
     } catch (error) {
       await this.workModel.findByIdAndDelete(work._id)
-      await this.storageService.deleteObject(workObjectKey).catch(() => undefined)
+      await this.cleanupUploadedObject(workObjectKey)
       throw error
     }
 
@@ -162,14 +192,15 @@ export class WorksService {
   }
 
   async findAll(userId: string, spaceId: string) {
-    await this.orgService.getAccessibleSpace(userId, spaceId)
+    const space = await this.orgService.authorization.assertCanReadSpace(userId, spaceId)
     const works = await this.workModel
-      .find({ spaceId, ...personalCreatorFilter(userId) })
+      .find(this.workScope(userId, space))
       .populate('creatorId', 'email profile')
       .sort({ createdAt: -1 })
     return Promise.all(
       works.map(async (work) => ({
         ...work.toObject(),
+        canEdit: this.canEdit(userId, work, space),
         finalImageUrl: await this.signWorkObject(work, work.objectKey),
       })),
     )
@@ -177,16 +208,22 @@ export class WorksService {
 
   async findOne(userId: string, id: string) {
     const work = await this.findAccessibleWork(userId, id)
+    const space = await this.orgService.authorization.assertCanReadSpace(userId, work.spaceId)
     const versions = await this.workVersionModel.find({ workId: work._id }).sort({ versionNo: -1 })
+    for (const version of versions) await this.assertVersionScope(work, version)
     const previewVersions = await Promise.all(
       versions.map(async (version) => ({
         ...version.toObject(),
+        spaceId: work.spaceId,
+        spaceType: work.spaceType,
+        enterpriseId: work.enterpriseId,
         imageUrl: await this.signWorkObject(work, version.objectKey),
       })),
     )
 
     return {
       ...work.toObject(),
+      canEdit: this.canEdit(userId, work, space),
       finalImageUrl: await this.signWorkObject(work, work.objectKey),
       versions: previewVersions,
     }
@@ -194,9 +231,10 @@ export class WorksService {
 
   async remove(userId: string, id: string) {
     const work = await this.findAccessibleWork(userId, id)
-    await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
+    await this.assertCanEdit(userId, work)
 
-    const versions = await this.workVersionModel.find({ workId: work._id }, { objectKey: 1 })
+    const versions = await this.workVersionModel.find({ workId: work._id })
+    for (const version of versions) await this.assertVersionScope(work, version)
     const objectKeys = new Set(
       [work.objectKey, ...versions.map((version) => version.objectKey)].filter(
         (key): key is string => Boolean(key),
@@ -213,11 +251,14 @@ export class WorksService {
 
   async createTrustedVersion(userId: string, id: string, workflowId: string) {
     const work = await this.findAccessibleWork(userId, id)
-    await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
-    if (work.creatorId.toString() !== userId || !Types.ObjectId.isValid(workflowId)) {
-      throw new BadRequestException('只能从本人有效工作流创建新版本')
+    const space = await this.assertCanEdit(userId, work)
+    if (!Types.ObjectId.isValid(workflowId)) {
+      throw new BadRequestException('只能从当前空间有效工作流创建新版本')
     }
-    const workflow = await this.workflowModel.findOne({ _id: workflowId, userId })
+    const workflow = await this.workflowModel.findOne({
+      _id: workflowId,
+      ...(space.enterpriseId ? { spaceId: work.spaceId, entId: space.enterpriseId } : { userId }),
+    })
     if (!workflow) throw new NotFoundException('来源工作流不存在或无权访问')
     const result = workflow?.result as WorkflowResult | undefined
     const selectedCandidate = result?.generate?.candidates.find(
@@ -233,7 +274,8 @@ export class WorksService {
       workflow.status !== 'completed' ||
       !result?.finalEvaluation?.passed ||
       !sourceKey ||
-      !sourceKey.startsWith(`workflows/${userId}/${workflowId}/`)
+      !sourceKey.startsWith(`workflows/${workflow.userId}/${workflowId}/`) ||
+      sourceKey.includes('..')
     ) {
       throw new BadRequestException('只能从已完成且质检通过的可信工作流创建版本')
     }
@@ -254,13 +296,19 @@ export class WorksService {
       { $max: { versionCounter: latest.versionNo } },
     )
     const allocated = await this.workModel.findOneAndUpdate(
-      { _id: work._id, ...personalCreatorFilter(userId) },
+      {
+        _id: work._id,
+        spaceId: work.spaceId,
+        ...(work.enterpriseId
+          ? { enterpriseId: work.enterpriseId }
+          : personalCreatorFilter(userId)),
+      },
       { $inc: { versionCounter: 1 } },
       { new: true },
     )
     if (!allocated) throw new NotFoundException('作品不存在或无权访问')
     const versionNo = allocated.versionCounter
-    const objectKey = `works/${userId}/${work._id.toString()}/versions/${versionNo}-${randomUUID()}.png`
+    const objectKey = `works/${work.creatorId}/${work._id.toString()}/versions/${versionNo}-${randomUUID()}.png`
     await this.storageService.uploadObject({
       key: objectKey,
       body: Buffer.from(source.bytes),
@@ -277,6 +325,9 @@ export class WorksService {
       )
       const version = await this.workVersionModel.create({
         workId: work._id,
+        spaceId: work.spaceId,
+        spaceType: work.spaceType,
+        enterpriseId: work.enterpriseId,
         versionNo,
         imageUrl,
         objectKey,
@@ -327,7 +378,7 @@ export class WorksService {
 
   async updateFavorite(userId: string, id: string, isFavorite: boolean) {
     const work = await this.findAccessibleWork(userId, id)
-    await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
+    await this.assertCanEdit(userId, work)
     if (work.creatorId.toString() !== userId) {
       throw new BadRequestException('只能收藏本人创建的作品')
     }
@@ -341,9 +392,18 @@ export class WorksService {
 
     const versions = await this.workVersionModel.find({ workId: work._id }).sort({ versionNo: -1 })
     for (const version of versions) {
+      await this.assertVersionScope(work, version)
       this.assertWorkObject(work, version.objectKey)
     }
-    return versions
+    return Promise.all(
+      versions.map(async (version) => ({
+        ...version.toObject(),
+        spaceId: work.spaceId,
+        spaceType: work.spaceType,
+        enterpriseId: work.enterpriseId,
+        imageUrl: await this.signWorkObject(work, version.objectKey),
+      })),
+    )
   }
 
   async findVersion(userId: string, id: string, versionId: string) {
@@ -358,7 +418,12 @@ export class WorksService {
       throw new NotFoundException('作品版本不存在或无权访问')
     }
 
+    await this.assertVersionScope(work, version)
     this.assertWorkObject(work, version.objectKey)
+    version.imageUrl = await this.signWorkObject(work, version.objectKey)
+    version.spaceId = work.spaceId
+    version.spaceType = work.spaceType
+    version.enterpriseId = work.enterpriseId
     return version
   }
 
@@ -406,16 +471,93 @@ export class WorksService {
 
   private async findAccessibleWork(userId: string, id: string) {
     assertObjectId(id)
-    const work = await this.workModel.findOne({ _id: id, ...personalCreatorFilter(userId) })
+    const work = await this.workModel.findOne(
+      {
+        _id: id,
+        $or: [
+          { spaceId: 'personal', ...personalCreatorFilter(userId) },
+          { spaceType: { $in: ['team', 'enterprise'] }, spaceId: { $ne: 'personal' } },
+        ],
+      },
+      { spaceId: 1, spaceType: 1, enterpriseId: 1, creatorId: 1 },
+    )
 
     if (!work) {
       throw new NotFoundException('作品不存在或无权访问')
     }
-    if (work.creatorId.toString() !== userId) {
+    if (work.spaceId === 'personal' && work.creatorId.toString() !== userId)
       throw new NotFoundException('作品不存在或无权访问')
+    const space = await this.orgService.authorization.assertCanReadSpace(userId, work.spaceId)
+    if (
+      space.spaceType !== 'personal' &&
+      (work.spaceType !== space.spaceType || work.enterpriseId?.toString() !== space.enterpriseId)
+    )
+      throw new ForbiddenException('作品空间归属不一致')
+    const authorized = await this.workModel.findOne({ _id: id, ...this.workScope(userId, space) })
+    if (!authorized) throw new NotFoundException('作品不存在或归属已变化')
+    return authorized
+  }
+
+  private async cleanupUploadedObject(key: string) {
+    try {
+      await this.storageService.deleteObject(key)
+    } catch (error: unknown) {
+      this.logger.error(
+        '作品写入失败后的对象清理失败',
+        error instanceof Error ? error.stack : undefined,
+      )
     }
-    await this.orgService.getAccessibleSpace(userId, work.spaceId)
-    return work
+  }
+
+  private workScope(userId: string, space: AuthorizedSpace) {
+    return space.spaceType === 'personal'
+      ? { spaceId: 'personal', ...personalCreatorFilter(userId) }
+      : {
+          spaceId: space.spaceId,
+          spaceType: space.spaceType,
+          enterpriseId: new Types.ObjectId(space.enterpriseId),
+        }
+  }
+
+  private canEdit(userId: string, work: WorkDocument, space: AuthorizedSpace) {
+    const creatorId: unknown = work.populated?.('creatorId') ?? work.creatorId
+    return (
+      space.permissions.manageWorks &&
+      (String(creatorId) === userId || space.role === Role.OWNER || space.role === Role.ADMIN)
+    )
+  }
+
+  private async assertCanEdit(userId: string, work: WorkDocument) {
+    const space = await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
+    if (!this.canEdit(userId, work, space))
+      throw new ForbiddenException('仅创建者或空间管理员可以编辑作品')
+    return space
+  }
+
+  private async assertVersionScope(work: WorkDocument, version: WorkVersionDocument) {
+    // 旧版本未保存 scope 时继承已鉴权的作品，新版本显式保存并校验。
+    if (
+      (version.spaceId && version.spaceId !== work.spaceId) ||
+      (version.spaceType && version.spaceType !== work.spaceType) ||
+      (version.enterpriseId && version.enterpriseId.toString() !== work.enterpriseId?.toString())
+    )
+      throw new ForbiddenException('作品版本与作品空间不一致')
+    if (version.sourceWorkflowId) {
+      const workflow = await this.workflowModel.findOne({
+        _id: version.sourceWorkflowId,
+        spaceId: work.spaceId,
+        ...(work.enterpriseId
+          ? { entId: work.enterpriseId.toString() }
+          : { userId: work.creatorId.toString() }),
+      })
+      if (
+        !workflow ||
+        (version.sourceObjectKey &&
+          (!version.sourceObjectKey.startsWith(`workflows/${workflow.userId}/${workflow._id}/`) ||
+            version.sourceObjectKey.includes('..')))
+      )
+        throw new ForbiddenException('版本来源工作流与作品空间不一致')
+    }
   }
 
   private assertWorkObject(work: WorkDocument, key: string | undefined): asserts key is string {

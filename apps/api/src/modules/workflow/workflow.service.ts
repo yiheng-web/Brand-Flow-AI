@@ -177,10 +177,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   async create(dto: CreateWorkflowDto, userId: string): Promise<WorkflowResponse> {
     if (!userId) throw new ForbiddenException('登录状态无效')
     const space = await this.assertSpaceAccess(userId, dto.spaceId, true)
-    if (dto.references?.length && space.spaceType !== 'personal')
-      throw new BadRequestException('参考素材当前仅支持个人空间')
     const references = dto.references?.length
-      ? await this.referencesService!.resolve(dto.references, userId)
+      ? await this.referencesService!.resolve(dto.references, userId, dto.spaceId)
       : []
     if (dto.generationConfig || dto.requirements?.aspectRatio) {
       try {
@@ -279,14 +277,15 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     const nodes = await this.workflowNodeModel.find({ workflowId: id }).sort({ createdAt: 1 })
     const response = this.toResponse(workflow)
     if (response.references?.length)
-      response.references = await Promise.all(
-        response.references.map(async (reference) => ({
-          ...reference,
-          imageUrl: await this.storageService.getSignedUrl(reference.objectKey),
-        })),
+      response.references = await this.referencesService!.resolve(
+        response.references,
+        userId,
+        workflow.spaceId,
       )
     response.result = (await this.signResultImages(
       response.result as WorkflowResult | undefined,
+      workflow,
+      userId,
     )) as Record<string, unknown> | undefined
     return {
       workflow: response,
@@ -294,24 +293,36 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private assertWorkflowObject(workflow: WorkflowDocument, key: string) {
+    if (!key.startsWith(`workflows/${workflow.userId}/${workflow._id}/`) || key.includes('..'))
+      throw new BadRequestException('工作流对象缺少可信归属')
+  }
+
   private async signResultImages(
     source: WorkflowResult | undefined,
+    workflow: WorkflowDocument,
+    userId: string,
   ): Promise<WorkflowResult | undefined> {
     if (!source) return undefined
     const result = { ...source }
-    if (result?.references?.length)
-      result.references = await Promise.all(
-        result.references.map(async (reference) => ({
-          ...reference,
-          imageUrl: await this.storageService.getSignedUrl(reference.objectKey),
-        })),
+    if (result?.references?.length) {
+      const references = await this.referencesService!.resolve(
+        result.references,
+        userId,
+        workflow.spaceId,
       )
+      result.references = references.map((reference, index) => ({
+        ...result.references![index],
+        ...reference,
+      }))
+    }
     if (result?.generate) {
       result.generate = {
         ...result.generate,
         candidates: await Promise.all(
           result.generate.candidates.map(async (candidate) => {
             const objectKey = candidate.metadata?.objectKey
+            if (typeof objectKey === 'string') this.assertWorkflowObject(workflow, objectKey)
             return typeof objectKey === 'string'
               ? { ...candidate, imageUrl: await this.storageService.getSignedUrl(objectKey) }
               : candidate
@@ -320,6 +331,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       }
     }
     if (result?.compose && 'objectKey' in result.compose && result.compose.objectKey) {
+      this.assertWorkflowObject(workflow, result.compose.objectKey)
       const signedUrl = await this.storageService.getSignedUrl(result.compose.objectKey)
       result.compose = { ...result.compose, finalImageUrl: signedUrl }
       result.finalImageUrl = signedUrl
@@ -472,7 +484,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getRevisions(id: string, userId: string, entId?: string) {
-    await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
     const revisions = await this.workflowRevisionModel.find({ workflowId: id }).sort({ round: -1 })
     // 仅刷新返回值中的短时链接，不改写历史快照及其不可变对象键。
     return Promise.all(
@@ -481,10 +493,13 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
           revision.result?.compose &&
           'objectKey' in revision.result.compose &&
           revision.result.compose.objectKey &&
-          !revision.result.compose.objectKey.startsWith(`workflows/${userId}/${id}/`)
+          !revision.result.compose.objectKey.startsWith(`workflows/${workflow.userId}/${id}/`)
         )
           throw new BadRequestException('Revision 成片缺少可信归属')
-        return { ...revision.toObject(), result: await this.signResultImages(revision.result) }
+        return {
+          ...revision.toObject(),
+          result: await this.signResultImages(revision.result, workflow, userId),
+        }
       }),
     )
   }
@@ -499,6 +514,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     )
     const objectKey = composedKey || selected?.metadata?.objectKey
     if (typeof objectKey !== 'string') throw new BadRequestException('当前结果尚未持久化，无法下载')
+    this.assertWorkflowObject(workflow, objectKey)
     return {
       fileName: `brand-flow-${id}.png`,
       downloadUrl: await this.storageService.getSignedUrl(objectKey, { expiresIn: 60 * 10 }),
@@ -516,6 +532,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       !objectKey.startsWith(`workflows/${workflow.userId}/${id}/`)
     )
       throw new BadRequestException('候选图尚未持久化')
+    this.assertWorkflowObject(workflow, objectKey)
     return {
       fileName: `brand-flow-${id}-${candidateId}.png`,
       downloadUrl: await this.storageService.getSignedUrl(objectKey, {
@@ -543,6 +560,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     if (typeof baseObjectKey !== 'string') {
       throw new BadRequestException('底图尚未持久化，无法生成艺术字候选')
     }
+    this.assertWorkflowObject(workflow, baseObjectKey)
     const baseCandidateWithFreshUrl = {
       ...baseCandidate,
       imageUrl: await this.storageService.getSignedUrl(baseObjectKey),
@@ -763,6 +781,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     if (typeof baseObjectKey !== 'string') {
       throw new BadRequestException('底图尚未持久化，无法验证合成来源')
     }
+    this.assertWorkflowObject(workflow, baseObjectKey)
     if (dto.width * dto.height > 33_554_432) {
       throw new BadRequestException('合成图片像素总量超过 32MP 限制')
     }
@@ -801,6 +820,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       await this.referencesService!.resolve(
         logoReferences.map(({ assetId, role }) => ({ assetId, role })),
         userId,
+        workflow.spaceId,
       )
     await this.assertCompositionPixels(
       baseObjectKey,
@@ -826,7 +846,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     let uploadedObjectKey: string | undefined
     let compositionCommitted = false
     try {
-      const objectKey = `workflows/${userId}/${id}/runs/${workflow.runVersion}/composition/${randomUUID()}.png`
+      const objectKey = `workflows/${workflow.userId}/${id}/runs/${workflow.runVersion}/composition/${randomUUID()}.png`
       await this.storageService.uploadObject({
         key: objectKey,
         body: file!.buffer!,

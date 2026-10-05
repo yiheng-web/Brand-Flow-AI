@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { getKnowledgeList, type KnowledgeData } from '@/api/knowledge'
 import { submitPrompt } from '@/api/workflow'
 import { getWorks, type WorkData } from '@/api/works'
-import { EmptyState, PageHeader } from '@/design-system/components'
+import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/design-system/components'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useUserStore } from '@/store/useUserStore'
 import { useWorkflowStore } from '@/store/useWorkflowStore'
@@ -36,6 +36,10 @@ const Home = () => {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeData[]>([])
   const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([])
   const [knowledgePickerOpen, setKnowledgePickerOpen] = useState(false)
+  const [loadedResourceSpaceId, setLoadedResourceSpaceId] = useState('')
+  const [worksError, setWorksError] = useState<string | null>(null)
+  const [resourceAttempt, setResourceAttempt] = useState(0)
+  const resourcesCurrent = loadedResourceSpaceId === (currentSpaceId || 'personal')
   const [recentWorks, setRecentWorks] = useState<WorkData[]>([])
 
   useEffect(() => {
@@ -52,6 +56,8 @@ const Home = () => {
         if (!active) return
         setKnowledgeBases(knowledgeResult.status === 'fulfilled' ? knowledgeResult.value : [])
         setRecentWorks(worksResult.status === 'fulfilled' ? worksResult.value.slice(0, 4) : [])
+        setWorksError(worksResult.status === 'rejected' ? '最近作品加载失败' : null)
+        setLoadedResourceSpaceId(spaceId)
       })
       .finally(() => {
         if (active) setKnowledgeLoading(false)
@@ -60,11 +66,11 @@ const Home = () => {
     return () => {
       active = false
     }
-  }, [currentSpaceId])
+  }, [currentSpaceId, resourceAttempt])
 
   const handleSubmit = async () => {
     const trimmed = prompt.trim()
-    if (submitting) return
+    if (submitting || !resourcesCurrent) return
     if (!trimmed) {
       message.warning('请先描述你想创作的图片')
       return
@@ -229,7 +235,7 @@ const Home = () => {
             trigger="click"
             placement="bottomLeft"
           >
-            <Button disabled={submitting || currentSpaceType !== 'personal'}>
+            <Button disabled={submitting || !canWrite}>
               参考素材{references.length ? `（${references.length}）` : ''}
             </Button>
           </Popover>
@@ -253,7 +259,7 @@ const Home = () => {
           <Button
             type="primary"
             loading={submitting}
-            disabled={!canWrite || !prompt.trim() || submitting}
+            disabled={!canWrite || !resourcesCurrent || !prompt.trim() || submitting}
             className={styles.primaryAction}
             onClick={() => void handleSubmit()}
           >
@@ -273,7 +279,14 @@ const Home = () => {
           </button>
         </div>
 
-        {recentWorks.length === 0 ? (
+        {!resourcesCurrent || knowledgeLoading ? (
+          <LoadingState label="正在加载当前空间作品…" />
+        ) : worksError ? (
+          <ErrorState
+            message={worksError}
+            onRetry={() => setResourceAttempt((attempt) => attempt + 1)}
+          />
+        ) : recentWorks.length === 0 ? (
           <div className={styles.emptyWorks}>
             <EmptyState
               description="当前空间还没有作品"

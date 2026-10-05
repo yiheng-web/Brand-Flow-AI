@@ -4,6 +4,7 @@ import type { WorkflowReferenceInput } from '@brand-flow/contracts'
 import { getAssets } from '@/api/assets'
 import type { AssetData } from '@/api/assets'
 import { EmptyState, ErrorState, LoadingState } from '@/design-system/components'
+import { useUserStore } from '@/store/useUserStore'
 import styles from './ReferencePicker.module.css'
 
 const ROLES = [
@@ -22,13 +23,15 @@ export default function ReferencePicker({
   onChange: (references: WorkflowReferenceInput[]) => void
   disabled: boolean
 }) {
+  const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
+  const [loadedSpaceId, setLoadedSpaceId] = useState('')
   const [assets, setAssets] = useState<AssetData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true
-    getAssets('personal')
+    getAssets(spaceId)
       .then((response) => {
         if (active) {
           setAssets(
@@ -39,20 +42,23 @@ export default function ReferencePicker({
             ),
           )
           setError(null)
+          setLoadedSpaceId(spaceId)
           setLoading(false)
         }
       })
       .catch((reason: unknown) => {
         if (active) {
           setError(reason instanceof Error ? reason.message : '素材加载失败')
+          setLoadedSpaceId(spaceId)
           setLoading(false)
         }
       })
     return () => {
       active = false
     }
-  }, [attempt])
-  if (loading) return <LoadingState label="正在加载个人参考素材…" />
+  }, [attempt, spaceId])
+  if (loading || loadedSpaceId !== spaceId)
+    return <LoadingState label="正在加载当前空间参考素材…" />
   if (error)
     return (
       <ErrorState
@@ -66,7 +72,8 @@ export default function ReferencePicker({
   return (
     <Space orientation="vertical" className={styles.picker}>
       <Typography.Text type="secondary">
-        参考图用于提取视觉特征，不保证像素级还原。Logo 保留原素材供后续合成。
+        参考图用于提取视觉特征，不保证像素级还原。Logo
+        保留原素材供后续合成。组织创作请先将个人图片上传到当前空间；团队可使用所属企业素材。
       </Typography.Text>
       {!assets.length && (
         <EmptyState description="暂无可用参考图片，请先在品牌素材中上传 PNG、JPEG 或 WebP" />

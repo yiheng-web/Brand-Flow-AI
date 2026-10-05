@@ -19,6 +19,10 @@ export interface WorkData {
   _id: string
   title: string
   spaceId: string
+  spaceType?: 'personal' | 'team' | 'enterprise'
+  enterpriseId?: string
+  canEdit?: boolean
+  creatorId?: string | { _id: string; email?: string; profile?: { name?: string } }
   finalImageUrl: string
   workflowId?: string
   qualityReport?: FinalEvaluationResult
@@ -30,6 +34,10 @@ export interface WorkData {
 export interface CreateWorkParams {
   title: string
   spaceId: string
+  spaceType?: 'personal' | 'team' | 'enterprise'
+  enterpriseId?: string
+  canEdit?: boolean
+  creatorId?: string | { _id: string; email?: string; profile?: { name?: string } }
   finalImageUrl: string
   workflowId: string
   objectKey?: string

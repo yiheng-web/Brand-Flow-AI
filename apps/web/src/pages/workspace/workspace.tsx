@@ -108,6 +108,9 @@ export default function Workspace() {
     (state) =>
       state.spaces.find((space) => space.id === workflowSpaceId)?.permissions?.write ?? false,
   )
+  const workflowSpaceName =
+    useUserStore((state) => state.spaces.find((space) => space.id === workflowSpaceId)?.name) ||
+    workflowSpaceId
   const [needsComposition, setNeedsComposition] = useState<boolean | undefined>()
   const [awaitingAction, setAwaitingAction] = useState<string | undefined>()
   const [previewCandidateId, setPreviewCandidateId] = useState<string>('')
@@ -458,6 +461,7 @@ export default function Workspace() {
             <i className={styles.liveDot} />
             AI 创作工作流
           </span>
+          <Tag>创作空间：{workflowSpaceName}</Tag>
           <strong className={styles.workflowTitle}>{userPrompt || '未命名工作流'}</strong>
           {import.meta.env.VITE_BRAND_FLOW_DEMO_MODE === 'true' && (
             <Tag color="orange">演示模式</Tag>

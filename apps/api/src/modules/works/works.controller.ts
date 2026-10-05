@@ -46,7 +46,7 @@ export class WorksController {
   @Get()
   @ApiOperation({
     summary: '获取作品列表',
-    description: '返回当前用户在指定 Space 中创建的私有作品。',
+    description: '个人空间仅返回本人作品，团队和企业空间按服务端成员权限返回共享作品。',
   })
   @ApiSuccessArrayResponse(WorkResponseDto, '返回封装后的作品列表。')
   async findAll(@Req() req: AuthenticatedRequest, @Query('spaceId') spaceId = 'personal') {
@@ -68,7 +68,7 @@ export class WorksController {
   @Delete(':id')
   @ApiOperation({
     summary: '删除作品',
-    description: '删除本人作品及其版本记录。',
+    description: '创建者或空间管理员可删除作品及其版本记录，Viewer 只读。',
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiSuccessResponse(SuccessResultDto, '删除成功，返回封装后的 success=true。')
@@ -79,7 +79,7 @@ export class WorksController {
   @Post(':id/versions')
   @ApiOperation({
     summary: '新增作品版本',
-    description: '仅依据本人已完成且质检通过的工作流生成版本，不接受客户端对象与质检结果。',
+    description: '仅依据同一空间已完成且质检通过的工作流生成版本，不接受客户端对象与质检结果。',
   })
   @ApiParam({ name: 'id', description: '作品 ID' })
   @ApiCreatedSuccessResponse(WorkVersionResponseDto, '创建成功，返回封装后的新作品版本。')
