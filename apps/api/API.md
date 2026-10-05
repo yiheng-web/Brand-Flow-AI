@@ -299,6 +299,14 @@ interface UserInfo {
 
 ### 知识库与向量检索模块 (/knowledge)
 
+- 团队列表包含同企业知识、当前团队知识和自己的个人知识，不包含其他团队或其他用户的个人知识。
+- 企业/团队库的 `isRequired` 在创建工作流时自动加载，不占最多 3 个主动选择名额；个人工作流不继承组织知识。
+- 明确规则采用正文标签：`品牌色: #00A862`、`Logo禁用: 拉伸`、`Logo使用: 拉伸`、`必用文案: 品牌名`、`禁用文案: 最低价`。每行或中文/英文分号分隔规则。
+- 显式禁用项和必用文案兼容映射为 `required`；企业强制约束不能被团队/个人覆盖，团队强制约束不能被个人覆盖。推荐/可选规则按个人 > 团队 > 企业优先；含多个规则或未识别正文的条目完整保留。
+- 新增、编辑、导入遇明确冲突返回 409，包含来源标题和冲突键；无法自动判断的自然语言需人工确认。单项写入传 `metadata.inheritanceConfirmed: true`，导入传 `confirmInheritance: true`；编辑正文需重新确认，确认不能绕过明确冲突。
+- 组织规则写入复用企业事务锁并在事务内重新授权，部署要求 Mongo 副本集。Mongo 提交后再同步向量，失败可重试。
+- Workflow 在合并阶段再次检测冲突；全部强制规则保留，推荐/可选合并后各最多 30 条。`BrandConstraintPackage.sources` 增加可选的 `spaceType/spaceId`，约束条目增加 `sourceSpaceType/sourceSpaceId` 以追溯来源；可选 `warnings` 保留自然语言的人工核对提示。
+
 知识库接口支持个人、团队和企业 Space。`GET /knowledge` 通过查询参数 `spaceId`
 指定空间，默认值为 `personal`；个人空间按当前登录用户隔离，不要求用户加入企业。
 其他详情和写接口根据知识库自身的 Space 归属执行服务端权限校验。
@@ -311,7 +319,7 @@ interface UserInfo {
       spaceId: string,       // personal、团队 ID 或企业 ID
       name: string,          // 知识库名称
       description?: string,  // 知识库描述
-      isRequired?: boolean   // 仅企业空间管理员可设置
+      isRequired?: boolean   // 企业/团队必选，仅对应空间 OWNER/ADMIN 可设置
     }
     ```
 
@@ -342,7 +350,8 @@ interface UserInfo {
     ```typescript
     {
       name?: string,
-      description?: string
+      description?: string,
+      isRequired?: boolean // 企业/团队必选标记
     }
     ```
 
@@ -375,7 +384,7 @@ interface UserInfo {
   - Body：`{ content: string }`，规则解析规则同 ingest。仅预览，不落库。
   - 返回：`{ batchId: string, items: Array<{ title: string, content: string, constraintLevel: 'required' | 'recommended' | 'optional' }> }`。
 - **`POST /knowledge/:id/import`**
-  - Body：预览结果 `{ batchId, items }`；可在确认前修改条目。标题 1~80 字符，正文 1~5000 字符，总正文最多 100000 字符。
+  - Body：预览结果 `{ batchId, items, confirmInheritance?: boolean }`；可在确认前修改条目。标题 1~80 字符，正文 1~5000 字符，总正文最多 100000 字符。
   - 同知识库、同批次、同序号唯一；失败重试保持 batchId 和条目不变。已写入条目被改动时返回 409，请重新解析生成新批次。
   - 返回同 ingest。关闭向量时 message 为“已导入到知识库，语义向量未启用”。向量失败不阻止 Mongo 创作，支持条目重试。
 - **`POST /knowledge/:id/items/:itemId/vector-sync`**

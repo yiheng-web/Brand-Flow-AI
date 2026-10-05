@@ -134,8 +134,8 @@ describe('个人知识库维护', () => {
     await userEvent.click(screen.getByText('确认导入'))
     await waitFor(() => expect(api.confirmKnowledgeImport).toHaveBeenCalledTimes(2))
     expect(api.confirmKnowledgeImport.mock.calls).toEqual([
-      ['kb', preview.batchId, preview.items],
-      ['kb', preview.batchId, preview.items],
+      ['kb', preview.batchId, preview.items, false],
+      ['kb', preview.batchId, preview.items, false],
     ])
   })
 

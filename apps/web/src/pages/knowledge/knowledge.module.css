@@ -46,6 +46,7 @@
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   align-items: center;
   justify-content: space-between;
@@ -320,6 +321,10 @@
 }
 
 @media (max-width: 800px) {
+  .wrapper {
+    padding: 28px 20px 48px;
+  }
+
   .detailHeader {
     flex-wrap: wrap;
     padding: 28px 20px 22px;

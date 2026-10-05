@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, Types, Schema as MongooseSchema } from 'mongoose'
 import type { SpaceType } from '@brand-flow/contracts'
 
 import type {
@@ -21,7 +21,7 @@ export type KnowledgeItemDocument = KnowledgeItem &
 
 @Schema({ timestamps: true })
 export class KnowledgeItem {
-  @Prop({ type: Types.ObjectId, ref: 'Knowledge', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Knowledge', required: true, index: true })
   knowledgeId!: Types.ObjectId
 
   @Prop({ required: true, index: true })
@@ -30,7 +30,7 @@ export class KnowledgeItem {
   @Prop({ type: String, enum: ['personal', 'team', 'enterprise'], required: true, index: true })
   spaceType!: SpaceType
 
-  @Prop({ type: Types.ObjectId, ref: 'Enterprise', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Enterprise', index: true })
   enterpriseId?: Types.ObjectId
 
   @Prop({ required: true })
@@ -45,7 +45,7 @@ export class KnowledgeItem {
   @Prop({ type: String, enum: ['manual', 'asset', 'import'], default: 'manual' })
   sourceType!: KnowledgeItemSourceType
 
-  @Prop({ type: Types.ObjectId, ref: 'Asset', index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Asset', index: true })
   assetId?: Types.ObjectId
 
   @Prop({ type: String, enum: ['active', 'archived'], default: 'active', index: true })
@@ -59,7 +59,7 @@ export class KnowledgeItem {
   })
   constraintLevel!: KnowledgeConstraintLevel
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true, index: true })
   creatorId!: Types.ObjectId
 
   @Prop({ type: Object })

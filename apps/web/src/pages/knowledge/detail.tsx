@@ -1,7 +1,19 @@
 import { useUserStore } from '@/store/useUserStore'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Card, Input, Modal, Form, Select, Tag, message, Upload, Alert } from 'antd'
+import {
+  Button,
+  Card,
+  Input,
+  Modal,
+  Form,
+  Select,
+  Tag,
+  message,
+  Upload,
+  Alert,
+  Checkbox,
+} from 'antd'
 import {
   ArrowLeftOutlined,
   PlusOutlined,
@@ -19,6 +31,7 @@ import {
   retryKnowledgeVectorSync,
 } from '@/api/knowledge'
 import type { KnowledgeData, KnowledgeItemData, CreateKnowledgeItemParams } from '@/api/knowledge'
+import { explicitKnowledgeRules } from '@brand-flow/contracts'
 import type { KnowledgeImportItem } from '@brand-flow/contracts'
 import { EmptyState, ErrorState, LoadingState } from '@/design-system/components'
 import styles from './knowledge.module.css'
@@ -54,6 +67,7 @@ const KnowledgeDetailPage = () => {
   const [preview, setPreview] = useState<{ batchId: string; items: KnowledgeImportItem[] } | null>(
     null,
   )
+  const [confirmInheritance, setConfirmInheritance] = useState(false)
   const [previewing, setPreviewing] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -110,6 +124,7 @@ const KnowledgeDetailPage = () => {
       title: item.title,
       content: item.content,
       tags: item.tags,
+      metadata: { ...item.metadata, inheritanceConfirmed: false },
       constraintLevel: item.constraintLevel ?? 'recommended',
     })
     setCreateOpen(true)
@@ -184,12 +199,18 @@ const KnowledgeDetailPage = () => {
     if (!id || !preview || ingesting) return
     setIngesting(true)
     try {
-      const res = await confirmKnowledgeImport(id, preview.batchId, preview.items)
+      const res = await confirmKnowledgeImport(
+        id,
+        preview.batchId,
+        preview.items,
+        confirmInheritance,
+      )
       if (res.failed) message.warning(res.message)
       else message.success(res.message)
       setIngestOpen(false)
       setIngestContent('')
       setPreview(null)
+      setConfirmInheritance(false)
       await fetchData()
     } catch (reason: unknown) {
       // 保留 batchId 与预览条目，重试不会重复创建已写入的知识项。
@@ -289,78 +310,89 @@ const KnowledgeDetailPage = () => {
           </div>
         ) : (
           <div className={styles.itemList}>
-            {items.map((item) => (
-              <Card key={item._id} className={styles.itemCard} size="small">
-                <div className={styles.itemTitle}>{item.title}</div>
-                <div className={styles.itemContent}>{item.content}</div>
-                <div className={styles.itemMeta}>
-                  <Tag
-                    color={
-                      item.constraintLevel === 'required'
-                        ? 'red'
-                        : item.constraintLevel === 'optional'
-                          ? 'default'
-                          : 'blue'
-                    }
-                  >
-                    {item.constraintLevel === 'required'
-                      ? '强制约束'
-                      : item.constraintLevel === 'optional'
-                        ? '可选参考'
-                        : '推荐约束'}
-                  </Tag>
-                  {item.tags?.length > 0 && item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
-                  <span>
-                    来源:{' '}
-                    {item.sourceType === 'asset'
-                      ? '素材'
-                      : item.sourceType === 'import'
-                        ? '批量导入'
-                        : '手工'}
-                  </span>
-                  <span>状态: {item.status === 'active' ? '启用' : '归档'}</span>
-                  <Button type="link" onClick={() => setViewing(item)}>
-                    查看原文与来源
-                  </Button>
-                  <Button
-                    type="link"
-                    disabled={!canWrite || Boolean(busyItemId)}
-                    onClick={() => handleEdit(item)}
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    type="link"
-                    loading={busyItemId === item._id}
-                    disabled={!canWrite || Boolean(busyItemId)}
-                    onClick={() => void handleToggleStatus(item)}
-                  >
-                    {item.status === 'active' ? '归档' : '启用'}
-                  </Button>
-                  {typeof item.metadata?.vectorSync === 'object' &&
-                    item.metadata.vectorSync !== null &&
-                    'failed' in item.metadata.vectorSync &&
-                    item.metadata.vectorSync.failed === true && (
-                      <Button
-                        onClick={() => void handleRetryVector(item)}
-                        disabled={!canWrite || Boolean(busyItemId)}
-                      >
-                        重试向量同步
-                      </Button>
-                    )}
-                  <Button
-                    type="link"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    disabled={!canWrite}
-                    onClick={() => handleDeleteItem(item._id, item.title)}
-                  >
-                    删除
-                  </Button>
-                </div>
-              </Card>
-            ))}
+            {items.map((item) => {
+              const level =
+                item.constraintLevel === 'required' ||
+                explicitKnowledgeRules(item.content).some(
+                  (rule) => rule.forbidden || rule.key.startsWith('copy:'),
+                )
+                  ? 'required'
+                  : item.constraintLevel
+              return (
+                <Card key={item._id} className={styles.itemCard} size="small">
+                  <div className={styles.itemTitle}>{item.title}</div>
+                  <div className={styles.itemContent}>{item.content}</div>
+                  <div className={styles.itemMeta}>
+                    <Tag
+                      color={
+                        level === 'required' ? 'red' : level === 'optional' ? 'default' : 'blue'
+                      }
+                    >
+                      {level === 'required'
+                        ? '强制约束'
+                        : level === 'optional'
+                          ? '可选参考'
+                          : '推荐约束'}
+                    </Tag>
+                    {item.tags?.length > 0 && item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
+                    <span>
+                      来自
+                      {kb?.spaceType === 'enterprise'
+                        ? '企业'
+                        : kb?.spaceType === 'team'
+                          ? '团队'
+                          : '个人'}{' '}
+                      · 来源:{' '}
+                      {item.sourceType === 'asset'
+                        ? '素材'
+                        : item.sourceType === 'import'
+                          ? '批量导入'
+                          : '手工'}
+                    </span>
+                    <span>状态: {item.status === 'active' ? '启用' : '归档'}</span>
+                    <Button type="link" onClick={() => setViewing(item)}>
+                      查看原文与来源
+                    </Button>
+                    <Button
+                      type="link"
+                      disabled={!canWrite || Boolean(busyItemId)}
+                      onClick={() => handleEdit(item)}
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      type="link"
+                      loading={busyItemId === item._id}
+                      disabled={!canWrite || Boolean(busyItemId)}
+                      onClick={() => void handleToggleStatus(item)}
+                    >
+                      {item.status === 'active' ? '归档' : '启用'}
+                    </Button>
+                    {typeof item.metadata?.vectorSync === 'object' &&
+                      item.metadata.vectorSync !== null &&
+                      'failed' in item.metadata.vectorSync &&
+                      item.metadata.vectorSync.failed === true && (
+                        <Button
+                          onClick={() => void handleRetryVector(item)}
+                          disabled={!canWrite || Boolean(busyItemId)}
+                        >
+                          重试向量同步
+                        </Button>
+                      )}
+                    <Button
+                      type="link"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      disabled={!canWrite}
+                      onClick={() => handleDeleteItem(item._id, item.title)}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
@@ -400,6 +432,15 @@ const KnowledgeDetailPage = () => {
               placeholder="输入规则正文，保存后即可用于当前空间创作"
             />
           </Form.Item>
+          <Alert
+            type="info"
+            message="明确规则格式：品牌色: #00A862；Logo禁用: 拉伸；Logo使用: 拉伸；必用文案: 品牌名；禁用文案: 最低价。禁用项和必用文案始终作为强制规则；其他自然语言需要人工核对继承规则。"
+          />
+          {kb?.spaceType !== 'personal' && (
+            <Form.Item name={['metadata', 'inheritanceConfirmed']} valuePropName="checked">
+              <Checkbox>我已核对继承的强制规则，确认本条自然语言规则不与其冲突</Checkbox>
+            </Form.Item>
+          )}
           <Form.Item name="tags" label="标签">
             <Select mode="tags" placeholder="输入标签后回车添加" />
           </Form.Item>
@@ -424,6 +465,7 @@ const KnowledgeDetailPage = () => {
           setIngestOpen(false)
           setIngestContent('')
           setPreview(null)
+          setConfirmInheritance(false)
         }}
         confirmLoading={ingesting}
         okText="确认导入"
@@ -450,6 +492,7 @@ const KnowledgeDetailPage = () => {
           onChange={(e) => {
             setIngestContent(e.target.value)
             setPreview(null)
+            setConfirmInheritance(false)
           }}
           placeholder="粘贴需要导入的文本内容..."
         />
@@ -465,6 +508,7 @@ const KnowledgeDetailPage = () => {
             try {
               setIngestContent(await file.text())
               setPreview(null)
+              setConfirmInheritance(false)
             } catch {
               message.error('无法读取文本文件')
             }
@@ -480,6 +524,14 @@ const KnowledgeDetailPage = () => {
         >
           解析并预览
         </Button>
+        {kb?.spaceType !== 'personal' && (
+          <Checkbox
+            checked={confirmInheritance}
+            onChange={(event) => setConfirmInheritance(event.target.checked)}
+          >
+            我已核对继承规则，确认导入的自然语言规则不与其冲突
+          </Checkbox>
+        )}
         {preview && (
           <div className={styles.importPreview} aria-label="导入预览">
             <p>预览 {preview.items.length} 条规则，确认后持久保存。</p>

@@ -19,6 +19,7 @@ export interface CreateKnowledgeParams {
 export interface UpdateKnowledgeParams {
   name?: string
   description?: string
+  isRequired?: boolean
 }
 
 // 导入文本请求参数
@@ -72,8 +73,9 @@ export async function confirmKnowledgeImport(
   id: string,
   batchId: string,
   items: KnowledgeImportItem[],
+  confirmInheritance = false,
 ): Promise<KnowledgeIngestResult> {
-  return apiClient.post(`/knowledge/${id}/import`, { batchId, items })
+  return apiClient.post(`/knowledge/${id}/import`, { batchId, items, confirmInheritance })
 }
 
 export async function updateKnowledgeItem(

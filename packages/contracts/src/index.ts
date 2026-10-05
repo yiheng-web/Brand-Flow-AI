@@ -1,3 +1,4 @@
+export * from './knowledge-rules'
 export * from './organization'
 export * from './authorization'
 export type SpaceType = 'personal' | 'team' | 'enterprise'
@@ -202,9 +203,12 @@ export interface BrandConstraint {
   description: string
   sourceKnowledgeBaseId?: string
   sourceItemId?: string
+  sourceSpaceType?: SpaceType
+  sourceSpaceId?: string
 }
 
 export interface BrandConstraintPackage {
+  warnings?: string[]
   required: BrandConstraint[]
   recommended: BrandConstraint[]
   optional: BrandConstraint[]
@@ -212,6 +216,8 @@ export interface BrandConstraintPackage {
     knowledgeBaseId: string
     itemId?: string
     title?: string
+    spaceType?: SpaceType
+    spaceId?: string
   }>
 }
 
@@ -230,6 +236,8 @@ export function splitBrandConstraintPackage(
         knowledgeBaseId: rule.sourceKnowledgeBaseId ?? '',
         itemId: rule.sourceItemId,
         title: rule.title,
+        spaceType: rule.sourceSpaceType,
+        spaceId: rule.sourceSpaceId,
       }
       batch[level].push(rule)
       if (source.knowledgeBaseId) batch.sources.push(source)

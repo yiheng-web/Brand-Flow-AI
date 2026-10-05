@@ -40,7 +40,7 @@ export class CreateKnowledgeDto {
   @IsOptional()
   pineconeNamespace?: string
 
-  @ApiPropertyOptional({ description: '企业强制知识库；只允许企业空间管理员设置' })
+  @ApiPropertyOptional({ description: '企业/团队必选知识库；只允许对应空间 OWNER/ADMIN 设置' })
   @IsBoolean()
   @IsOptional()
   isRequired?: boolean
@@ -62,7 +62,7 @@ export class UpdateKnowledgeDto {
   @IsOptional()
   pineconeNamespace?: string
 
-  @ApiPropertyOptional({ description: '是否作为企业强制知识库' })
+  @ApiPropertyOptional({ description: '是否作为企业/团队必选知识库' })
   @IsBoolean()
   @IsOptional()
   isRequired?: boolean
@@ -183,6 +183,11 @@ export class KnowledgeImportItemDto {
 }
 
 export class ConfirmKnowledgeImportDto {
+  @ApiPropertyOptional({ description: '人工确认自然语言规则不违反继承约束；不能绕过明确冲突' })
+  @IsBoolean()
+  @IsOptional()
+  confirmInheritance?: boolean
+
   @ApiProperty({ description: '本次预览生成的 UUID，重试必须保持不变' })
   @IsUUID()
   batchId!: string

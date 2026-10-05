@@ -115,8 +115,8 @@ const Home = () => {
     })
   }
 
-  const selectedKnowledgeBases = knowledgeBases.filter((item) =>
-    selectedKnowledgeBaseIds.includes(item._id || item.id || ''),
+  const selectedKnowledgeBases = knowledgeBases.filter(
+    (item) => item.isRequired || selectedKnowledgeBaseIds.includes(item._id || item.id || ''),
   )
 
   const knowledgePicker = (
@@ -133,8 +133,8 @@ const Home = () => {
         ) : (
           knowledgeBases.map((item) => {
             const knowledgeBaseId = item._id || item.id || ''
-            const checked = selectedKnowledgeBaseIds.includes(knowledgeBaseId)
-            const disabled = !checked && selectedKnowledgeBaseIds.length >= 3
+            const checked = item.isRequired || selectedKnowledgeBaseIds.includes(knowledgeBaseId)
+            const disabled = item.isRequired || (!checked && selectedKnowledgeBaseIds.length >= 3)
             const typeLabel =
               item.spaceType === 'enterprise'
                 ? '企业知识库'
@@ -153,7 +153,10 @@ const Home = () => {
                 <Checkbox checked={checked} disabled={disabled} tabIndex={-1} />
                 <span>
                   <b>{item.name}</b>
-                  <small>{typeLabel}</small>
+                  <small>
+                    {typeLabel}
+                    {item.isRequired ? ' · 自动必选（不占主动选择名额）' : ' · 可选'}
+                  </small>
                 </span>
               </button>
             )

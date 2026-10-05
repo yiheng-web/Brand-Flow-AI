@@ -31,7 +31,7 @@ export class KnowledgeResponseDto {
   @ApiPropertyOptional({ description: '关联企业 ID' })
   enterpriseId?: string
 
-  @ApiProperty({ description: '是否为企业强制知识库' })
+  @ApiProperty({ description: '是否为企业/团队必选知识库' })
   isRequired!: boolean
 }
 

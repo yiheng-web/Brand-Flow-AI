@@ -13,6 +13,7 @@ import type {
   WorkflowSnapshot,
 } from '@brand-flow/contracts'
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -705,6 +706,38 @@ export default function Workspace() {
                     </p>
                   </Modal>
                 </>
+              ) : selectedNodeId === 'brandConstraint' && result?.brandConstraint ? (
+                <Space orientation="vertical">
+                  {Boolean(result.brandConstraint.warnings?.length) && (
+                    <Alert
+                      type="warning"
+                      title="自然语言规则需要人工核对与确认"
+                      description={result.brandConstraint.warnings?.join('；')}
+                    />
+                  )}
+                  {result.brandConstraint.sources.map((source, index) => (
+                    <Tag key={`${source.itemId ?? index}`}>
+                      来自
+                      {source.spaceType === 'enterprise'
+                        ? '企业'
+                        : source.spaceType === 'team'
+                          ? '团队'
+                          : source.spaceType === 'personal'
+                            ? '个人'
+                            : '历史知识'}
+                      ：{source.title}
+                    </Tag>
+                  ))}
+                  {[
+                    ...result.brandConstraint.required,
+                    ...result.brandConstraint.recommended,
+                    ...result.brandConstraint.optional,
+                  ].map((rule) => (
+                    <Card key={rule.id} size="small" title={rule.title}>
+                      {rule.description}
+                    </Card>
+                  ))}
+                </Space>
               ) : selectedNodeId === 'finalEvaluation' && result?.finalEvaluation ? (
                 <QualityReport
                   report={result.finalEvaluation}

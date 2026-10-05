@@ -12,9 +12,74 @@ import {
   sortCandidateEvaluations,
   parseKnowledgeImport,
   splitBrandConstraintPackage,
+  mergeKnowledgeRules,
   canTransitionNode,
   canTransitionWorkflow,
 } from './index'
+
+test('组织规则拒绝明确冲突，保留强制/禁用项，按来源合并参考并提示自然语言', () => {
+  const rule = (
+    id: string,
+    description: string,
+    sourceSpaceType: 'enterprise' | 'team' | 'personal',
+    level: 'required' | 'recommended' = 'required',
+  ) => ({
+    id,
+    title: id,
+    description,
+    sourceSpaceType,
+    sourceSpaceId: sourceSpaceType,
+    level,
+    sourceKnowledgeBaseId: `kb-${id}`,
+    sourceItemId: id,
+  })
+  for (const [parent, child] of [
+    ['品牌色: #00A862', '品牌色: #000000'],
+    ['Logo禁用: 拉伸', 'Logo使用: 拉伸'],
+    ['禁用文案: 最低价', '必用文案: 最低价'],
+  ]) {
+    const result = mergeKnowledgeRules([
+      rule('企业规则', parent, 'enterprise'),
+      rule('团队规则', child, 'team', 'recommended'),
+    ])
+    assert.equal(result.conflicts.length, 1)
+    assert.match(result.conflicts[0], /企业强制规则/)
+  }
+  const result = mergeKnowledgeRules([
+    ...Array.from({ length: 35 }, (_, i) => rule(`强制${i}`, `规则${i}`, 'enterprise')),
+    rule('企业参考', '品牌色: #111111', 'enterprise', 'recommended'),
+    rule('团队参考', '品牌色: #222222', 'team', 'recommended'),
+    rule('个人参考', '品牌色: #333333', 'personal', 'recommended'),
+    rule('禁用项', 'Logo禁用: 拉伸', 'team', 'recommended'),
+    rule('自然语言', '视觉要更年轻', 'team', 'recommended'),
+  ])
+  assert.equal(result.constraints.required.length, 36)
+  assert.deepEqual(
+    result.constraints.recommended.map((entry) => entry.id),
+    ['自然语言', '个人参考'],
+  )
+  assert.ok(result.warnings.some((warning) => warning.includes('自然语言')))
+  assert.ok(result.constraints.sources.some((source) => source.spaceType === 'personal'))
+  const batches = splitBrandConstraintPackage(result.constraints, 3000)
+  assert.equal(
+    batches.reduce((count, batch) => count + batch.required.length, 0),
+    36,
+  )
+  assert.ok(batches.every((batch) => batch.sources.every((source) => source.spaceType)))
+  assert.equal(
+    mergeKnowledgeRules([rule('内部冲突', '必用文案: 最低价；禁用文案: 最低价', 'enterprise')])
+      .conflicts.length,
+    1,
+  )
+  // 不同团队的强制规则彼此隔离。
+  assert.equal(
+    mergeKnowledgeRules([
+      { ...rule('甲', '品牌色: #111111', 'team'), sourceSpaceId: '甲团队' },
+      { ...rule('乙', '品牌色: #222222', 'team'), sourceSpaceId: '乙团队' },
+    ]).conflicts.length,
+    0,
+  )
+})
 
 test('工作流和节点转换受控，取消是终态，失败允许重试', () => {
   assert.equal(canTransitionWorkflow('pending', 'running'), true)

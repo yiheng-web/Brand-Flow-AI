@@ -14,6 +14,7 @@ import {
 } from '@brand-flow/agent'
 import {
   WORKFLOW_NODE_ORDER,
+  mergeKnowledgeRules,
   sortCandidateEvaluations,
   type BrandConstraintPackage,
   type WorkflowNodeType,
@@ -532,43 +533,47 @@ export class WorkflowProcessor extends WorkerHost {
     const filter = {
       knowledgeId: { $in: ids.map((id) => new Types.ObjectId(id)) },
       status: 'active',
+      ...(workflow.spaceType === 'personal'
+        ? { spaceId: 'personal', creatorId: new Types.ObjectId(workflow.userId) }
+        : {
+            $or: [
+              { spaceId: workflow.spaceId, enterpriseId: new Types.ObjectId(workflow.entId) },
+              {
+                spaceId: workflow.entId,
+                spaceType: 'enterprise',
+                enterpriseId: new Types.ObjectId(workflow.entId),
+              },
+              { spaceId: 'personal', creatorId: new Types.ObjectId(workflow.userId) },
+            ],
+          }),
     }
-    // 强制规则完整读取，普通参考按创建时间和 ID 稳定排序，各最多 30 条。
-    const required = await this.knowledgeItemModel
-      .find({ ...filter, constraintLevel: 'required' })
-      .sort({ createdAt: 1, _id: 1 })
-    const recommended = await this.knowledgeItemModel
-      .find({
-        ...filter,
-        $or: [{ constraintLevel: 'recommended' }, { constraintLevel: { $exists: false } }],
-      })
-      .sort({ createdAt: 1, _id: 1 })
-      .limit(30)
-    const optional = await this.knowledgeItemModel
-      .find({ ...filter, constraintLevel: 'optional' })
-      .sort({ createdAt: 1, _id: 1 })
-      .limit(30)
-    const items = [...required, ...recommended, ...optional]
+    // 完整读取后合并；显式禁用项也映射为强制规则，不能提前截断。
+    const items = await this.knowledgeItemModel.find(filter).sort({ createdAt: 1, _id: 1 })
     const mapped = items.map((item) => ({
       id: item._id.toString(),
       title: item.title,
       description: item.content,
       sourceKnowledgeBaseId: item.knowledgeId.toString(),
       sourceItemId: item._id.toString(),
+      sourceSpaceType: item.spaceType,
+      sourceSpaceId: item.spaceId,
+      level: item.constraintLevel ?? 'recommended',
     }))
-    return {
-      required: mapped.filter((_, index) => items[index].constraintLevel === 'required'),
-      recommended: mapped.filter(
-        (_, index) =>
-          !items[index].constraintLevel || items[index].constraintLevel === 'recommended',
-      ),
-      optional: mapped.filter((_, index) => items[index].constraintLevel === 'optional'),
-      sources: mapped.map((item) => ({
-        knowledgeBaseId: item.sourceKnowledgeBaseId,
-        itemId: item.sourceItemId,
-        title: item.title,
-      })),
-    }
+    const merged = mergeKnowledgeRules(mapped)
+    if (merged.conflicts.length) throw new Error(merged.conflicts.join('；'))
+    merged.constraints.recommended = merged.constraints.recommended.slice(0, 30)
+    merged.constraints.optional = merged.constraints.optional.slice(0, 30)
+    const retained = new Set(
+      [
+        ...merged.constraints.required,
+        ...merged.constraints.recommended,
+        ...merged.constraints.optional,
+      ].map((rule) => rule.id),
+    )
+    merged.constraints.sources = merged.constraints.sources.filter((source) =>
+      retained.has(source.itemId!),
+    )
+    return merged.constraints
   }
 
   private async emitNodeEvent(

@@ -119,3 +119,29 @@ Authorization: Bearer {{accessToken}}
 ### 重试向量同步
 POST {{baseUrl}}/knowledge/{{knowledgeId}}/items/{{itemId}}/vector-sync
 Authorization: Bearer {{accessToken}}
+
+### 组织范围（填写真实企业或团队 ID；需要对应 OWNER/ADMIN 权限）
+@orgSpaceId = <企业或团队ID>
+GET {{baseUrl}}/knowledge?spaceId={{orgSpaceId}}
+Authorization: Bearer {{accessToken}}
+
+### 新建团队必选库
+POST {{baseUrl}}/knowledge
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "spaceId": "{{orgSpaceId}}", "name": "团队必选规则", "isRequired": true }
+
+### 明确规则（企业规则不允许被下级覆盖，冲突返回409）
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "title": "品牌色", "content": "品牌色: #00A862", "constraintLevel": "required" }
+
+### 人工确认自然语言；明确冲突仍然拒绝
+POST {{baseUrl}}/knowledge/{{knowledgeId}}/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "title": "视觉风格", "content": "视觉年轻化", "metadata": { "inheritanceConfirmed": true } }

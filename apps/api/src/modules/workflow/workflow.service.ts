@@ -203,8 +203,10 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     const requiredKnowledgeBaseIds = space.entId
       ? (
           await this.knowledgeModel.find({
-            spaceId: space.entId,
-            spaceType: 'enterprise',
+            $or: [
+              { spaceId: space.entId, spaceType: 'enterprise' },
+              { spaceId: dto.spaceId, spaceType: space.spaceType },
+            ],
             enterpriseId: new Types.ObjectId(space.entId),
             isRequired: true,
           })
@@ -1439,7 +1441,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     const scopeFilters: Record<string, unknown>[] = [
       spaceType === 'personal'
         ? { spaceId: 'personal', ...personalCreatorFilter(userId) }
-        : { spaceId },
+        : { spaceId, enterpriseId: new Types.ObjectId(entId) },
     ]
     if (spaceType === 'enterprise' && entId) {
       scopeFilters.push({ spaceId: { $exists: false }, enterpriseId: new Types.ObjectId(entId) })
@@ -1449,8 +1451,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
         spaceId: entId,
         spaceType: 'enterprise',
         enterpriseId: new Types.ObjectId(entId),
-        isRequired: true,
       })
+      scopeFilters.push({ spaceId: 'personal', ...personalCreatorFilter(userId) })
     }
     const query = { _id: { $in: ids }, $or: scopeFilters }
     const count = await this.knowledgeModel.countDocuments(query)

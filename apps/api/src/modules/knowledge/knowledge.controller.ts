@@ -131,7 +131,13 @@ export class KnowledgeController {
     @Param('id') id: string,
     @Body() dto: ConfirmKnowledgeImportDto,
   ) {
-    return this.knowledgeService.importItems(req.user.sub, id, dto.batchId, dto.items)
+    return this.knowledgeService.importItems(
+      req.user.sub,
+      id,
+      dto.batchId,
+      dto.items,
+      dto.confirmInheritance,
+    )
   }
 
   @Post(':id/items/:itemId/vector-sync')

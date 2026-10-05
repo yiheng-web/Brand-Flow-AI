@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Modal, Input, Form, Select, message } from 'antd'
 import {
@@ -29,6 +29,8 @@ const KnowledgeListPage = () => {
   const [renaming, setRenaming] = useState(false)
   const [renameTarget, setRenameTarget] = useState<KnowledgeData | null>(null)
   const [renameName, setRenameName] = useState('')
+  const requestVersion = useRef(0)
+  const [scopeFilter, setScopeFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [form] = Form.useForm()
   const canWrite = useUserStore(
@@ -39,28 +41,42 @@ const KnowledgeListPage = () => {
   const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
   const spaceType = useUserStore((state) => state.currentSpaceType)
   const spaceName = useUserStore((state) => state.currentSpaceName)
-  const filteredList = list.filter((item) =>
-    `${item.name} ${item.description || ''}`
-      .toLocaleLowerCase()
-      .includes(query.toLocaleLowerCase()),
+  const spaces = useUserStore((state) => state.spaces)
+  const filteredList = list.filter(
+    (item) =>
+      (scopeFilter === 'all' || item.spaceType === scopeFilter) &&
+      `${item.name} ${item.description || ''}`
+        .toLocaleLowerCase()
+        .includes(query.toLocaleLowerCase()),
   )
 
   const fetchList = useCallback(async () => {
+    const version = ++requestVersion.current
     setLoading(true)
     try {
-      const res = (await getKnowledgeList(spaceId)) as unknown as KnowledgeData[]
+      const res = await getKnowledgeList(spaceId)
+      if (version !== requestVersion.current) return
       setList(res)
       setError(null)
     } catch (reason) {
+      if (version !== requestVersion.current) return
       setList([])
       setError(reason instanceof Error ? reason.message : '无法加载知识库')
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current) setLoading(false)
     }
   }, [spaceId])
 
   useEffect(() => {
-    queueMicrotask(() => void fetchList())
+    const counter = requestVersion
+    let active = true
+    queueMicrotask(() => {
+      if (active) void fetchList()
+    })
+    return () => {
+      active = false
+      counter.current++
+    }
   }, [fetchList])
 
   const handleCreate = async () => {
@@ -136,11 +152,24 @@ const KnowledgeListPage = () => {
         <span>{spaceName.slice(0, 1)}</span>
         <p>
           <b>{spaceName}的知识范围</b>
-          <small>知识库只用于当前空间创作，切换空间后会刷新可用范围。</small>
+          <small>
+            企业强制规则不可覆盖；团队必选库自动启用；个人知识归自己。推荐/可选规则按个人、团队、企业顺序优先。
+          </small>
         </p>
       </div>
 
       <div className={styles.toolbar}>
+        <Select
+          aria-label="规则来源筛选"
+          value={scopeFilter}
+          onChange={setScopeFilter}
+          options={[
+            { value: 'all', label: '全部来源' },
+            { value: 'enterprise', label: '来自企业' },
+            { value: 'team', label: '来自团队' },
+            { value: 'personal', label: '来自个人' },
+          ]}
+        />
         <Input
           allowClear
           prefix={<SearchOutlined />}
@@ -188,7 +217,12 @@ const KnowledgeListPage = () => {
                     aria-label="重命名知识库"
                     icon={<EditOutlined />}
                     key="rename"
-                    disabled={!canWrite}
+                    disabled={
+                      !(
+                        spaces.find((space) => space.id === kb.spaceId)?.permissions
+                          ?.manageKnowledge ?? false
+                      )
+                    }
                     onClick={(e) => {
                       e.stopPropagation()
                       setRenameTarget(kb)
@@ -200,7 +234,12 @@ const KnowledgeListPage = () => {
                     aria-label="删除知识库"
                     icon={<DeleteOutlined />}
                     key="delete"
-                    disabled={!canWrite}
+                    disabled={
+                      !(
+                        spaces.find((space) => space.id === kb.spaceId)?.permissions
+                          ?.manageKnowledge ?? false
+                      )
+                    }
                     onClick={(e) => {
                       e.stopPropagation()
                       handleDelete(kb._id, kb.name)
@@ -213,7 +252,15 @@ const KnowledgeListPage = () => {
                 </span>
                 <Card.Meta title={kb.name} description={kb.description || '暂无描述'} />
                 <div className={styles.cardMeta}>
-                  <span>{kb.isRequired ? '企业规则' : '可用于创作'}</span>
+                  <span>
+                    来自
+                    {kb.spaceType === 'enterprise'
+                      ? '企业'
+                      : kb.spaceType === 'team'
+                        ? '团队'
+                        : '个人'}{' '}
+                    · {kb.isRequired ? '自动必选' : '可选知识'}
+                  </span>
                   <span>
                     {kb.updatedAt ? new Date(kb.updatedAt).toLocaleDateString('zh-CN') : '时间未知'}
                   </span>
@@ -248,12 +295,12 @@ const KnowledgeListPage = () => {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} placeholder="简要描述知识库的用途和内容范围（选填）" />
           </Form.Item>
-          {spaceType === 'enterprise' && (
-            <Form.Item name="isRequired" label="企业规则" initialValue={false}>
+          {spaceType !== 'personal' && (
+            <Form.Item name="isRequired" label="组织规则" initialValue={false}>
               <Select
                 options={[
-                  { value: false, label: '普通企业知识库' },
-                  { value: true, label: '强制知识库（团队空间自动启用）' },
+                  { value: false, label: '可选知识库' },
+                  { value: true, label: '必选知识库（当前组织工作流自动启用）' },
                 ]}
               />
             </Form.Item>
