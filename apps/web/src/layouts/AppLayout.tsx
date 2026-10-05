@@ -49,6 +49,7 @@ function normalizeSpaces(spaces: SpaceData[]): SpaceItem[] {
       name: '个人空间',
       type: 'personal',
       description: '作品和知识归你所有',
+      permissions: spaces.find((space) => space.type === 'personal')?.permissions,
     },
   ]
 
@@ -56,6 +57,7 @@ function normalizeSpaces(spaces: SpaceData[]): SpaceItem[] {
     if (space.type === 'personal') continue
     items.push({
       id: space.spaceId,
+      permissions: space.permissions,
       name: space.name,
       type: space.type,
       enterpriseId: space.enterpriseId,

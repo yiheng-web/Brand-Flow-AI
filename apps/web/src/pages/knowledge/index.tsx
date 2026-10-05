@@ -31,6 +31,11 @@ const KnowledgeListPage = () => {
   const [renameName, setRenameName] = useState('')
   const [query, setQuery] = useState('')
   const [form] = Form.useForm()
+  const canWrite = useUserStore(
+    (state) =>
+      state.spaces.find((space) => space.id === (state.currentSpaceId || 'personal'))?.permissions
+        ?.manageKnowledge ?? false,
+  )
   const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
   const spaceType = useUserStore((state) => state.currentSpaceType)
   const spaceName = useUserStore((state) => state.currentSpaceName)
@@ -116,7 +121,12 @@ const KnowledgeListPage = () => {
         title="知识库"
         description="组织共用的品牌资料、创作素材与规则中心"
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!canWrite}
+            onClick={() => setCreateOpen(true)}
+          >
             新建知识库
           </Button>
         }
@@ -153,7 +163,12 @@ const KnowledgeListPage = () => {
               query ? (
                 <Button onClick={() => setQuery('')}>清除搜索</Button>
               ) : (
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  disabled={!canWrite}
+                  onClick={() => setCreateOpen(true)}
+                >
                   新建知识库
                 </Button>
               )
@@ -168,16 +183,24 @@ const KnowledgeListPage = () => {
                 hoverable
                 onClick={() => navigate(`/knowledge/${kb._id}`)}
                 actions={[
-                  <EditOutlined
+                  <Button
+                    type="text"
+                    aria-label="重命名知识库"
+                    icon={<EditOutlined />}
                     key="rename"
+                    disabled={!canWrite}
                     onClick={(e) => {
                       e.stopPropagation()
                       setRenameTarget(kb)
                       setRenameName(kb.name)
                     }}
                   />,
-                  <DeleteOutlined
+                  <Button
+                    type="text"
+                    aria-label="删除知识库"
+                    icon={<DeleteOutlined />}
                     key="delete"
+                    disabled={!canWrite}
                     onClick={(e) => {
                       e.stopPropagation()
                       handleDelete(kb._id, kb.name)

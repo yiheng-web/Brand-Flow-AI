@@ -16,6 +16,8 @@ import { JwtAuthGuard } from '@/modules/auth/guards/jwt-auth.guard'
 import { RolesGuard } from '@/modules/auth/guards/roles.guard'
 import { Roles } from '@/modules/auth/guards/roles.decorator'
 import { Role } from '@/common/enums'
+import { ApiSuccessArrayResponse } from '@/common/swagger/api-success-response'
+import { OrgSpaceResponseDto } from './dto/org-response.dto'
 
 @ApiTags('组织与空间 Org')
 @ApiBearerAuth()
@@ -69,11 +71,12 @@ export class OrgController {
   async getTeams(@Req() req: { user: { sub: string; entId?: string } }) {
     const enterpriseId = req.user.entId
     if (!enterpriseId) throw new BadRequestException('请先切换企业空间')
-    return this.orgService.getTeams(enterpriseId)
+    return this.orgService.getTeams(enterpriseId, req.user.sub)
   }
 
   @Get('spaces')
   @ApiOperation({ summary: '获取当前用户可访问空间' })
+  @ApiSuccessArrayResponse(OrgSpaceResponseDto, '返回空间及服务端计算的权限结果')
   async getMySpaces(@Req() req: { user: { sub: string; entId?: string } }) {
     const userId = req.user.sub
     return this.orgService.getMySpaces(userId)

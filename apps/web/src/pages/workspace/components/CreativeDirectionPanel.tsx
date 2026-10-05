@@ -7,12 +7,14 @@ import styles from './CreativeDirectionPanel.module.css'
 interface CreativeDirectionPanelProps {
   creativeDirection: NonNullable<WorkflowResult['creativeDirection']>
   awaitingConfirmation: boolean
+  disabled?: boolean
   onConfirm: (direction: CreativeDirection) => Promise<void>
 }
 
 export default function CreativeDirectionPanel({
   creativeDirection,
   awaitingConfirmation,
+  disabled = false,
   onConfirm,
 }: CreativeDirectionPanelProps) {
   const [selectedDirectionId, setSelectedDirectionId] = useState(
@@ -35,7 +37,7 @@ export default function CreativeDirectionPanel({
     <div className={styles.panel}>
       <Radio.Group
         value={selectedDirectionId}
-        disabled={!awaitingConfirmation || loading}
+        disabled={disabled || !awaitingConfirmation || loading}
         onChange={(event) => setSelectedDirectionId(event.target.value as string)}
       >
         <Space orientation="vertical" className={styles.options}>
@@ -65,7 +67,7 @@ export default function CreativeDirectionPanel({
           type="primary"
           block
           loading={loading}
-          disabled={!selectedDirectionId}
+          disabled={disabled || !selectedDirectionId}
           onClick={() => void handleConfirm()}
         >
           确定创意方案

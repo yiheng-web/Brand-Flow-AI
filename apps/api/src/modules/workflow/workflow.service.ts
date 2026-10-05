@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { LimitsService } from '../limits/limits.service'
 import {
   Injectable,
@@ -55,9 +56,6 @@ import { RUN_WORKFLOW_JOB, WORKFLOW_QUEUE } from './workflow.constants'
 import { Workflow, WorkflowDocument, WorkflowStatus } from './schemas/workflow.schema'
 import { WorkflowNode, WorkflowNodeDocument } from './schemas/workflow-node.schema'
 import { WorkflowRevision, WorkflowRevisionDocument } from './schemas/workflow-revision.schema'
-import { User, UserDocument } from '../org/schemas/user.schema'
-import { Team, TeamDocument } from '../org/schemas/team.schema'
-import { Enterprise, EnterpriseDocument } from '../org/schemas/enterprise.schema'
 import { Knowledge, KnowledgeDocument } from '../knowledge/schemas/knowledge.schema'
 import { StorageService } from '../storage/storage.service'
 import {
@@ -103,15 +101,10 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     private readonly workflowRevisionModel: Model<WorkflowRevisionDocument>,
     @InjectQueue(WORKFLOW_QUEUE)
     private readonly workflowQueue: Queue,
-    @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>,
-    @InjectModel(Team.name)
-    private readonly teamModel: Model<TeamDocument>,
-    @InjectModel(Enterprise.name)
-    private readonly enterpriseModel: Model<EnterpriseDocument>,
     @InjectModel(Knowledge.name)
     private readonly knowledgeModel: Model<KnowledgeDocument>,
     private readonly storageService: StorageService,
+    private readonly authorization: AuthorizationService,
     private readonly referencesService?: WorkflowReferencesService,
     private readonly limits?: LimitsService,
   ) {}
@@ -147,20 +140,24 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     id: string,
     userId: string,
     entId?: string,
+    write = false,
   ): Promise<WorkflowDocument> {
     assertObjectId(id)
-    const workflow = await this.workflowModel.findOne({
-      _id: id,
-      $or: [
-        { spaceId: 'personal', userId },
-        { spaceId: { $ne: 'personal' }, spaceType: { $ne: 'personal' } },
-      ],
-    })
+    const workflow = await this.workflowModel.findOne(
+      {
+        _id: id,
+        $or: [
+          { spaceId: 'personal', userId },
+          { spaceId: { $ne: 'personal' }, spaceType: { $ne: 'personal' } },
+        ],
+      },
+      { spaceId: 1, spaceType: 1, userId: 1, entId: 1 },
+    )
     if (!workflow) {
       throw new NotFoundException(`Workflow ${id} not found`)
     }
 
-    await this.assertSpaceAccess(userId, workflow.spaceId)
+    const space = await this.assertSpaceAccess(userId, workflow.spaceId, write)
     if (workflow.spaceType === 'personal' || workflow.spaceId === 'personal') {
       assertPersonalOwner(userId, workflow.userId)
     }
@@ -168,12 +165,18 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('当前登录企业与工作流所属企业不一致')
     }
 
-    return trackWorkflow(workflow)
+    const authorizedWorkflow = await this.workflowModel.findOne({
+      _id: id,
+      spaceId: workflow.spaceId,
+      ...(space.spaceType === 'personal' ? { userId } : { entId: space.entId }),
+    })
+    if (!authorizedWorkflow) throw new NotFoundException('工作流不存在或归属已变化')
+    return trackWorkflow(authorizedWorkflow)
   }
 
   async create(dto: CreateWorkflowDto, userId: string): Promise<WorkflowResponse> {
     if (!userId) throw new ForbiddenException('登录状态无效')
-    const space = await this.assertSpaceAccess(userId, dto.spaceId)
+    const space = await this.assertSpaceAccess(userId, dto.spaceId, true)
     if (dto.references?.length && space.spaceType !== 'personal')
       throw new BadRequestException('参考素材当前仅支持个人空间')
     const references = dto.references?.length
@@ -247,7 +250,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ): Promise<WorkflowResponse> {
-    const accessibleWorkflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const accessibleWorkflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     if (accessibleWorkflow.status !== 'pending') {
       return this.toResponse(accessibleWorkflow)
     }
@@ -260,7 +263,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       await this.saveWorkflow(accessibleWorkflow)
     } catch (error) {
       if (error instanceof StaleWorkflowError)
-        return this.toResponse(await this.verifyWorkflowAccess(id, userId, entId))
+        return this.toResponse(await this.verifyWorkflowAccess(id, userId, entId, true))
       throw error
     }
     await this.queueNode(accessibleWorkflow, 'brief')
@@ -323,7 +326,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async confirmBrief(id: string, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     if (
       workflow.status !== 'awaiting_user' ||
@@ -349,7 +352,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateBrief(id: string, dto: UpdateBriefDto, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     if (workflow.status !== 'awaiting_user' || workflow.awaitingAction !== 'confirm_brief') {
       throw new BadRequestException('当前工作流不接受 Brief 修改')
@@ -379,7 +382,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async regenerateBrief(id: string, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     if (workflow.status !== 'awaiting_user' || workflow.awaitingAction !== 'confirm_brief') {
       throw new BadRequestException('当前工作流不接受 Brief 重新生成')
     }
@@ -387,7 +390,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async optimize(id: string, dto: OptimizeWorkflowDto, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     const sourceCandidate = result.generate?.candidates.find(
       (candidate) => candidate.id === dto.sourceCandidateId,
@@ -526,7 +529,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     const baseCandidate = result.generate?.candidates.find(
       (candidate) => candidate.id === dto.baseCandidateId,
@@ -617,7 +620,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     const draft = result.compositionDraft
     if (
@@ -651,7 +654,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     const draft = result.compositionDraft
     if (
@@ -698,7 +701,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     if (
       !['awaiting_user', 'failed'].includes(workflow.status) ||
@@ -923,7 +926,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     userId: string,
     entId?: string,
   ) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const nodeType = normalizeWorkflowNodeType(rawNodeType)
     if (!nodeType) throw new BadRequestException('不支持的工作流节点类型')
 
@@ -1019,7 +1022,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async runNode(id: string, rawNodeType: string, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     const nodeType = normalizeWorkflowNodeType(rawNodeType)
     if (!nodeType) throw new BadRequestException('不支持的工作流节点类型')
 
@@ -1122,7 +1125,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async cancel(id: string, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     if (workflow.status === 'cancelled') return this.toResponse(workflow)
     if (workflow.status === 'completed') throw new BadRequestException('已完成任务不能取消')
     workflow.status = 'cancelled'
@@ -1133,7 +1136,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   }
 
   async retry(id: string, userId: string, entId?: string) {
-    const workflow = await this.verifyWorkflowAccess(id, userId, entId)
+    const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
     if (workflow.status === 'running') return { success: true, message: '任务已在执行' }
     if (workflow.status !== 'failed') throw new BadRequestException('只能重试失败任务')
     return this.runNode(id, workflow.currentNode ?? 'brief', userId, entId)
@@ -1413,28 +1416,12 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
   private async assertSpaceAccess(
     userId: string,
     spaceId: string,
+    write = false,
   ): Promise<{ spaceType: SpaceType; entId?: string }> {
-    if (spaceId === 'personal') return { spaceType: 'personal' }
-    if (!Types.ObjectId.isValid(spaceId)) throw new ForbiddenException('空间不存在或无权访问')
-
-    const user = await this.userModel.findById(userId)
-    if (!user) throw new ForbiddenException('用户不存在')
-
-    const team = await this.teamModel.findById(spaceId)
-    if (team) {
-      const membership = user.memberships.find(
-        (item) =>
-          item.teamId?.toString() === spaceId ||
-          (!item.teamId && item.enterpriseId.toString() === team.enterpriseId.toString()),
-      )
-      if (!membership) throw new ForbiddenException('您不属于该团队空间')
-      return { spaceType: 'team', entId: team.enterpriseId.toString() }
-    }
-
-    const enterprise = await this.enterpriseModel.findById(spaceId)
-    const membership = user.memberships.find((item) => item.enterpriseId.toString() === spaceId)
-    if (!enterprise || !membership) throw new ForbiddenException('您不属于该企业空间')
-    return { spaceType: 'enterprise', entId: enterprise._id.toString() }
+    const space = write
+      ? await this.authorization.assertCanWriteSpace(userId, spaceId)
+      : await this.authorization.assertCanReadSpace(userId, spaceId)
+    return { spaceType: space.spaceType, entId: space.enterpriseId }
   }
 
   private async assertKnowledgeAccess(

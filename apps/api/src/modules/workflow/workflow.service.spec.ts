@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { Types } from 'mongoose'
 
 import { WorkflowService } from './workflow.service'
@@ -35,9 +36,7 @@ const createService = () => {
     workflowQueue as never,
     {} as never,
     {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
+    new AuthorizationService({} as never, {} as never, {} as never),
   )
   return { service, workflowModel, workflowQueue }
 }

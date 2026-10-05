@@ -14,6 +14,10 @@ type WorkFilter = 'all' | 'favorite'
 export default function WorksPage() {
   const navigate = useNavigate()
   const spaceId = useUserStore((state) => state.currentSpaceId) || 'personal'
+  const canWrite = useUserStore(
+    (state) =>
+      state.spaces.find((space) => space.id === spaceId)?.permissions?.manageWorks ?? false,
+  )
   const spaceName = useUserStore((state) => state.currentSpaceName)
   const [works, setWorks] = useState<WorkData[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,7 +81,12 @@ export default function WorksPage() {
         title="作品空间"
         description={`已保存的作品与版本 · ${spaceName}；未完成创作请前往创作任务`}
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/home')}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!canWrite}
+            onClick={() => navigate('/home')}
+          >
             新建创作
           </Button>
         }
@@ -111,7 +120,7 @@ export default function WorksPage() {
           <EmptyState
             description={filter === 'favorite' ? '还没有收藏作品' : '当前空间还没有保存作品'}
             action={
-              <Button type="primary" onClick={() => navigate('/home')}>
+              <Button type="primary" disabled={!canWrite} onClick={() => navigate('/home')}>
                 开始创作
               </Button>
             }
@@ -152,6 +161,7 @@ export default function WorksPage() {
                     danger
                     aria-label={`删除${work.title}`}
                     icon={<DeleteOutlined />}
+                    disabled={!canWrite}
                     onClick={() => handleDelete(work)}
                   />
                 </div>

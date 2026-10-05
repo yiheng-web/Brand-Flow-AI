@@ -76,8 +76,7 @@ const OrganizationPage = () => {
   const currentRole = organizationEnterprises.find(
     (item) => item.enterpriseId === enterpriseId,
   )?.role
-  const canManage =
-    currentSpaceType !== 'personal' && (currentRole === 'owner' || currentRole === 'admin')
+  const canManage = currentSpace?.permissions?.manageMembers ?? false
 
   useEffect(() => {
     let active = true
@@ -288,7 +287,9 @@ const OrganizationPage = () => {
             <Button
               size="small"
               icon={<PlusOutlined />}
-              disabled={!canManage}
+              disabled={
+                !spaces.find((space) => space.id === enterpriseId)?.permissions?.manageMembers
+              }
               onClick={() => setCreateTeamOpen(true)}
             >
               创建团队

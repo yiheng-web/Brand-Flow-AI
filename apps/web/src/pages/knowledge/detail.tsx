@@ -1,3 +1,4 @@
+import { useUserStore } from '@/store/useUserStore'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button, Card, Input, Modal, Form, Select, Tag, message, Upload, Alert } from 'antd'
@@ -29,6 +30,10 @@ const KnowledgeDetailPage = () => {
   const navigate = useNavigate()
 
   const [kb, setKb] = useState<KnowledgeData | null>(null)
+  const canWrite = useUserStore(
+    (state) =>
+      state.spaces.find((space) => space.id === kb?.spaceId)?.permissions?.manageKnowledge ?? false,
+  )
   const [items, setItems] = useState<KnowledgeItemData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -238,10 +243,19 @@ const KnowledgeDetailPage = () => {
           {kb.description && <p>{kb.description}</p>}
         </div>
         <div className={styles.detailActions}>
-          <Button icon={<FileTextOutlined />} onClick={() => setIngestOpen(true)}>
+          <Button
+            icon={<FileTextOutlined />}
+            disabled={!canWrite}
+            onClick={() => setIngestOpen(true)}
+          >
             批量导入文本
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!canWrite}
+            onClick={() => setCreateOpen(true)}
+          >
             新增知识项
           </Button>
         </div>
@@ -262,7 +276,12 @@ const KnowledgeDetailPage = () => {
             <EmptyState
               description="暂无知识项，添加后即可用于 AI 检索"
               action={
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  disabled={!canWrite}
+                  onClick={() => setCreateOpen(true)}
+                >
                   新增知识项
                 </Button>
               }
@@ -305,7 +324,7 @@ const KnowledgeDetailPage = () => {
                   </Button>
                   <Button
                     type="link"
-                    disabled={Boolean(busyItemId)}
+                    disabled={!canWrite || Boolean(busyItemId)}
                     onClick={() => handleEdit(item)}
                   >
                     编辑
@@ -313,7 +332,7 @@ const KnowledgeDetailPage = () => {
                   <Button
                     type="link"
                     loading={busyItemId === item._id}
-                    disabled={Boolean(busyItemId)}
+                    disabled={!canWrite || Boolean(busyItemId)}
                     onClick={() => void handleToggleStatus(item)}
                   >
                     {item.status === 'active' ? '归档' : '启用'}
@@ -324,7 +343,7 @@ const KnowledgeDetailPage = () => {
                     item.metadata.vectorSync.failed === true && (
                       <Button
                         onClick={() => void handleRetryVector(item)}
-                        disabled={Boolean(busyItemId)}
+                        disabled={!canWrite || Boolean(busyItemId)}
                       >
                         重试向量同步
                       </Button>
@@ -334,6 +353,7 @@ const KnowledgeDetailPage = () => {
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
+                    disabled={!canWrite}
                     onClick={() => handleDeleteItem(item._id, item.title)}
                   >
                     删除

@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { ConflictException } from '@nestjs/common'
 import { Types } from 'mongoose'
 import type { Model } from 'mongoose'
@@ -44,6 +45,7 @@ describe('知识库导入与向量补偿', () => {
     itemModel as unknown as Model<KnowledgeItemDocument>,
     {
       getAccessibleSpace: jest.fn().mockResolvedValue({ spaceType: 'personal', role: Role.OWNER }),
+      authorization: new AuthorizationService({} as never, {} as never, {} as never),
     } as unknown as OrgService,
   )
   const payload = [

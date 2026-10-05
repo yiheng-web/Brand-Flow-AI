@@ -1,0 +1,38 @@
+### 使用专用测试账号的登录 Token；不要填写或提交真实凭据
+@baseUrl = http://localhost:3000/api
+@accessToken = REPLACE_WITH_TEST_TOKEN
+@spaceId = REPLACE_WITH_ENTERPRISE_OR_TEAM_ID
+
+### 空间结果包含后端计算的 permissions；不能从角色或 Token 推测权限
+GET {{baseUrl}}/org/spaces
+Authorization: Bearer {{accessToken}}
+
+### OWNER/ADMIN 邀请普通成员（团队邀请要求目标已属于同一企业）
+POST {{baseUrl}}/org/spaces/{{spaceId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "rbac-member@example.test",
+  "role": "member"
+}
+
+### 所有角色均禁止通过邀请授予 OWNER，预期 403
+POST {{baseUrl}}/org/spaces/{{spaceId}}/invitations
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "email": "rbac-member@example.test",
+  "role": "owner"
+}
+
+### 使用 VIEWER 或非团队成员 Token 创建共享工作流，预期 403
+POST {{baseUrl}}/workflow
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "spaceId": "{{spaceId}}",
+  "prompt": "权限拒绝测试，不应创建任务或调用模型"
+}

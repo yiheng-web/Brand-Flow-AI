@@ -11,10 +11,10 @@ import { MAX_ASSET_IMAGE_BYTES, ASSET_IMAGE_FORMATS } from './assets.constants'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { Asset, AssetDocument } from './asset.schema'
-import { User, UserDocument } from '@/modules/org/schemas/user.schema'
+import { AuthorizationService } from '@/modules/org/authorization.service'
 import { CreateAssetDto, UploadAssetDto } from './dto/assets.dto'
 import { SaveAssetToKnowledgeDto } from './dto/assets.dto'
-import { Visibility, OwnerType, Role } from '@/common/enums'
+import { Visibility, OwnerType } from '@/common/enums'
 import { StorageService } from '@/modules/storage/storage.service'
 import { KnowledgeService } from '@/modules/knowledge/knowledge.service'
 
@@ -30,36 +30,14 @@ export class AssetsService {
   private readonly logger = new Logger(AssetsService.name)
   constructor(
     @InjectModel(Asset.name) private assetModel: Model<AssetDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly authorization: AuthorizationService,
     private readonly storageService: StorageService,
     private readonly knowledgeService: KnowledgeService,
   ) {}
 
   async createAsset(userId: string, enterpriseId: string | undefined, createDto: CreateAssetDto) {
     const { name, type, url, ownerId, ownerType, visibility, metadata } = createDto
-    assertObjectId(ownerId)
-
-    if (ownerType === OwnerType.USER) {
-      if (ownerId !== userId) throw new ForbiddenException('不能向他人的个人空间写入素材')
-      if (visibility !== Visibility.PRIVATE) {
-        throw new BadRequestException('个人素材只能保存到本人私有空间')
-      }
-    } else if (!enterpriseId) {
-      throw new BadRequestException('团队或企业素材需要有效的企业上下文')
-    }
-
-    if (visibility === Visibility.TEAM || visibility === Visibility.ENTERPRISE) {
-      const user = await this.userModel.findById(userId)
-      const membership = user?.memberships.find(
-        (m) =>
-          m.enterpriseId.toString() === enterpriseId &&
-          (!m.teamId || (ownerType === OwnerType.TEAM && m.teamId.toString() === ownerId)),
-      )
-
-      if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-        throw new BadRequestException('仅部门主管或企业管理员才能往企业/团队库添加规范素材')
-      }
-    }
+    await this.assertCanCreateAsset(userId, enterpriseId, ownerId, ownerType, visibility)
 
     const asset = await this.assetModel.create({
       name,
@@ -100,15 +78,6 @@ export class AssetsService {
       await image.stats()
     } catch {
       throw new BadRequestException('图片内容无效、格式与 MIME 不一致或像素过大')
-    }
-
-    if (uploadDto.ownerType === OwnerType.USER) {
-      if (uploadDto.ownerId !== userId) throw new ForbiddenException('不能向他人的个人空间上传素材')
-      if (uploadDto.visibility !== Visibility.PRIVATE) {
-        throw new BadRequestException('个人素材只能上传到本人私有空间')
-      }
-    } else if (!enterpriseId) {
-      throw new BadRequestException('团队或企业素材需要有效的企业上下文')
     }
 
     await this.assertCanCreateAsset(
@@ -178,7 +147,8 @@ export class AssetsService {
   }
 
   async getAssets(userId: string, enterpriseId?: string, spaceId?: string) {
-    if (spaceId === 'personal' || !enterpriseId) {
+    if (spaceId === 'personal' || (!enterpriseId && !spaceId)) {
+      await this.authorization.assertCanReadSpace(userId, 'personal')
       const personalAssets = await this.assetModel
         .find({
           ...personalCreatorFilter(userId),
@@ -190,17 +160,13 @@ export class AssetsService {
       return Promise.all(personalAssets.map((asset) => this.attachSignedUrl(asset)))
     }
 
-    const user = await this.userModel.findById(userId)
-    if (!user) {
-      throw new NotFoundException('用户不存在')
-    }
+    const space = await this.authorization.assertCanReadSpace(
+      userId,
+      spaceId || enterpriseId || 'personal',
+    )
+    this.authorization.assertEnterpriseContext(space, enterpriseId)
 
-    const myTeams = user.memberships
-      .filter((m) => m.enterpriseId.toString() === enterpriseId && m.teamId)
-      .map((m) => m.teamId?.toString())
-
-    if (spaceId && spaceId !== enterpriseId) {
-      if (!myTeams.includes(spaceId)) throw new BadRequestException('您不属于当前团队空间')
+    if (space.spaceType === 'team') {
       const teamAssets = await this.assetModel
         .find({
           enterpriseId: new Types.ObjectId(enterpriseId),
@@ -215,11 +181,9 @@ export class AssetsService {
 
     const query = {
       enterpriseId: new Types.ObjectId(enterpriseId),
-      $or: [
-        { visibility: Visibility.PUBLIC, ownerType: OwnerType.ENTERPRISE },
-        { creatorId: new Types.ObjectId(userId) },
-        { visibility: Visibility.ENTERPRISE, ownerType: OwnerType.ENTERPRISE },
-      ],
+      ownerId: new Types.ObjectId(enterpriseId),
+      ownerType: OwnerType.ENTERPRISE,
+      visibility: { $in: [Visibility.PUBLIC, Visibility.ENTERPRISE] },
     }
 
     const assets = await this.assetModel
@@ -247,25 +211,16 @@ export class AssetsService {
       throw new NotFoundException('资产不存在')
     }
 
-    if (asset.creatorId.toString() !== userId) {
-      if (asset.visibility === Visibility.TEAM || asset.visibility === Visibility.ENTERPRISE) {
-        const user = await this.userModel.findById(userId)
-        const membership = user?.memberships.find(
-          (m) =>
-            asset.enterpriseId &&
-            m.enterpriseId.toString() === asset.enterpriseId.toString() &&
-            (!m.teamId ||
-              (asset.ownerType === OwnerType.TEAM &&
-                m.teamId.toString() === asset.ownerId.toString())),
-        )
-
-        if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-          throw new BadRequestException('仅部门主管或企业管理员才能删除公共素材')
-        }
-      } else {
-        throw new ForbiddenException('您无权删除此资产')
-      }
+    if (asset.ownerType === OwnerType.USER && asset.creatorId.toString() !== userId) {
+      throw new ForbiddenException('您无权删除此素材')
     }
+    await this.assertCanCreateAsset(
+      userId,
+      asset.enterpriseId?.toString(),
+      asset.ownerId.toString(),
+      asset.ownerType,
+      asset.visibility,
+    )
 
     // Uploaded files live in the private bucket, so remove the object as part
     // of the same business delete path that removes the database record.
@@ -285,6 +240,13 @@ export class AssetsService {
     dto: SaveAssetToKnowledgeDto,
   ) {
     const asset = await this.findAccessibleAsset(userId, enterpriseId, assetId)
+    await this.assertCanCreateAsset(
+      userId,
+      asset.enterpriseId?.toString(),
+      asset.ownerId.toString(),
+      asset.ownerType,
+      asset.visibility,
+    )
     const tags = Array.isArray(asset.metadata?.tags)
       ? asset.metadata.tags.filter((tag): tag is string => typeof tag === 'string')
       : []
@@ -338,28 +300,16 @@ export class AssetsService {
     ownerType: OwnerType,
     visibility: Visibility,
   ) {
+    assertObjectId(ownerId)
+    this.authorization.assertAssetVisibility(ownerType, visibility)
     if (ownerType === OwnerType.USER) {
       if (ownerId !== userId) throw new ForbiddenException('不能向他人的个人空间写入素材')
-      if (visibility !== Visibility.PRIVATE) {
-        throw new BadRequestException('个人素材只能保存到本人私有空间')
-      }
+      await this.authorization.assertCanManageAssets(userId, 'personal')
       return
     }
-    if (!enterpriseId) throw new BadRequestException('团队或企业素材需要有效的企业上下文')
-    if (visibility !== Visibility.TEAM && visibility !== Visibility.ENTERPRISE) {
-      return
-    }
-
-    const user = await this.userModel.findById(userId)
-    const membership = user?.memberships.find(
-      (m) =>
-        m.enterpriseId.toString() === enterpriseId &&
-        (!m.teamId || (ownerType === OwnerType.TEAM && m.teamId.toString() === ownerId)),
-    )
-
-    if (!membership || (membership.role !== Role.OWNER && membership.role !== Role.ADMIN)) {
-      throw new BadRequestException('仅部门主管或企业管理员才能往企业/团队库添加规范素材')
-    }
+    const space = await this.authorization.assertCanManageAssets(userId, ownerId)
+    if (space.spaceType !== ownerType) throw new BadRequestException('素材归属类型与目标空间不一致')
+    this.authorization.assertEnterpriseContext(space, enterpriseId)
   }
 
   private async findAccessibleAsset(
@@ -392,33 +342,18 @@ export class AssetsService {
       throw new NotFoundException('资产不存在或无权访问')
     }
 
-    if (asset.creatorId.toString() === userId || asset.visibility === Visibility.PUBLIC) {
-      return asset
-    }
-
-    if (!enterpriseId) throw new NotFoundException('资产不存在或无权访问')
-
-    const user = await this.userModel.findById(userId)
-
-    if (
-      asset.visibility === Visibility.ENTERPRISE &&
-      user?.memberships.some((m) => m.enterpriseId.toString() === enterpriseId)
-    ) {
-      return asset
-    }
-
-    if (asset.visibility === Visibility.TEAM && asset.ownerType === OwnerType.TEAM) {
-      const membership = user?.memberships.find(
-        (m) =>
-          m.enterpriseId.toString() === enterpriseId &&
-          m.teamId?.toString() === asset.ownerId.toString(),
-      )
-      if (membership) {
-        return asset
+    if (asset.ownerType === OwnerType.USER) {
+      if (asset.ownerId.toString() !== userId || asset.creatorId.toString() !== userId) {
+        throw new ForbiddenException('您无权访问此素材')
       }
+    } else {
+      const space = await this.authorization.assertCanReadSpace(userId, asset.ownerId.toString())
+      this.authorization.assertEnterpriseContext(space, asset.enterpriseId?.toString())
+      this.authorization.assertEnterpriseContext(space, enterpriseId)
+      if (space.spaceType !== asset.ownerType) throw new ForbiddenException('素材归属不一致')
     }
-
-    throw new NotFoundException('资产不存在或无权访问')
+    this.authorization.assertAssetVisibility(asset.ownerType, asset.visibility)
+    return asset
   }
 
   private buildAssetObjectKey(

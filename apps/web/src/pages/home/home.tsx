@@ -19,6 +19,11 @@ import styles from './home.module.css'
 const Home = () => {
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
+  const canWrite = useUserStore(
+    (state) =>
+      state.spaces.find((space) => space.id === (state.currentSpaceId || 'personal'))?.permissions
+        ?.write ?? false,
+  )
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const currentSpaceName = useUserStore((state) => state.currentSpaceName)
   const currentSpaceType = useUserStore((state) => state.currentSpaceType)
@@ -245,7 +250,7 @@ const Home = () => {
           <Button
             type="primary"
             loading={submitting}
-            disabled={!prompt.trim() || submitting}
+            disabled={!canWrite || !prompt.trim() || submitting}
             className={styles.primaryAction}
             onClick={() => void handleSubmit()}
           >

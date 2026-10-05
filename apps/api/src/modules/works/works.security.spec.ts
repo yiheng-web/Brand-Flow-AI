@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { Types } from 'mongoose'
 
@@ -31,7 +32,10 @@ describe('Works 对象归属', () => {
     workflows as never,
     {} as never,
     storage as never,
-    { getAccessibleSpace: jest.fn() } as never,
+    {
+      getAccessibleSpace: jest.fn(),
+      authorization: new AuthorizationService({} as never, {} as never, {} as never),
+    } as never,
   )
 
   beforeEach(() => {

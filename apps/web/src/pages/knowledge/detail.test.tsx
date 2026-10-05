@@ -1,3 +1,5 @@
+import { useUserStore } from '@/store/useUserStore'
+import { Role, spacePermissions } from '@brand-flow/contracts'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -53,13 +55,46 @@ describe('个人知识库维护', () => {
     vi.spyOn(window, 'getComputedStyle').mockImplementation(computeStyle)
     vi.stubGlobal('getComputedStyle', computeStyle)
     vi.resetAllMocks()
-    api.getKnowledgeById.mockResolvedValue({ _id: 'kb', name: '品牌规范' })
+    useUserStore.getState().setSpaces([
+      {
+        id: 'personal',
+        name: '个人',
+        type: 'personal',
+        description: '',
+        permissions: spacePermissions('personal', Role.OWNER),
+      },
+    ])
+    api.getKnowledgeById.mockResolvedValue({ _id: 'kb', name: '品牌规范', spaceId: 'personal' })
     api.getKnowledgeItems.mockResolvedValue([item])
   })
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('viewer 可查看知识项但所有写入口均禁用', async () => {
+    useUserStore.getState().setSpaces([
+      {
+        id: 'enterprise',
+        name: '企业',
+        type: 'enterprise',
+        description: '',
+        permissions: spacePermissions('enterprise', Role.VIEWER),
+      },
+    ])
+    api.getKnowledgeById.mockResolvedValue({ _id: 'kb', name: '品牌规范', spaceId: 'enterprise' })
+    renderPage()
+    await screen.findByText('强制约束')
+    for (const name of ['编辑', '归档', '删除', '批量导入文本']) {
+      expect(
+        (screen.getByRole('button', { name: new RegExp(name + '$') }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true)
+    }
+    expect(
+      (screen.getByRole('button', { name: '查看原文与来源' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it('显示级别和来源原文，归档时使用现有状态协议', async () => {

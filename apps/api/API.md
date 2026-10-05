@@ -5,6 +5,16 @@
 > Workflow 状态为 `pending/running/awaiting_user/completed/failed`，节点另保留
 > `queued/skipped/stale` 等执行语义。本文后部残留的旧六节点示例仅用于历史兼容，不应作为新代码依据。
 
+## V2.1 组织权限契约
+
+`GET /org/spaces` 保持原有空间字段，并增加后端计算的 `permissions` 对象：
+`read`、`write`、`manageMembers`、`manageKnowledge`、`manageAssets`、`manageWorks`、`assignTasks`。
+企业 OWNER/ADMIN 可管理本企业团队；其他角色必须有显式团队成员关系。VIEWER 只读。
+所有邀请均禁止授予 OWNER，返回 403；团队邀请要求目标用户已属于团队所在企业。
+素材 public 不绕过权限或租户限制，ownerType 与 visibility 必须匹配。
+完整模型与矩阵见 [组织 RBAC](../../docs/org-rbac.md)，拒绝测试示例见
+[org-rbac.http](rest-client/org-rbac.http)。前端权限结果仅用于界面，后端每次以 DB 关系重新授权。
+
 ## V1 闭环新增接口
 
 - `POST /workflow/:id/start`：确认是否图文分离并启动已创建的待运行工作流。

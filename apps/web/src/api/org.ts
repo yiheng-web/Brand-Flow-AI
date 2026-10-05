@@ -1,8 +1,8 @@
 // 组织 / 企业 / 团队 / 空间管理
 import apiClient from './index'
 
-export type Role = 'owner' | 'admin' | 'member' | 'viewer'
-export type SpaceType = 'personal' | 'team' | 'enterprise'
+import type { RoleValue as Role, SpaceType, SpacePermissions } from '@brand-flow/contracts'
+export type { RoleValue as Role, SpaceType } from '@brand-flow/contracts'
 
 // 创建企业请求参数
 export interface CreateEnterpriseParams {
@@ -44,6 +44,8 @@ export interface TeamData {
 
 // 空间数据（后端 GET /org/spaces 返回）
 export interface SpaceData {
+  role: Role
+  permissions: SpacePermissions
   spaceId: string
   name: string
   type: SpaceType

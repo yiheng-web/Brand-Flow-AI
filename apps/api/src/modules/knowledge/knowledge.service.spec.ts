@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import type { Model } from 'mongoose'
 import { Types } from 'mongoose'
 
@@ -28,7 +29,10 @@ describe('KnowledgeService 个人空间', () => {
       findOne: findOneMock,
     } as unknown as Model<KnowledgeDocument>,
     {} as Model<KnowledgeItemDocument>,
-    { getAccessibleSpace: getAccessibleSpaceMock } as unknown as OrgService,
+    {
+      getAccessibleSpace: getAccessibleSpaceMock,
+      authorization: new AuthorizationService({} as never, {} as never, {} as never),
+    } as unknown as OrgService,
   )
 
   beforeEach(() => {

@@ -48,6 +48,11 @@ const TYPE_LABELS: Record<string, string> = {
 
 const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
   const userId = useAuthStore((state) => state.user?.id)
+  const canWrite = useUserStore(
+    (state) =>
+      state.spaces.find((space) => space.id === (state.currentSpaceId || 'personal'))?.permissions
+        ?.manageAssets ?? false,
+  )
   const currentSpaceId = useUserStore((state) => state.currentSpaceId)
   const currentSpaceType = useUserStore((state) => state.currentSpaceType)
   const [assets, setAssets] = useState<AssetItem[]>([])
@@ -166,6 +171,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
             type="link"
             size="small"
             icon={<SaveOutlined />}
+            disabled={!canWrite}
             onClick={() => handleSaveToKnowledge(asset)}
           >
             保存到知识库
@@ -175,6 +181,7 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
             size="small"
             danger
             icon={<DeleteOutlined />}
+            disabled={!canWrite}
             onClick={() => handleDelete(asset)}
           >
             删除
@@ -192,10 +199,19 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
           <p>{visibleAssets.length} 项内容</p>
         </div>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!canWrite}
+            onClick={() => setCreateModalOpen(true)}
+          >
             创建
           </Button>
-          <Button icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+          <Button
+            icon={<UploadOutlined />}
+            disabled={!canWrite}
+            onClick={() => setUploadModalOpen(true)}
+          >
             上传
           </Button>
         </Space>
@@ -215,11 +231,16 @@ const AssetsPanel = ({ filter }: { filter: AssetFilter }) => {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
+                disabled={!canWrite}
                 onClick={() => setCreateModalOpen(true)}
               >
                 创建资产
               </Button>
-              <Button icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
+              <Button
+                icon={<UploadOutlined />}
+                disabled={!canWrite}
+                onClick={() => setUploadModalOpen(true)}
+              >
                 上传素材
               </Button>
             </Space>

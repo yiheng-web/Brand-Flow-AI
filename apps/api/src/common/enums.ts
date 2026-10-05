@@ -1,12 +1,7 @@
 /**
  * 用户角色
  */
-export enum Role {
-  OWNER = 'owner',
-  ADMIN = 'admin',
-  MEMBER = 'member',
-  VIEWER = 'viewer',
-}
+export { Role } from '@brand-flow/contracts'
 
 /**
  * 资产或组织归属类型

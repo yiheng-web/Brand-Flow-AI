@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   ConflictException,
@@ -53,7 +52,7 @@ export class KnowledgeService implements OnModuleInit {
 
   async create(userId: string, dto: CreateKnowledgeDto) {
     const scope = await this.resolveScope(userId, dto.spaceId)
-    this.assertCanCreate(scope)
+    await this.orgService.authorization.assertCanManageKnowledge(userId, scope.spaceId)
     if (dto.isRequired && scope.spaceType !== 'enterprise') {
       throw new BadRequestException('只有企业空间可以设置强制知识库')
     }
@@ -391,15 +390,29 @@ export class KnowledgeService implements OnModuleInit {
 
   private async findKnowledgeById(userId: string, id: string) {
     if (!Types.ObjectId.isValid(id)) throw new NotFoundException('知识库不存在或无权访问')
-    const knowledge = await this.knowledgeModel.findOne({
-      _id: id,
-      $or: [
-        { spaceId: 'personal', ...personalCreatorFilter(userId) },
-        { spaceId: { $ne: 'personal' }, spaceType: { $ne: 'personal' } },
-      ],
-    })
+    const knowledge = await this.knowledgeModel.findOne(
+      {
+        _id: id,
+        $or: [
+          { spaceId: 'personal', ...personalCreatorFilter(userId) },
+          { spaceId: { $ne: 'personal' }, spaceType: { $ne: 'personal' } },
+        ],
+      },
+      { spaceId: 1, spaceType: 1, enterpriseId: 1, creatorId: 1 },
+    )
     if (!knowledge) throw new NotFoundException('知识库不存在或无权访问')
-    return knowledge
+    const scope = await this.assertKnowledgeAccess(userId, knowledge)
+    const authorizedKnowledge = await this.knowledgeModel.findOne({
+      _id: id,
+      ...(scope.spaceType === 'personal'
+        ? { spaceId: 'personal', ...personalCreatorFilter(userId) }
+        : {
+            spaceId: knowledge.spaceId ?? { $exists: false },
+            enterpriseId: new Types.ObjectId(scope.enterpriseId),
+          }),
+    })
+    if (!authorizedKnowledge) throw new NotFoundException('知识库不存在或归属已变化')
+    return authorizedKnowledge
   }
 
   private async assertKnowledgeAccess(userId: string, knowledge: KnowledgeDocument) {
@@ -413,17 +426,8 @@ export class KnowledgeService implements OnModuleInit {
 
   private async assertCanManage(userId: string, knowledge: KnowledgeDocument) {
     const scope = await this.assertKnowledgeAccess(userId, knowledge)
-    if (knowledge.creatorId.toString() === userId) return scope
-    if (scope.role !== Role.OWNER && scope.role !== Role.ADMIN) {
-      throw new ForbiddenException('您无权管理此知识库')
-    }
+    await this.orgService.authorization.assertCanManageKnowledge(userId, scope.spaceId)
     return scope
-  }
-
-  private assertCanCreate(scope: KnowledgeScope) {
-    if (scope.spaceType !== 'personal' && scope.role !== Role.OWNER && scope.role !== Role.ADMIN) {
-      throw new ForbiddenException('只有空间管理员可以创建团队或企业知识库')
-    }
   }
 
   private async resolveScope(userId: string, spaceId: string): Promise<KnowledgeScope> {

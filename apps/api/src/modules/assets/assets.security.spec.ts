@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Types } from 'mongoose'
 import sharp from 'sharp'
@@ -43,7 +44,7 @@ describe('Assets 上传与个人归属', () => {
   const knowledge = { createItemFromAsset: jest.fn() }
   const service = new AssetsService(
     model as never,
-    {} as never,
+    new AuthorizationService({} as never, {} as never, {} as never),
     storage as never,
     knowledge as never,
   )

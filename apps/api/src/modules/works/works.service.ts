@@ -68,7 +68,7 @@ export class WorksService {
     if (dto.objectKey && dto.objectKey !== trustedObjectKey) {
       throw new BadRequestException('作品对象与工作流成片不一致')
     }
-    const space = await this.orgService.getAccessibleSpace(userId, dto.spaceId)
+    const space = await this.orgService.authorization.assertCanManageWorks(userId, dto.spaceId)
     const existing = await this.workModel.findOne({ workflowId: workflow._id })
     if (existing) {
       await this.createTrustedVersion(userId, existing._id.toString(), dto.workflowId)
@@ -194,6 +194,7 @@ export class WorksService {
 
   async remove(userId: string, id: string) {
     const work = await this.findAccessibleWork(userId, id)
+    await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
 
     const versions = await this.workVersionModel.find({ workId: work._id }, { objectKey: 1 })
     const objectKeys = new Set(
@@ -212,6 +213,7 @@ export class WorksService {
 
   async createTrustedVersion(userId: string, id: string, workflowId: string) {
     const work = await this.findAccessibleWork(userId, id)
+    await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
     if (work.creatorId.toString() !== userId || !Types.ObjectId.isValid(workflowId)) {
       throw new BadRequestException('只能从本人有效工作流创建新版本')
     }
@@ -325,6 +327,7 @@ export class WorksService {
 
   async updateFavorite(userId: string, id: string, isFavorite: boolean) {
     const work = await this.findAccessibleWork(userId, id)
+    await this.orgService.authorization.assertCanManageWorks(userId, work.spaceId)
     if (work.creatorId.toString() !== userId) {
       throw new BadRequestException('只能收藏本人创建的作品')
     }

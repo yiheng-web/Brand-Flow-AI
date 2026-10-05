@@ -1,3 +1,4 @@
+import { AuthorizationService } from './authorization.service'
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
@@ -25,7 +26,7 @@ import { OrgController } from './org.controller'
     ]),
   ],
   controllers: [OrgController],
-  providers: [OrgService],
-  exports: [MongooseModule, OrgService],
+  providers: [OrgService, AuthorizationService],
+  exports: [MongooseModule, OrgService, AuthorizationService],
 })
 export class OrgModule {}

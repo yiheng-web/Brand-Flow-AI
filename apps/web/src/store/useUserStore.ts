@@ -1,3 +1,5 @@
+import type { SpacePermissions, SpaceType } from '@brand-flow/contracts'
+export type { SpaceType } from '@brand-flow/contracts'
 /**
  * 用户 / 企业 / 空间全局状态 Store
  *
@@ -11,10 +13,10 @@ import { create } from 'zustand'
 import type { EnterpriseData } from '@/api/org'
 
 /** 空间类型 */
-export type SpaceType = 'personal' | 'team' | 'enterprise'
 
 /** 统一空间项（用于选择器展示） */
 export interface SpaceItem {
+  permissions?: SpacePermissions
   id: string
   name: string
   type: SpaceType

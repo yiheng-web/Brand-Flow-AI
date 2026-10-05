@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { Types } from 'mongoose'
 import { WorksService } from './works.service'
 
@@ -76,7 +77,10 @@ describe('可信作品版本并发与来源去重', () => {
       workflowModel as never,
       { find: () => ({ sort: async () => [] }) } as never,
       storage as never,
-      { getAccessibleSpace: jest.fn() } as never,
+      {
+        getAccessibleSpace: jest.fn(),
+        authorization: new AuthorizationService({} as never, {} as never, {} as never),
+      } as never,
     )
     return { service, records, work, storage, workflowModel, workModel }
   }

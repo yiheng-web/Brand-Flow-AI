@@ -1,3 +1,4 @@
+import { AuthorizationService } from '../org/authorization.service'
 import { Module, ValidationPipe } from '@nestjs/common'
 import type { INestApplication } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
@@ -33,9 +34,7 @@ const workflowService = new WorkflowService(
   {} as never,
   {} as never,
   {} as never,
-  {} as never,
-  {} as never,
-  {} as never,
+  new AuthorizationService({} as never, {} as never, {} as never),
 )
 
 @Module({
@@ -54,7 +53,12 @@ const workflowService = new WorkflowService(
     },
     {
       provide: AssetsService,
-      useValue: new AssetsService({} as never, {} as never, {} as never, {} as never),
+      useValue: new AssetsService(
+        {} as never,
+        new AuthorizationService({} as never, {} as never, {} as never),
+        {} as never,
+        {} as never,
+      ),
     },
   ],
 })

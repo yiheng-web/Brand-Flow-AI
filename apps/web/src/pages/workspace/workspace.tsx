@@ -103,6 +103,10 @@ export default function Workspace() {
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
   const [runVersion, setRunVersion] = useState(0)
   const [workflowSpaceId, setWorkflowSpaceId] = useState(currentSpaceId)
+  const canWrite = useUserStore(
+    (state) =>
+      state.spaces.find((space) => space.id === workflowSpaceId)?.permissions?.write ?? false,
+  )
   const [needsComposition, setNeedsComposition] = useState<boolean | undefined>()
   const [awaitingAction, setAwaitingAction] = useState<string | undefined>()
   const [previewCandidateId, setPreviewCandidateId] = useState<string>('')
@@ -342,7 +346,7 @@ export default function Workspace() {
     connect(workflowId)
   }
   const saveWork = useCallback(async (): Promise<string | null> => {
-    if (!workflowId || !result?.finalImageUrl || !result.finalEvaluation) return null
+    if (!canWrite || !workflowId || !result?.finalImageUrl || !result.finalEvaluation) return null
     const work = await createWork({
       title: userPrompt.slice(0, 40) || '未命名作品',
       spaceId: workflowSpaceId,
@@ -361,12 +365,13 @@ export default function Workspace() {
     if (useWorkflowStore.getState().workflowId === workflowId) setSavedWorkId(work._id)
     message.success('作品版本已保存')
     return work._id
-  }, [nodeStreamData, result, userPrompt, workflowId, workflowSpaceId])
+  }, [canWrite, nodeStreamData, result, userPrompt, workflowId, workflowSpaceId])
 
   const completedRunKey = `${workflowId}:${runVersion}`
 
   useEffect(() => {
     if (
+      !canWrite ||
       workflowStatus !== 'completed' ||
       lastSnapshotRef.current?.id !== workflowId ||
       !workflowId ||
@@ -386,7 +391,14 @@ export default function Workspace() {
         setAutoSaveFailed(true)
         message.error('工作流已完成，但作品自动保存失败，请重试')
       })
-  }, [completedRunKey, result?.finalEvaluation?.passed, saveWork, workflowId, workflowStatus])
+  }, [
+    canWrite,
+    completedRunKey,
+    result?.finalEvaluation?.passed,
+    saveWork,
+    workflowId,
+    workflowStatus,
+  ])
   const formalExport = async () => {
     if (!savedWorkId) return
     const exported = await exportWork(savedWorkId)
@@ -451,7 +463,7 @@ export default function Workspace() {
           )}
         </div>
         <div className={styles.workspaceActions}>
-          {autoSaveFailed && !savedWorkId && (
+          {canWrite && autoSaveFailed && !savedWorkId && (
             <Button
               onClick={() => {
                 autoSaveWorkflowRef.current = completedRunKey
@@ -483,7 +495,7 @@ export default function Workspace() {
             type="primary"
             icon={<PlayCircleFilled />}
             loading={submitting}
-            disabled={!workflowId || workflowStatus !== 'pending'}
+            disabled={!canWrite || !workflowId || workflowStatus !== 'pending'}
             onClick={handleStart}
           >
             运行工作流
@@ -529,7 +541,8 @@ export default function Workspace() {
               needsComposition !== false &&
               workflowId &&
               baseCandidate &&
-              workflowStatus !== 'cancelled' && (
+              workflowStatus !== 'cancelled' &&
+              canWrite && (
                 <div className={styles.composerOverlay}>
                   <RenderErrorBoundary key={baseCandidate.id}>
                     <ArtTextComposer
@@ -574,7 +587,9 @@ export default function Workspace() {
                   workflowId={workflowId}
                   brief={result.brief}
                   awaitingConfirmation={awaitingAction === 'confirm_brief'}
-                  disabled={workflowStatus === 'running' || workflowStatus === 'cancelled'}
+                  disabled={
+                    !canWrite || workflowStatus === 'running' || workflowStatus === 'cancelled'
+                  }
                   onChanged={() => recover(workflowId)}
                   onRerun={rerun}
                 />
@@ -583,6 +598,7 @@ export default function Workspace() {
                   key={result.creativeDirection.directions.map((direction) => direction.id).join()}
                   creativeDirection={result.creativeDirection}
                   awaitingConfirmation={awaitingAction === 'select_direction'}
+                  disabled={!canWrite}
                   onConfirm={confirmDirection}
                 />
               ) : selectedNodeId === 'generate' && generate ? (
@@ -597,7 +613,11 @@ export default function Workspace() {
                           />
                         )}
                         <Button onClick={() => setPromptOpen(true)}>查看 Prompt</Button>
-                        <Button icon={<HeartOutlined />} onClick={() => void favoriteResult()}>
+                        <Button
+                          disabled={!canWrite}
+                          icon={<HeartOutlined />}
+                          onClick={() => void favoriteResult()}
+                        >
                           收藏
                         </Button>
                       </Space>
@@ -625,6 +645,7 @@ export default function Workspace() {
                             <Radio
                               value={candidate.id}
                               disabled={
+                                !canWrite ||
                                 workflowStatus === 'running' ||
                                 workflowStatus === 'cancelled' ||
                                 !evaluation ||
@@ -663,7 +684,9 @@ export default function Workspace() {
                     />
                     <Button
                       type="primary"
-                      disabled={workflowStatus === 'running' || workflowStatus === 'cancelled'}
+                      disabled={
+                        !canWrite || workflowStatus === 'running' || workflowStatus === 'cancelled'
+                      }
                       onClick={() => void submitOptimization()}
                     >
                       保持品牌与主体并重新生成
@@ -695,7 +718,10 @@ export default function Workspace() {
               <Button
                 onClick={() => void rerun()}
                 disabled={
-                  !workflowId || workflowStatus === 'running' || workflowStatus === 'cancelled'
+                  !canWrite ||
+                  !workflowId ||
+                  workflowStatus === 'running' ||
+                  workflowStatus === 'cancelled'
                 }
                 className={selectedNodeId === 'brief' ? styles.hiddenAction : undefined}
               >

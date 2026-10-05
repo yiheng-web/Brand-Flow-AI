@@ -4,13 +4,14 @@ import { Role } from '@/common/enums'
 
 export type UserDocument = User & Document
 
+// 无 teamId 表示企业成员；有 teamId 表示该企业下的团队成员，角色不能替代企业角色。
 @Schema()
 class Membership {
   @Prop({ type: Types.ObjectId, ref: 'Enterprise', required: true })
   enterpriseId!: Types.ObjectId
 
   @Prop({ type: Types.ObjectId, ref: 'Team' })
-  teamId!: Types.ObjectId
+  teamId?: Types.ObjectId
 
   @Prop({ type: String, enum: Role, default: Role.MEMBER })
   role!: Role

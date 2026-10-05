@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  Role,
+  spacePermissions,
   createInitialWorkflowNodes,
   downstreamNodeTypes,
   isNormalizedArtTextRegion,
@@ -171,4 +173,12 @@ test('旧创意方向可以归一化为增强契约', () => {
   assert.deepEqual(direction.applicableScenes, ['品牌官网'])
   assert.ok(direction.reason)
   assert.ok(direction.risk)
+})
+
+test('空间权限契约区分只读、创作与管理权限', () => {
+  assert.equal(spacePermissions('enterprise', Role.VIEWER).write, false)
+  assert.equal(spacePermissions('team', Role.MEMBER).manageAssets, false)
+  assert.equal(spacePermissions('team', Role.MEMBER).manageWorks, true)
+  assert.equal(spacePermissions('enterprise', Role.ADMIN).manageMembers, true)
+  assert.equal(spacePermissions('personal', Role.OWNER).assignTasks, false)
 })
