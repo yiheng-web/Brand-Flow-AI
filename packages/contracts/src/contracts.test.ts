@@ -250,3 +250,4 @@ test('空间权限契约区分只读、创作与管理权限', () => {
   assert.equal(spacePermissions('enterprise', Role.OWNER).transferOwnership, true)
   assert.equal(spacePermissions('enterprise', Role.ADMIN).transferOwnership, false)
 })
+import './tasks.test'

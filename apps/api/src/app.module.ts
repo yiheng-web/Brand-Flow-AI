@@ -12,9 +12,11 @@ import { AuthModule } from './modules/auth/auth.module'
 import { WorkflowModule } from './modules/workflow/workflow.module'
 import { KnowledgeModule } from './modules/knowledge/knowledge.module'
 import { WorksModule } from './modules/works/works.module'
+import { TasksModule } from './modules/tasks/tasks.module'
 
 @Module({
   imports: [
+    TasksModule,
     OrgModule,
     HealthModule,
     AssetsModule,

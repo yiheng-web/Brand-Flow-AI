@@ -597,3 +597,21 @@ ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired
 事件包括 `enterprise.created/updated/disabled/owner_transferred`、`team.created/updated/archived`、`invitation.created/accepted/rejected/cancelled/expired`、`member.role_changed/removed/left`、`knowledge.created/updated/deleted/items_imported/item_created/item_updated/item_deleted`、`asset.deleted`。恢复组织状态记录 updated。素材删除先清理 S3 对象，再在组织事务内删除记录并写审计；数据库失败时保留记录供重试。
 
 接口示例见 [org.http](rest-client/org.http)，权限矩阵与验收命令见 [V2 发布清单](../../docs/v2-release-checklist.md)。
+
+## Task 团队任务（V3）
+
+任务契约见 `@brand-flow/contracts` 的 TaskData/TaskPage。身份来自 JWT，teamId 只选择目标团队，服务端重新验证权限并推导 enterpriseId。所有写操作需 MongoDB 副本集。
+
+| 方法   | 路径                | 说明                                                                                        |
+| ------ | ------------------- | ------------------------------------------------------------------------------------------- |
+| POST   | /tasks              | 管理者创建 draft，CreateTaskRequest                                                         |
+| GET    | /tasks              | teamId 必填；view=mine/created-by-me/team、status、deadline=overdue/upcoming、page/pageSize |
+| GET    | /tasks/:id?teamId=… | 团队内详情，含权限与逾期派生标识                                                            |
+| PATCH  | /tasks/:id?teamId=… | 管理者编辑草稿要求，必须传 version                                                          |
+| DELETE | /tasks/:id          | 管理者删除草稿，body={teamId,version}                                                       |
+| POST   | /tasks/:id/assign   | body={teamId,version,assigneeId}，draft→pending                                             |
+| POST   | /tasks/:id/accept   | body={teamId,version}，负责人 pending→accepted                                              |
+| POST   | /tasks/:id/decline  | body={teamId,version,reason}，负责人 pending→draft 并清空指派                               |
+| POST   | /tasks/:id/cancel   | body={teamId,version}，管理员取消，保留历史                                                 |
+
+没有通用 status patch。跨团队资源返回 404，空间越权返回 403，过期版本与非法状态转换返回 409。请求示例见 rest-client/tasks.http，状态与拒绝策略见 docs/task-domain.md。

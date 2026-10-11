@@ -1,0 +1,30 @@
+@baseUrl = http://localhost:3000/api
+@token = REPLACE_WITH_JWT
+@teamId = REPLACE_WITH_TEAM_ID
+@taskId = REPLACE_WITH_TASK_ID
+@assigneeId = REPLACE_WITH_MEMBER_ID
+
+### 创建草稿
+POST {{baseUrl}}/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","title":"新品品牌海报","requirementSnapshot":{"prompt":"生成新品品牌海报","needsComposition":false}}
+
+### 团队任务
+GET {{baseUrl}}/tasks?teamId={{teamId}}&view=team&page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### 派发（version 必须使用最新响应值）
+POST {{baseUrl}}/tasks/{{taskId}}/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","assigneeId":"{{assigneeId}}","version":0}
+
+### 负责人接受
+POST {{baseUrl}}/tasks/{{taskId}}/accept
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","version":1}

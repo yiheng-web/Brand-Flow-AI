@@ -1,6 +1,7 @@
 export * from './knowledge-rules'
 export * from './organization'
 export * from './authorization'
+export * from './tasks'
 export type SpaceType = 'personal' | 'team' | 'enterprise'
 
 export type KnowledgeConstraintLevel = 'required' | 'recommended' | 'optional'
