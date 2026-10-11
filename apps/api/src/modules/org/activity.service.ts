@@ -100,6 +100,16 @@ export class ActivityService {
       .lean()
   }
 
+  async taskTimeline(userId: string, teamId: string, taskId: string) {
+    assertObjectId(taskId)
+    const scope = await this.authorization.assertCanReadSpace(userId, teamId)
+    if (scope.spaceType !== 'team') throw new BadRequestException('任务必须属于团队')
+    return this.audits
+      .find({ enterpriseId: scope.enterpriseId, teamId, resourceType: 'task', resourceId: taskId })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean()
+  }
+
   async unreadCount(userId: string): Promise<{ count: number }> {
     return {
       count: await this.notifications.countDocuments({

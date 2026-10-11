@@ -29,6 +29,13 @@ type Request = { user: { sub: string } }
 @Controller('tasks')
 export class TasksController {
   constructor(private readonly tasks: TasksService) {}
+  @Get(':id/timeline') timeline(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Query('teamId') teamId: string,
+  ) {
+    return this.tasks.timeline(req.user.sub, id, teamId)
+  }
   @Post() create(@Req() req: Request, @Body() dto: CreateTaskDto) {
     return this.tasks.create(req.user.sub, dto)
   }

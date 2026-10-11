@@ -24,6 +24,7 @@ interface NavigationItem {
 }
 
 const NAVIGATION_ITEMS: NavigationItem[] = [
+  { key: 'team-tasks', label: '团队任务', path: '/team-tasks', icon: <ApartmentOutlined /> },
   { key: 'organization', label: '我的组织', path: '/organization', icon: <ApartmentOutlined /> },
   { key: 'invitations', label: '邀请中心', path: '/invitations', icon: <UserOutlined /> },
   { key: 'home', label: '首页', path: '/home', icon: <HomeOutlined /> },
@@ -35,6 +36,7 @@ const NAVIGATION_ITEMS: NavigationItem[] = [
 ]
 
 const PAGE_TITLES: Record<string, string> = {
+  '/team-tasks': '团队任务',
   '/workspace': '创作工作台',
   '/tasks': '创作任务',
   '/knowledge': '知识库',

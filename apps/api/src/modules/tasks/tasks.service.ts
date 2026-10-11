@@ -135,6 +135,11 @@ export class TasksService {
     return this.data(await this.load(id, scope), userId, scope)
   }
 
+  async timeline(userId: string, id: string, teamId: string) {
+    await this.detail(userId, id, teamId)
+    return this.activity.taskTimeline(userId, teamId, id)
+  }
+
   async update(userId: string, id: string, teamId: string, dto: UpdateTaskDto): Promise<TaskData> {
     return this.tasks.db.transaction(async (session) => {
       const scope = await this.scope(userId, teamId, session)

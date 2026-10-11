@@ -31,6 +31,8 @@ const KnowledgeListPage = lazy(() => import('@/pages/knowledge'))
 const KnowledgeDetailPage = lazy(() => import('@/pages/knowledge/detail'))
 const WorksPage = lazy(() => import('@/pages/works'))
 const TasksPage = lazy(() => import('@/pages/tasks'))
+const TeamTasksPage = lazy(() => import('@/pages/team-tasks'))
+const TaskDetailPage = lazy(() => import('@/pages/team-tasks/detail'))
 const WorkDetailPage = lazy(() => import('@/pages/works/detail'))
 const InvitationsPage = lazy(() => import('@/pages/invitations'))
 const OrganizationPage = lazy(() => import('@/pages/organization'))
@@ -66,6 +68,8 @@ export const router = createBrowserRouter([
           { path: 'knowledge/:id', element: deferred(<KnowledgeDetailPage />) },
           { path: 'works', element: deferred(<WorksPage />) },
           { path: 'tasks', element: deferred(<TasksPage />) },
+          { path: 'team-tasks', element: deferred(<TeamTasksPage />) },
+          { path: 'team-tasks/:id', element: deferred(<TaskDetailPage />) },
           { path: 'works/:id', element: deferred(<WorkDetailPage />) },
           { path: 'profile', element: deferred(<ProfilePage />) },
           { path: 'invitations', element: deferred(<InvitationsPage />) },

@@ -615,3 +615,5 @@ ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired
 | POST   | /tasks/:id/cancel   | body={teamId,version}，管理员取消，保留历史                                                 |
 
 没有通用 status patch。跨团队资源返回 404，空间越权返回 403，过期版本与非法状态转换返回 409。请求示例见 rest-client/tasks.http，状态与拒绝策略见 docs/task-domain.md。
+
+`GET /tasks/:id/timeline?teamId=…` 返回该 Task 的服务端活动事件（AuditLogData），团队可读成员可访问，查询同时限定企业、团队、资源类型与任务 ID。
