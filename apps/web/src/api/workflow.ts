@@ -27,6 +27,7 @@ export interface SubmitPromptParams extends CreateWorkflowRequest {
 }
 
 export interface WorkflowData {
+  taskId?: string
   references?: WorkflowSnapshot['workflow']['references']
   generationConfig?: PromptPlan['generationConfig']
   id: string

@@ -9,6 +9,7 @@ import {
   OnModuleDestroy,
   MessageEvent,
   Logger,
+  Optional,
 } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bullmq'
 import { InjectModel } from '@nestjs/mongoose'
@@ -39,6 +40,8 @@ import { Queue, QueueEvents } from 'bullmq'
 import { createHash, randomUUID } from 'node:crypto'
 import { Model } from 'mongoose'
 import { Types } from 'mongoose'
+import type { ClientSession } from 'mongoose'
+import { Task, type TaskDocument } from '../tasks/schemas/task.schema'
 import type { ArtTextRegion } from '@brand-flow/contracts'
 import { WorkflowReferencesService } from './workflow-references.service'
 import { Observable } from 'rxjs'
@@ -68,6 +71,7 @@ import {
 import { ListWorkflowsDto } from './dto/list-workflows.dto'
 
 export interface WorkflowResponse {
+  taskId?: string
   references?: WorkflowDocument['references']
   generationConfig?: WorkflowDocument['generationConfig']
   id: string
@@ -107,6 +111,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     private readonly authorization: AuthorizationService,
     private readonly referencesService?: WorkflowReferencesService,
     private readonly limits?: LimitsService,
+    @Optional() @InjectModel(Task.name) private readonly taskModel?: Model<TaskDocument>,
   ) {}
 
   async onModuleInit() {
@@ -171,10 +176,25 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       ...(space.spaceType === 'personal' ? { userId } : { entId: space.entId }),
     })
     if (!authorizedWorkflow) throw new NotFoundException('工作流不存在或归属已变化')
+    if (write && authorizedWorkflow.taskId) {
+      const task = await this.taskModel!.findOne({
+        _id: authorizedWorkflow.taskId,
+        enterpriseId: space.entId,
+        teamId: workflow.spaceId,
+        activeWorkflowId: id,
+        assigneeId: userId,
+        status: 'in_progress',
+      })
+      if (!task) throw new ForbiddenException('仅执行中的任务负责人可修改关联工作流')
+    }
     return trackWorkflow(authorizedWorkflow)
   }
 
-  async create(dto: CreateWorkflowDto, userId: string): Promise<WorkflowResponse> {
+  async create(
+    dto: CreateWorkflowDto,
+    userId: string,
+    taskContext?: { taskId: string; needsComposition: boolean; session: ClientSession },
+  ): Promise<WorkflowResponse> {
     if (!userId) throw new ForbiddenException('登录状态无效')
     const space = await this.assertSpaceAccess(userId, dto.spaceId, true)
     const references = dto.references?.length
@@ -221,7 +241,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       space.entId,
     )
 
-    const workflow = await this.workflowModel.create({
+    const input = {
       prompt: dto.prompt,
       spaceId: dto.spaceId,
       spaceType: space.spaceType,
@@ -232,13 +252,20 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
       references,
       generationConfig: dto.generationConfig,
       status: 'pending',
-    })
+      ...(taskContext
+        ? { taskId: taskContext.taskId, needsComposition: taskContext.needsComposition }
+        : {}),
+    }
+    const workflow = taskContext
+      ? (await this.workflowModel.create([input], { session: taskContext.session }))[0]
+      : await this.workflowModel.create(input)
 
     await this.workflowNodeModel.insertMany(
       createInitialWorkflowNodes().map((node) => ({
         workflowId: workflow._id.toString(),
         ...node,
       })),
+      taskContext ? { session: taskContext.session } : {},
     )
 
     return this.toResponse(workflow)
@@ -251,6 +278,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
     entId?: string,
   ): Promise<WorkflowResponse> {
     const accessibleWorkflow = await this.verifyWorkflowAccess(id, userId, entId, true)
+    if (accessibleWorkflow.taskId && dto.needsComposition !== accessibleWorkflow.needsComposition)
+      throw new BadRequestException('任务输出模式已固定')
     if (accessibleWorkflow.status !== 'pending') {
       return this.toResponse(accessibleWorkflow)
     }
@@ -1148,6 +1177,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
   async cancel(id: string, userId: string, entId?: string) {
     const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
+    if (workflow.taskId) throw new BadRequestException('请从任务详情取消关联任务')
     if (workflow.status === 'cancelled') return this.toResponse(workflow)
     if (workflow.status === 'completed') throw new BadRequestException('已完成任务不能取消')
     workflow.status = 'cancelled'
@@ -1225,6 +1255,7 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
   private toResponse(workflow: WorkflowDocument): WorkflowResponse {
     return {
+      taskId: workflow.taskId,
       references: workflow.references ?? [],
       generationConfig: workflow.generationConfig,
       id: workflow._id.toString(),

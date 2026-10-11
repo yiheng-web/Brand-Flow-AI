@@ -104,6 +104,7 @@ export default function Workspace() {
   const [savedWorkId, setSavedWorkId] = useState<string | null>(null)
   const [runVersion, setRunVersion] = useState(0)
   const [workflowSpaceId, setWorkflowSpaceId] = useState(currentSpaceId)
+  const [linkedTaskId, setLinkedTaskId] = useState<string>()
   const canWrite = useUserStore(
     (state) =>
       state.spaces.find((space) => space.id === workflowSpaceId)?.permissions?.write ?? false,
@@ -141,6 +142,7 @@ export default function Workspace() {
       setStatus(detail.workflow.status)
       setRunVersion(detail.workflow.runVersion)
       setWorkflowSpaceId(detail.workflow.spaceId)
+      setLinkedTaskId(detail.workflow.taskId)
       setNeedsComposition(
         detail.workflow.result?.brief?.needsComposition ?? detail.workflow.needsComposition,
       )
@@ -252,6 +254,7 @@ export default function Workspace() {
 
   const handleStart = useCallback(() => {
     if (!workflowId || workflowStatus !== 'pending') return
+    if (linkedTaskId) return runWorkflow(needsComposition ?? false)
     Modal.confirm({
       title: '是否需要图文分离处理？',
       content: '开启后先生成无文字底图，再由排版工具准确添加中文内容，避免乱码。',
@@ -262,7 +265,7 @@ export default function Workspace() {
       onOk: () => runWorkflow(true),
       onCancel: () => runWorkflow(false),
     })
-  }, [runWorkflow, workflowId, workflowStatus])
+  }, [runWorkflow, workflowId, workflowStatus, linkedTaskId, needsComposition])
 
   useEffect(() => {
     recoverRef.current = recover
@@ -462,6 +465,13 @@ export default function Workspace() {
             AI 创作工作流
           </span>
           <Tag>创作空间：{workflowSpaceName}</Tag>
+          {linkedTaskId && (
+            <Button
+              onClick={() => navigate(`/team-tasks/${linkedTaskId}?teamId=${workflowSpaceId}`)}
+            >
+              团队任务 · 返回详情
+            </Button>
+          )}
           <strong className={styles.workflowTitle}>{userPrompt || '未命名工作流'}</strong>
           {import.meta.env.VITE_BRAND_FLOW_DEMO_MODE === 'true' && (
             <Tag color="orange">演示模式</Tag>

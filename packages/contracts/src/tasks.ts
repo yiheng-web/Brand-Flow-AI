@@ -49,7 +49,16 @@ export function taskPermissions(role: Role, userId: string, assigneeId?: string)
   const manage = role === Role.OWNER || role === Role.ADMIN
   return { manage, review: manage, execute: role !== Role.VIEWER && userId === assigneeId }
 }
-export interface TaskRequirement extends Omit<CreateWorkflowRequest, 'spaceId'> {
+export interface TaskRequirement extends Omit<
+  CreateWorkflowRequest,
+  'spaceId' | 'generationConfig'
+> {
+  generationConfig?: {
+    width?: number
+    height?: number
+    seed?: number
+    aspectRatio?: import('./index').ImageAspectRatio
+  }
   needsComposition: boolean
   channel?: string
 }
@@ -68,6 +77,14 @@ export interface TaskData {
   requirementSnapshot: TaskRequirement
   activeWorkflowId?: string
   latestSubmissionId?: string
+  progress?: {
+    status: import('./index').WorkflowStatus
+    currentNode?: import('./index').WorkflowNodeType
+    awaitingAction?: import('./index').WorkflowAwaitingAction
+    percent: number
+    updatedAt: string
+    executionError?: string
+  }
   declineReason?: string
   permissions: TaskPermission
   overdue: boolean

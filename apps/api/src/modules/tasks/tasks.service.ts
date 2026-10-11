@@ -15,6 +15,9 @@ import { AuthorizationService } from '../org/authorization.service'
 import type { AuthorizedSpace } from '../org/authorization.service'
 import { ActivityService } from '../org/activity.service'
 import { Task, type TaskDocument } from './schemas/task.schema'
+import { Optional } from '@nestjs/common'
+import { Workflow, type WorkflowDocument } from '../workflow/schemas/workflow.schema'
+import { WorkflowNode, type WorkflowNodeDocument } from '../workflow/schemas/workflow-node.schema'
 import { CreateTaskDto, ListTasksDto, TaskCommandDto, UpdateTaskDto } from './dto/tasks.dto'
 
 @Injectable()
@@ -23,6 +26,10 @@ export class TasksService {
     @InjectModel(Task.name) private readonly tasks: Model<TaskDocument>,
     private readonly authorization: AuthorizationService,
     private readonly activity: ActivityService,
+    @Optional() @InjectModel(Workflow.name) private readonly workflows?: Model<WorkflowDocument>,
+    @Optional()
+    @InjectModel(WorkflowNode.name)
+    private readonly nodes?: Model<WorkflowNodeDocument>,
   ) {}
 
   async scope(userId: string, teamId: string, session?: ClientSession): Promise<AuthorizedSpace> {
@@ -205,6 +212,29 @@ export class TasksService {
         { new: true, session },
       )
       if (!updated) throw new ConflictException('任务已变化，请刷新')
+      if (action === 'cancel' && task.activeWorkflowId) {
+        const cancelled = await this.workflows!.findOneAndUpdate(
+          {
+            _id: task.activeWorkflowId,
+            taskId: id,
+            spaceId: scope.spaceId,
+            entId: scope.enterpriseId,
+            status: { $nin: ['completed', 'cancelled'] },
+          },
+          {
+            $set: { status: 'cancelled' },
+            $unset: { awaitingAction: 1 },
+            $inc: { runVersion: 1, eventSequence: 1 },
+          },
+          { session, new: true },
+        )
+        if (cancelled)
+          await this.nodes!.updateMany(
+            { workflowId: task.activeWorkflowId },
+            { $set: { runVersion: cancelled.runVersion, status: 'stale' } },
+            { session },
+          )
+      }
       await this.activity.record(
         userId,
         scope,

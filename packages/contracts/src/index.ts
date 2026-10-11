@@ -550,6 +550,7 @@ type NodeEventBase = EventBase & { nodeId: string; nodeType: WorkflowNodeType }
 
 export interface WorkflowSnapshot {
   workflow: {
+    taskId?: string
     references?: ResolvedWorkflowReference[]
     generationConfig?: PromptPlan['generationConfig']
     id: string

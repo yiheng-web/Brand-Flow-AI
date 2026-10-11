@@ -18,6 +18,7 @@ export type WorkflowDocument = Workflow &
 
 @Schema({ timestamps: true })
 export class Workflow {
+  @Prop({ index: true }) taskId?: string
   @Prop({ type: [Object], default: [] })
   references!: ResolvedWorkflowReference[]
   @Prop({ type: Object })

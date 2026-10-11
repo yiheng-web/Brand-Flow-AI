@@ -15,3 +15,11 @@ deadline 的 overdue/upcoming 为派生标识，不覆盖业务状态。正式�
 团队业务任务入口为 `/team-tasks`，原 `/tasks` 保留 Workflow 历史。创建表单可保存草稿或派发；详情使用服务端计算权限接受、拒绝、取消及重新指派。品牌要求保存在创作要求中，可选附加知识库和风格参考素材，强制知识由启动时继承。
 
 `node scripts/smoke-tasks.cjs mongodb://127.0.0.1:27019 <Playwright模块目录>` 使用随机数据库、五角色 JWT、专用 Mongo 副本集与 Edge。已验证创建/派发/通知/拒绝/再派发/接受、租户隔离、旧版本冲突、看板、详情与刷新。结束清理随机数据库。另通过三项 React 测试、Task/Activity 12 项测试以及 Web/API lint/build。
+
+## V3.3 执行联动
+
+`POST /tasks/:id/start` 仅负责人在 accepted 状态使用最新 version 调用。Task、pending Workflow 与七节点初始化在一个事务中提交；唯一 activeWorkflowId 不被覆盖。随后在工作台运行既有引擎，图文模式和团队归属来自任务快照。关联 Workflow 的写操作必须由负责人在 Task in_progress 状态执行。
+
+任务取消和未完成 Workflow 的取消、runVersion/eventSequence 递增、节点 stale 更新在同一事务中完成。旧队列载荷无法覆盖结果。任务详情每三秒刷新 Workflow 派生进度，离开页面停止订阅；工作台显示返回 Task 的入口。
+
+真实 Mongo/Redis/Garage S3 + Demo 验收覆盖七节点、企业强制知识继承、重复 start、输出模式锁定、非负责人写入拒绝、取消旧 worker 隔离、工作台往返和刷新。Workflow/Task Jest 26 项、API/Web lint、API/Web build 通过。

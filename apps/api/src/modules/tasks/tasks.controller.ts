@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { TasksService } from './tasks.service'
+import { TasksExecutionService } from './tasks-execution.service'
 import {
   AssignTaskDto,
   CreateTaskDto,
@@ -28,7 +29,17 @@ type Request = { user: { sub: string } }
 @UseGuards(JwtAuthGuard)
 @Controller('tasks')
 export class TasksController {
-  constructor(private readonly tasks: TasksService) {}
+  constructor(
+    private readonly tasks: TasksService,
+    private readonly execution: TasksExecutionService,
+  ) {}
+  @Post(':id/start') start(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: TaskCommandDto,
+  ) {
+    return this.execution.start(req.user.sub, id, dto)
+  }
   @Get(':id/timeline') timeline(
     @Req() req: Request,
     @Param('id') id: string,
@@ -47,7 +58,7 @@ export class TasksController {
     @Param('id') id: string,
     @Query('teamId') teamId: string,
   ) {
-    return this.tasks.detail(req.user.sub, id, teamId)
+    return this.execution.detail(req.user.sub, id, teamId)
   }
   @Patch(':id') update(
     @Req() req: Request,

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Card, Input, Select, Space, Tag, Timeline } from 'antd'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { TaskData } from '@brand-flow/contracts'
-import { getTask, getTaskTimeline, taskCommand } from '@/api/tasks'
+import { getTask, getTaskTimeline, startTask, taskCommand } from '@/api/tasks'
 import { getSpaceMembers } from '@/api/org'
 import type { AuditLogData, SpaceMemberData } from '@/api/org'
 import { ErrorState, LoadingState, PageHeader } from '@/design-system/components'
@@ -10,6 +10,7 @@ import { TASK_EVENT_LABELS, TASK_LABELS } from './task-labels'
 import styles from '../tasks/tasks.module.css'
 
 export default function TaskDetailPage() {
+  const navigate = useNavigate()
   const { id = '' } = useParams()
   const [query] = useSearchParams()
   const teamId = query.get('teamId') ?? ''
@@ -23,6 +24,23 @@ export default function TaskDetailPage() {
   const [saving, setSaving] = useState(false)
   const [revision, setRevision] = useState(0)
   const busy = useRef(false)
+  useEffect(() => {
+    if (!task?.activeWorkflowId || task.status !== 'in_progress') return
+    let active = true
+    const timer = setInterval(() => {
+      getTask(id, teamId)
+        .then((next) => {
+          if (active) setTask(next)
+        })
+        .catch((cause: unknown) => {
+          if (active) setError(cause instanceof Error ? cause.message : '进度刷新失败')
+        })
+    }, 3000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [id, teamId, task?.activeWorkflowId, task?.status])
   useEffect(() => {
     let active = true
     queueMicrotask(() => {
@@ -59,6 +77,20 @@ export default function TaskDetailPage() {
       setRevision((value) => value + 1)
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : '操作失败，请刷新后重试')
+    } finally {
+      busy.current = false
+      setSaving(false)
+    }
+  }
+  const handleStart = async () => {
+    if (!task || busy.current) return
+    busy.current = true
+    setSaving(true)
+    try {
+      const next = await startTask(task)
+      navigate(`/workspace?workflowId=${next.activeWorkflowId}`)
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : '启动创作失败')
     } finally {
       busy.current = false
       setSaving(false)
@@ -114,6 +146,14 @@ export default function TaskDetailPage() {
         )}
       </Card>
       <Space wrap>
+        {task.permissions.execute && task.status === 'accepted' && (
+          <Button loading={saving} onClick={() => void handleStart()}>
+            开始创作
+          </Button>
+        )}
+        {task.activeWorkflowId && (
+          <Link to={`/workspace?workflowId=${task.activeWorkflowId}`}>继续创作 / 查看结果</Link>
+        )}
         {task.permissions.manage && task.status === 'draft' && (
           <>
             <Select
@@ -159,6 +199,19 @@ export default function TaskDetailPage() {
           刷新详情
         </Button>
       </Space>
+      {task.progress && (
+        <Card title="创作进度">
+          <p>
+            {task.progress.status} · {task.progress.currentNode || '等待启动'} ·{' '}
+            {task.progress.percent}%
+          </p>
+          {task.progress.awaitingAction && <p>需要操作：{task.progress.awaitingAction}</p>}
+          {task.progress.executionError && (
+            <Alert type="error" title={task.progress.executionError} />
+          )}
+          <p>更新于 {new Date(task.progress.updatedAt).toLocaleString()}</p>
+        </Card>
+      )}
       <Card title="任务时间线">
         <Timeline
           items={timeline.map((event) => ({

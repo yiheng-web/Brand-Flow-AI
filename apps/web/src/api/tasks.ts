@@ -13,6 +13,8 @@ export const listTasks = (query: {
 }): Promise<TaskPage> => apiClient.get('/tasks', { params: query })
 export const getTask = (id: string, teamId: string): Promise<TaskData> =>
   apiClient.get(`/tasks/${id}`, { params: { teamId } })
+export const startTask = (task: TaskData): Promise<TaskData> =>
+  apiClient.post(`/tasks/${task.id}/start`, { teamId: task.teamId, version: task.version })
 export const getTaskTimeline = (id: string, teamId: string): Promise<AuditLogData[]> =>
   apiClient.get(`/tasks/${id}/timeline`, { params: { teamId } })
 export const taskCommand = (

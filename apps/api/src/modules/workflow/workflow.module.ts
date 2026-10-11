@@ -16,10 +16,12 @@ import { KnowledgeItem, KnowledgeItemSchema } from '../knowledge/schemas/knowled
 import { StorageModule } from '../storage/storage.module'
 import { Asset, AssetSchema } from '../assets/asset.schema'
 import { WorkflowReferencesService } from './workflow-references.service'
+import { Task, TaskSchema } from '../tasks/schemas/task.schema'
 
 @Module({
   imports: [
     MongooseModule.forFeature([
+      { name: Task.name, schema: TaskSchema },
       { name: Asset.name, schema: AssetSchema },
       { name: Workflow.name, schema: WorkflowSchema },
       { name: WorkflowNode.name, schema: WorkflowNodeSchema },
@@ -41,5 +43,6 @@ import { WorkflowReferencesService } from './workflow-references.service'
     WorkflowReferencesService,
     WorkflowRecoveryService,
   ],
+  exports: [WorkflowService, MongooseModule],
 })
 export class WorkflowModule {}

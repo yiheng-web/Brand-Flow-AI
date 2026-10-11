@@ -617,3 +617,5 @@ ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired
 没有通用 status patch。跨团队资源返回 404，空间越权返回 403，过期版本与非法状态转换返回 409。请求示例见 rest-client/tasks.http，状态与拒绝策略见 docs/task-domain.md。
 
 `GET /tasks/:id/timeline?teamId=…` 返回该 Task 的服务端活动事件（AuditLogData），团队可读成员可访问，查询同时限定企业、团队、资源类型与任务 ID。
+
+`POST /tasks/:id/start` 接收 `{teamId,version}`，原子创建一个团队 Workflow 并将 accepted Task 转为 in_progress。Task detail 新增派生 `progress={status,currentNode,awaitingAction,percent,updatedAt,executionError}`；Workflow 响应和 SSE snapshot 新增可选 taskId。业务任务取消通过 Task cancel 完成，关联 Workflow 不接受通用 cancel；输出模式由 Task 固定。
