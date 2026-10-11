@@ -1,6 +1,38 @@
 import apiClient from './index'
 import type { CreateTaskRequest, TaskData, TaskPage, TaskStatus } from '@brand-flow/contracts'
 import type { AuditLogData } from './org'
+import type { SubmissionData, TaskDeliverable } from '@brand-flow/contracts'
+export const getSubmissions = (task: TaskData): Promise<SubmissionData[]> =>
+  apiClient.get(`/tasks/${task.id}/submissions`, { params: { teamId: task.teamId } })
+export const getDeliverables = (task: TaskData): Promise<TaskDeliverable[]> =>
+  apiClient.get(`/tasks/${task.id}/deliverables`, { params: { teamId: task.teamId } })
+export const submitTask = (
+  task: TaskData,
+  deliverable: TaskDeliverable,
+  comment: string,
+): Promise<TaskData> =>
+  apiClient.post(`/tasks/${task.id}/submit`, {
+    teamId: task.teamId,
+    version: task.version,
+    workId: deliverable.workId,
+    workVersionId: deliverable.workVersionId,
+    comment,
+  })
+export const reviewTask = (
+  task: TaskData,
+  submissionId: string,
+  decision: 'approve' | 'reject',
+  reason: string,
+): Promise<TaskData> =>
+  apiClient.post(`/tasks/${task.id}/review`, {
+    teamId: task.teamId,
+    version: task.version,
+    submissionId,
+    decision,
+    reason,
+  })
+export const resumeTask = (task: TaskData): Promise<TaskData> =>
+  apiClient.post(`/tasks/${task.id}/resume`, { teamId: task.teamId, version: task.version })
 
 export const createTask = (body: CreateTaskRequest): Promise<TaskData> =>
   apiClient.post('/tasks', body)

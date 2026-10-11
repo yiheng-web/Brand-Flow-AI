@@ -60,3 +60,16 @@ export class ListTasksDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize = 20
 }
+
+export class SubmitTaskDto extends TaskCommandDto {
+  @ApiProperty() @IsMongoId() workId!: string
+  @ApiProperty() @IsMongoId() workVersionId!: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) comment?: string
+}
+export class ReviewTaskDto extends TaskCommandDto {
+  @ApiProperty() @IsMongoId() submissionId!: string
+  @ApiProperty({ enum: ['approve', 'reject'] }) @IsIn(['approve', 'reject']) decision!:
+    | 'approve'
+    | 'reject'
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) reason?: string
+}

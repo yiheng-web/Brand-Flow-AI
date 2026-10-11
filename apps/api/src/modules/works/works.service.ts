@@ -232,6 +232,11 @@ export class WorksService {
   async remove(userId: string, id: string) {
     const work = await this.findAccessibleWork(userId, id)
     await this.assertCanEdit(userId, work)
+    if (
+      work.workflowId &&
+      (await this.workflowModel.exists({ _id: work.workflowId, taskId: { $exists: true } }))
+    )
+      throw new ConflictException('任务关联作品须保留提交历史，不能删除')
 
     const versions = await this.workVersionModel.find({ workId: work._id })
     for (const version of versions) await this.assertVersionScope(work, version)

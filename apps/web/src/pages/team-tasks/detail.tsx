@@ -8,6 +8,7 @@ import type { AuditLogData, SpaceMemberData } from '@/api/org'
 import { ErrorState, LoadingState, PageHeader } from '@/design-system/components'
 import { TASK_EVENT_LABELS, TASK_LABELS } from './task-labels'
 import styles from '../tasks/tasks.module.css'
+import SubmissionsPanel from './submissions'
 
 export default function TaskDetailPage() {
   const navigate = useNavigate()
@@ -212,6 +213,11 @@ export default function TaskDetailPage() {
           <p>更新于 {new Date(task.progress.updatedAt).toLocaleString()}</p>
         </Card>
       )}
+      <SubmissionsPanel
+        key={task.version}
+        task={task}
+        onChanged={() => setRevision((value) => value + 1)}
+      />
       <Card title="任务时间线">
         <Timeline
           items={timeline.map((event) => ({

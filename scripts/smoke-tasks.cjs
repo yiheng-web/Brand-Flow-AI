@@ -333,37 +333,6 @@ async function main() {
     const progressed = await request(actors.viewer, 'GET', `tasks/${task.id}?teamId=${teamId}`)
     assert.equal(progressed.progress.status, 'completed')
     assert.equal(progressed.status, 'in_progress')
-    let cancelledTask = await request(actors.owner, 'POST', 'tasks', {
-      ...input,
-      title: '取消隔离测试',
-    })
-    cancelledTask = await request(actors.owner, 'POST', `tasks/${cancelledTask.id}/assign`, {
-      teamId,
-      version: cancelledTask.version,
-      assigneeId: actors.member.id,
-    })
-    cancelledTask = await request(actors.member, 'POST', `tasks/${cancelledTask.id}/accept`, {
-      teamId,
-      version: cancelledTask.version,
-    })
-    cancelledTask = await request(actors.member, 'POST', `tasks/${cancelledTask.id}/start`, {
-      teamId,
-      version: cancelledTask.version,
-    })
-    const cancelledWorkflowId = cancelledTask.activeWorkflowId
-    const oldVersion = (await model('Workflow').findById(cancelledWorkflowId)).runVersion
-    cancelledTask = await request(actors.owner, 'POST', `tasks/${cancelledTask.id}/cancel`, {
-      teamId,
-      version: cancelledTask.version,
-    })
-    const cancelledWorkflow = await model('Workflow').findById(cancelledWorkflowId)
-    assert.equal(cancelledWorkflow.status, 'cancelled')
-    assert.equal(cancelledWorkflow.runVersion, oldVersion + 1)
-    await app.get(WorkflowProcessor).process({
-      name: 'run-workflow',
-      data: { workflowId: cancelledWorkflowId, runVersion: oldVersion },
-    })
-    assert.equal((await model('Workflow').findById(cancelledWorkflowId)).status, 'cancelled')
     const { createServer } = await import(pathToFileURL(webRequire.resolve('vite')).href)
     vite = await createServer({
       root: path.join(root, 'apps/web'),
@@ -397,6 +366,165 @@ async function main() {
       )
       page = await context.newPage()
     }
+    const completedWorkflow = await model('Workflow').findById(workflowId)
+    const work = await request(actors.member, 'POST', 'works', {
+      title: '任务成果',
+      spaceId: teamId,
+      workflowId,
+      finalImageUrl: completedWorkflow.result.finalImageUrl,
+    })
+    let options = await request(
+      actors.member,
+      'GET',
+      `tasks/${task.id}/deliverables?teamId=${teamId}`,
+    )
+    assert.equal(options[0].workId, work._id)
+    const submitBody = {
+      teamId,
+      version: task.version,
+      workId: work._id,
+      workVersionId: options[0].workVersionId,
+      comment: '第一轮成果',
+    }
+    await request(actors.owner, 'POST', `tasks/${task.id}/submit`, submitBody, 403)
+    await request(
+      actors.member,
+      'POST',
+      `tasks/${task.id}/submit`,
+      { ...submitBody, workVersionId: new (apiRequire('mongoose').Types.ObjectId)().toString() },
+      404,
+    )
+    task = await request(actors.member, 'POST', `tasks/${task.id}/submit`, submitBody)
+    assert.equal(task.status, 'reviewing')
+    await request(
+      actors.member,
+      'POST',
+      `tasks/${task.id}/review`,
+      { teamId, version: task.version, submissionId: task.latestSubmissionId, decision: 'approve' },
+      403,
+    )
+    await request(
+      actors.owner,
+      'POST',
+      `tasks/${task.id}/review`,
+      {
+        teamId,
+        version: task.version,
+        submissionId: task.latestSubmissionId,
+        decision: 'reject',
+        reason: ' ',
+      },
+      400,
+    )
+    task = await request(actors.owner, 'POST', `tasks/${task.id}/review`, {
+      teamId,
+      version: task.version,
+      submissionId: task.latestSubmissionId,
+      decision: 'reject',
+      reason: '增强蓝色品牌氛围',
+    })
+    const optimize = workflowService.optimize.bind(workflowService)
+    workflowService.optimize = async () => {
+      throw new Error('验收注入：返修启动失败')
+    }
+    await request(
+      actors.member,
+      'POST',
+      `tasks/${task.id}/resume`,
+      { teamId, version: task.version },
+      500,
+    )
+    task = await request(actors.member, 'GET', `tasks/${task.id}?teamId=${teamId}`)
+    assert.equal(task.status, 'rejected')
+    workflowService.optimize = optimize
+    task = await request(actors.member, 'POST', `tasks/${task.id}/resume`, {
+      teamId,
+      version: task.version,
+    })
+    const revised = await until((flow) => flow.awaitingAction === 'select_candidate')
+    assert.equal(revised.result.revision.feedback.instruction, '增强蓝色品牌氛围')
+    await workflowService.updateNodeOutput(
+      workflowId,
+      'generate',
+      { selectedCandidateId: revised.result.generate.candidates[0].id },
+      actors.member.id,
+    )
+    await workflowService.runNode(workflowId, 'compose', actors.member.id)
+    await until((flow) => flow.status === 'completed')
+    const secondVersion = await request(
+      actors.member,
+      'POST',
+      `works/${work._id}/versions/from-workflow`,
+      { workflowId },
+    )
+    assert.notEqual(secondVersion._id, submitBody.workVersionId)
+    await login('member')
+    await page.goto(`${webUrl}team-tasks/${task.id}?teamId=${teamId}`)
+    await page.getByRole('combobox', { name: '提交成果版本' }).click()
+    await page.getByText(`任务成果 · V${secondVersion.versionNo}`, { exact: true }).click()
+    await page.getByLabel('提交说明').fill('按意见返修')
+    await page.getByRole('button', { name: '提交成果', exact: true }).click()
+    await page.getByText('审核中', { exact: true }).waitFor()
+    task = await request(actors.member, 'GET', `tasks/${task.id}?teamId=${teamId}`)
+    await login('admin')
+    await page.goto(`${webUrl}team-tasks/${task.id}?teamId=${teamId}`)
+    await page.getByLabel('审核意见').fill('符合要求')
+    await page.getByRole('button', { name: '审核通过', exact: true }).click()
+    await page.getByText('已完成', { exact: true }).waitFor()
+    task = await request(actors.admin, 'GET', `tasks/${task.id}?teamId=${teamId}`)
+    assert.equal(task.status, 'completed')
+    const rounds = await request(
+      actors.viewer,
+      'GET',
+      `tasks/${task.id}/submissions?teamId=${teamId}`,
+    )
+    assert.deepEqual(
+      rounds.map((submission) => [submission.round, submission.status]),
+      [
+        [1, 'rejected'],
+        [2, 'approved'],
+      ],
+    )
+    assert.equal(rounds[0].reviewComment, '增强蓝色品牌氛围')
+    await request(
+      actors.owner,
+      'POST',
+      `tasks/${task.id}/review`,
+      { teamId, version: task.version, submissionId: rounds[0].id, decision: 'approve' },
+      409,
+    )
+    await request(actors.member, 'DELETE', `works/${work._id}`, undefined, 409)
+    let cancelledTask = await request(actors.owner, 'POST', 'tasks', {
+      ...input,
+      title: '取消隔离测试',
+    })
+    cancelledTask = await request(actors.owner, 'POST', `tasks/${cancelledTask.id}/assign`, {
+      teamId,
+      version: cancelledTask.version,
+      assigneeId: actors.member.id,
+    })
+    cancelledTask = await request(actors.member, 'POST', `tasks/${cancelledTask.id}/accept`, {
+      teamId,
+      version: cancelledTask.version,
+    })
+    cancelledTask = await request(actors.member, 'POST', `tasks/${cancelledTask.id}/start`, {
+      teamId,
+      version: cancelledTask.version,
+    })
+    const cancelledWorkflowId = cancelledTask.activeWorkflowId
+    const oldVersion = (await model('Workflow').findById(cancelledWorkflowId)).runVersion
+    cancelledTask = await request(actors.owner, 'POST', `tasks/${cancelledTask.id}/cancel`, {
+      teamId,
+      version: cancelledTask.version,
+    })
+    const cancelledWorkflow = await model('Workflow').findById(cancelledWorkflowId)
+    assert.equal(cancelledWorkflow.status, 'cancelled')
+    assert.equal(cancelledWorkflow.runVersion, oldVersion + 1)
+    await app.get(WorkflowProcessor).process({
+      name: 'run-workflow',
+      data: { workflowId: cancelledWorkflowId, runVersion: oldVersion },
+    })
+    assert.equal((await model('Workflow').findById(cancelledWorkflowId)).status, 'cancelled')
     await login('member')
     await page.goto(`${webUrl}team-tasks`)
     await page.getByRole('link', { name: '新品品牌海报' }).waitFor()
@@ -411,6 +539,8 @@ async function main() {
     await page.getByRole('button', { name: '团队任务 · 返回详情' }).click()
     await page.reload()
     await page.getByText('任务时间线', { exact: true }).waitFor()
+    await page.getByText('第 1 轮提交', { exact: true }).waitFor()
+    await page.getByText('第 2 轮提交', { exact: true }).waitFor()
     await login('viewer')
     await page.goto(`${webUrl}team-tasks/${task.id}?teamId=${teamId}`)
     await page.getByText('任务时间线', { exact: true }).waitFor()

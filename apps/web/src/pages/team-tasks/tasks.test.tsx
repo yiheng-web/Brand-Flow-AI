@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
   getTaskTimeline: vi.fn(),
   taskCommand: vi.fn(),
   getSpaceMembers: vi.fn(),
+  getSubmissions: vi.fn(),
+  getDeliverables: vi.fn(),
 }))
 vi.mock('@/api/tasks', () => api)
 vi.mock('@/api/org', () => ({ getSpaceMembers: api.getSpaceMembers }))
@@ -39,6 +41,8 @@ describe('团队任务', () => {
     api.getTask.mockResolvedValue(task)
     api.getTaskTimeline.mockResolvedValue([])
     api.getSpaceMembers.mockResolvedValue([])
+    api.getSubmissions.mockResolvedValue([])
+    api.getDeliverables.mockResolvedValue([])
     api.taskCommand.mockResolvedValue({ ...task, status: 'accepted' })
   })
   afterEach(() => {

@@ -50,6 +50,8 @@ export const createWork = (params: CreateWorkParams): Promise<WorkData> =>
 export const getWorks = (spaceId: string): Promise<WorkData[]> =>
   apiClient.get('/works', { params: { spaceId } })
 export const getWork = (id: string): Promise<WorkData> => apiClient.get(`/works/${id}`)
+export const getWorkVersion = (id: string, versionId: string): Promise<WorkVersionData> =>
+  apiClient.get(`/works/${id}/versions/${versionId}`)
 export const deleteWork = (id: string): Promise<{ success: true }> =>
   apiClient.delete(`/works/${id}`)
 export const exportWork = (

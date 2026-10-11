@@ -619,3 +619,13 @@ ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired
 `GET /tasks/:id/timeline?teamId=…` 返回该 Task 的服务端活动事件（AuditLogData），团队可读成员可访问，查询同时限定企业、团队、资源类型与任务 ID。
 
 `POST /tasks/:id/start` 接收 `{teamId,version}`，原子创建一个团队 Workflow 并将 accepted Task 转为 in_progress。Task detail 新增派生 `progress={status,currentNode,awaitingAction,percent,updatedAt,executionError}`；Workflow 响应和 SSE snapshot 新增可选 taskId。业务任务取消通过 Task cancel 完成，关联 Workflow 不接受通用 cancel；输出模式由 Task 固定。
+
+### 成果提交与审核
+
+- `GET /tasks/:id/deliverables?teamId=…`：负责人可提交的当前完成执行版本列表，返回 TaskDeliverable[]。
+- `GET /tasks/:id/submissions?teamId=…`：团队内提交历史 SubmissionData[]，按 round 升序。
+- `POST /tasks/:id/submit`：`{teamId,version,workId,workVersionId,comment?}`；仅负责人，当前完成的 Task Workflow 成果，原子进入 reviewing。
+- `POST /tasks/:id/review`：`{teamId,version,submissionId,decision:'approve'|'reject',reason?}`；仅 Owner/Admin，reject 必须有非空 reason；只处理最新 reviewing 提交。
+- `POST /tasks/:id/resume`：`{teamId,version}`；负责人使用服务端审核意见启动新 Workflow Revision。失败保留历史并支持恢复。
+
+Submission 保存 submitterId/workId/workVersionId/round/comment/status/reviewerId/reviewedAt/reviewComment/createdAt；主体字段不可覆盖。Task 审核通过记录 completedAt。任务关联作品不可删除。

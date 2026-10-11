@@ -17,6 +17,27 @@ export const TASK_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const
 export type TaskPriority = (typeof TASK_PRIORITIES)[number]
 export type AssignmentType = 'single_assignee'
 export type SubmissionStatus = 'submitted' | 'reviewing' | 'approved' | 'rejected'
+export const SUBMISSION_STATUSES = ['submitted', 'reviewing', 'approved', 'rejected'] as const
+export interface SubmissionData {
+  id: string
+  taskId: string
+  submitterId: string
+  workId: string
+  workVersionId: string
+  round: number
+  comment: string
+  status: SubmissionStatus
+  reviewerId?: string
+  reviewedAt?: string
+  reviewComment?: string
+  createdAt: string
+}
+export interface TaskDeliverable {
+  workId: string
+  workVersionId: string
+  versionNo: number
+  title: string
+}
 export type TaskAction =
   | 'assign'
   | 'accept'

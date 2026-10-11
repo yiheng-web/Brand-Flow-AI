@@ -20,6 +20,7 @@ export class Task {
   @Prop() latestSubmissionId?: string
   @Prop() declineReason?: string
   @Prop({ default: 0 }) version!: number
+  @Prop({ type: Date }) completedAt?: Date
   createdAt!: Date
   updatedAt!: Date
 }
