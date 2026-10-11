@@ -74,6 +74,22 @@ export class WorkflowProcessor extends WorkerHost {
     )
       return
     trackWorkflow(workflow)
+    this.logger.log(
+      JSON.stringify({
+        metric: 'queue_wait',
+        workflowId: workflow.id,
+        runVersion: workflow.runVersion,
+        durationMs: Math.max(0, Date.now() - (job.timestamp ?? Date.now())),
+      }),
+    )
+    if ((job.data.nodeType ?? 'brief') === 'brief')
+      this.logger.log(
+        JSON.stringify({
+          metric: 'workflow_started',
+          workflowId: workflow.id,
+          taskId: workflow.taskId,
+        }),
+      )
 
     const nodes = await this.workflowNodeModel.find({ workflowId: workflow._id.toString() })
     const nodeMap = new Map(nodes.map((node) => [node.type, node]))
@@ -176,6 +192,7 @@ export class WorkflowProcessor extends WorkerHost {
               node: nodeType,
               revision: result.revision?.round ?? 0,
               duration: Date.now() - startedAt,
+              metric: 'node_duration',
               providerStatus: 'completed',
             }),
           )
@@ -254,6 +271,15 @@ export class WorkflowProcessor extends WorkerHost {
           ? { $unset: { awaitingAction: 1 } }
           : { awaitingAction: 'select_candidate' }),
       })
+      if (result.finalEvaluation?.passed)
+        this.logger.log(
+          JSON.stringify({
+            metric: 'workflow_completed',
+            workflowId: workflow.id,
+            taskId: workflow.taskId,
+            runVersion: workflow.runVersion,
+          }),
+        )
       return result
     } catch (error) {
       if (error instanceof StaleWorkflowError) return
@@ -291,6 +317,14 @@ export class WorkflowProcessor extends WorkerHost {
         result,
         errorMessage: message,
       })
+      this.logger.warn(
+        JSON.stringify({
+          metric: 'workflow_failed',
+          workflowId: workflow.id,
+          taskId: workflow.taskId,
+          runVersion: workflow.runVersion,
+        }),
+      )
       if (result.revision?.id)
         await this.workflowRevisionModel.findOneAndUpdate(
           { workflowId: workflow._id, _id: result.revision.id, status: 'queued' },
@@ -510,6 +544,14 @@ export class WorkflowProcessor extends WorkerHost {
         return await operation()
       } catch (error) {
         lastError = error
+        this.logger.warn(
+          JSON.stringify({
+            metric: 'provider_failure',
+            workflowId: workflow.id,
+            node: nodeType,
+            attempt,
+          }),
+        )
         const message = error instanceof Error ? error.message : String(error)
         const retryable =
           /timeout|timed?\s*out|超时|abort|provider|network|fetch|json|解析|429|502|503|504/i.test(

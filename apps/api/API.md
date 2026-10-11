@@ -590,7 +590,7 @@ interface UserInfo {
 
 AuditLog：`_id, actorId, enterpriseId, teamId?, action, resourceType, resourceId, metadata, createdAt`。
 Notification：`_id, recipientId, enterpriseId, teamId?, action, resourceId, createdAt, readAt?`。
-ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired`，不保存邮箱、邀请码、Token、知识正文或任意客户端 metadata。两个新 collection 的关联字段为真实 ObjectId，有租户/收件人索引。
+ID 为字符串，时间为 ISO8601；metadata 保存 `role/status/isRequired`，V3 的 task.decline 额外保存经限制的拒绝 reason；不保存邮箱、邀请码、Token、知识正文或任意客户端 metadata。系统活动 actorId 可缺省，用户活动仍从服务端身份获取。两个新 collection 的关联字段为真实 ObjectId，有租户/收件人索引。
 
 审计与组织、邀请、成员、组织知识写入同一 Mongo 事务；审计写入失败使业务回滚。邀请创建通知已注册受邀人，接受/拒绝通知双方；角色变更、移除/退出通知当事人，所有权转移通知双方。未注册受邀人仍通过已有邀请列表在注册后处理，不创建虚构用户通知。
 
@@ -629,3 +629,11 @@ ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired
 - `POST /tasks/:id/resume`：`{teamId,version}`；负责人使用服务端审核意见启动新 Workflow Revision。失败保留历史并支持恢复。
 
 Submission 保存 submitterId/workId/workVersionId/round/comment/status/reviewerId/reviewedAt/reviewComment/createdAt；主体字段不可覆盖。Task 审核通过记录 completedAt。任务关联作品不可删除。
+
+### 任务创建幂等、运营与统计
+
+`POST /tasks` 可传 UUID `requestId`，同一创建者对同一键和内容的并发/重试返回同一任务；内容不一致返回409。Web 在创建弹窗内固定该键；已创建但派发失败只重试派发。创建键不能由草稿更新修改。其他任务命令使用最新 version，重复命令不会生成第二条提交、审核或通知。
+
+`GET /tasks/dashboard?teamId=...` 返回 `TaskDashboardData={mine,manager?}`。mine 为本人统计；manager 仅 Owner/Admin 可见。字段为 pending/inProgress/reviewing/overdue/completedWeek/todo/rejected/completed，进行中含 accepted/in_progress，待办含 pending/accepted；本周完成使用上海时区周一零点，逾期排除 completed/cancelled。
+
+后台启动时及每小时发送未来24小时截止提醒和逾期提醒，使用 Task 标记与通知事务去重。系统事件 `task.deadline_approaching/task.overdue/task.resume_recovered` 无 actorId；收件人由服务端生成，不开放客户端发通知接口。`task.resume_failed` 记录可恢复的返修失败。接口与索引、运行限制、生产阻塞见 [V3 发布验收](../../docs/release-readiness-v3.md)。Swagger 响应 DTO 同步 Task/Submission/仪表盘契约。

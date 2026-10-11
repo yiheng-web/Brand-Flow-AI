@@ -10,6 +10,7 @@ import { Submission, SubmissionSchema } from './schemas/submission.schema'
 import { Work, WorkSchema } from '../works/schemas/work.schema'
 import { WorkVersion, WorkVersionSchema } from '../works/schemas/work-version.schema'
 import { SubmissionsService } from './submissions.service'
+import { TasksOperationsService } from './tasks-operations.service'
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { SubmissionsService } from './submissions.service'
     ]),
   ],
   controllers: [TasksController],
-  providers: [TasksService, TasksExecutionService, SubmissionsService],
+  providers: [TasksService, TasksExecutionService, SubmissionsService, TasksOperationsService],
   exports: [TasksService],
 })
 export class TasksModule {}

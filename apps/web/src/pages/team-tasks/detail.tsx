@@ -221,7 +221,7 @@ export default function TaskDetailPage() {
       <Card title="任务时间线">
         <Timeline
           items={timeline.map((event) => ({
-            content: `${TASK_EVENT_LABELS[event.action] || event.action} · ${new Date(event.createdAt).toLocaleString()} · ${event.actorId}`,
+            content: `${TASK_EVENT_LABELS[event.action] || event.action} · ${new Date(event.createdAt).toLocaleString()} · ${event.actorId || '系统'}${event.metadata.reason ? ` · ${event.metadata.reason}` : ''}`,
           }))}
         />
       </Card>

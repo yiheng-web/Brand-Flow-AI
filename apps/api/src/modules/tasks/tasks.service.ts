@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
+import { createHash } from 'node:crypto'
 import type { ClientSession } from 'mongoose'
 import { canTransitionTask, taskPermissions } from '@brand-flow/contracts'
 import type { TaskData, TaskPage, TaskStatus } from '@brand-flow/contracts'
@@ -81,26 +82,75 @@ export class TasksService {
   }
 
   async create(userId: string, dto: CreateTaskDto): Promise<TaskData> {
-    return this.tasks.db.transaction(async (session) => {
-      const scope = await this.scope(userId, dto.teamId, session)
-      if (!scope.permissions.assignTasks) throw new ForbiddenException('仅管理员可创建任务')
-      if (!dto.title.trim() || !dto.requirementSnapshot?.prompt.trim())
-        throw new BadRequestException('标题与创作要求不能为空')
-      const [task] = await this.tasks.create(
-        [
-          {
-            ...dto,
-            ...this.filter(scope),
-            title: dto.title.trim(),
-            creatorId: userId,
-            status: 'draft',
-          },
-        ],
-        { session },
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          teamId: dto.teamId,
+          title: dto.title.trim(),
+          description: dto.description ?? '',
+          priority: dto.priority ?? 'normal',
+          deadline: dto.deadline,
+          requirementSnapshot: dto.requirementSnapshot,
+        }),
       )
-      await this.activity.record(userId, scope, 'task.created', 'task', task.id, {}, session)
-      return this.data(task, userId, scope)
-    })
+      .digest('hex')
+    try {
+      return await this.tasks.db.transaction(async (session) => {
+        const scope = await this.scope(userId, dto.teamId, session)
+        if (!scope.permissions.assignTasks) throw new ForbiddenException('仅管理员可创建任务')
+        if (dto.requestId) {
+          const existing = await this.tasks.findOne(
+            { creatorId: userId, createRequestId: dto.requestId },
+            null,
+            { session },
+          )
+          if (existing) {
+            if (existing.creationFingerprint !== fingerprint)
+              throw new ConflictException('同一创建请求不能更改内容')
+            return this.data(existing, userId, scope)
+          }
+        }
+        if (!dto.title.trim() || !dto.requirementSnapshot?.prompt.trim())
+          throw new BadRequestException('标题与创作要求不能为空')
+        const [task] = await this.tasks.create(
+          [
+            {
+              ...dto,
+              ...this.filter(scope),
+              title: dto.title.trim(),
+              creatorId: userId,
+              status: 'draft',
+              ...(dto.requestId
+                ? { createRequestId: dto.requestId, creationFingerprint: fingerprint }
+                : {}),
+            },
+          ],
+          { session },
+        )
+        await this.activity.record(userId, scope, 'task.created', 'task', task.id, {}, session)
+        return this.data(task, userId, scope)
+      })
+    } catch (error: unknown) {
+      if (
+        dto.requestId &&
+        error &&
+        typeof error === 'object' &&
+        Reflect.get(error, 'code') === 11000
+      ) {
+        const scope = await this.scope(userId, dto.teamId)
+        if (!scope.permissions.assignTasks) throw new ForbiddenException('仅管理员可创建任务')
+        const existing = await this.tasks.findOne({
+          creatorId: userId,
+          createRequestId: dto.requestId,
+        })
+        if (existing) {
+          if (existing.creationFingerprint !== fingerprint)
+            throw new ConflictException('同一创建请求不能更改内容')
+          return this.data(existing, userId, scope)
+        }
+      }
+      throw error
+    }
   }
 
   async list(userId: string, query: ListTasksDto): Promise<TaskPage> {
@@ -241,7 +291,7 @@ export class TasksService {
         `task.${action}`,
         'task',
         id,
-        { status: next },
+        { status: next, ...(action === 'decline' ? { reason: reason!.trim() } : {}) },
         session,
         action === 'assign' ? [assigneeId!] : [task.creatorId.toString()],
       )

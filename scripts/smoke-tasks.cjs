@@ -30,6 +30,7 @@ Module._resolveFilename = function (request, ...args) {
 const load = (name, file) => apiRequire(`./dist/modules/${file}`)[name]
 const OrgModule = load('OrgModule', 'org/org.module')
 const TasksModule = load('TasksModule', 'tasks/tasks.module')
+const TasksOperationsService = load('TasksOperationsService', 'tasks/tasks-operations.service')
 const AuthService = load('AuthService', 'auth/auth.service')
 const JwtStrategy = load('JwtStrategy', 'auth/guards/jwt.strategy')
 const WorkflowService = load('WorkflowService', 'workflow/workflow.service')
@@ -150,6 +151,7 @@ async function main() {
     await request(actors.viewer, 'POST', 'tasks', input, 403)
     let task = await request(actors.owner, 'POST', 'tasks', {
       ...input,
+      requestId: randomUUID(),
       creatorId: actors.outsider.id,
       status: 'completed',
     })
@@ -225,6 +227,106 @@ async function main() {
     assert.deepEqual(
       events.map((event) => event.action),
       ['task.created', 'task.assign', 'task.decline', 'task.assign', 'task.accept'],
+    )
+    assert.equal(events[2].metadata.reason, '需要重新安排')
+    const operations = app.get(TasksOperationsService)
+    const retryBody = {
+      ...input,
+      title: '截止提醒与创建幂等',
+      deadline: new Date(Date.now() + 7200000).toISOString(),
+      requestId: randomUUID(),
+    }
+    const duplicates = await Promise.all([
+      request(actors.owner, 'POST', 'tasks', retryBody),
+      request(actors.owner, 'POST', 'tasks', retryBody),
+    ])
+    assert.equal(duplicates[0].id, duplicates[1].id)
+    assert.equal(
+      await model('AuditLog').countDocuments({
+        action: 'task.created',
+        resourceId: duplicates[0].id,
+      }),
+      1,
+    )
+    await request(actors.owner, 'POST', 'tasks', { ...retryBody, title: '不同内容' }, 409)
+    await request(actors.owner, 'POST', `tasks/${duplicates[0].id}/assign`, {
+      teamId,
+      version: duplicates[0].version,
+      assigneeId: actors.member.id,
+    })
+    await operations.tick()
+    await operations.tick()
+    assert.equal(
+      await model('Notification').countDocuments({
+        resourceId: duplicates[0].id,
+        recipientId: actors.member.id,
+        action: 'task.deadline_approaching',
+      }),
+      1,
+    )
+    assert.equal(
+      await model('Notification').countDocuments({
+        resourceId: task.id,
+        recipientId: actors.member.id,
+        action: 'task.overdue',
+      }),
+      1,
+    )
+    const managerDashboard = await request(actors.owner, 'GET', `tasks/dashboard?teamId=${teamId}`)
+    assert.equal(managerDashboard.manager.pending, 1)
+    assert.equal(managerDashboard.manager.inProgress, 1)
+    assert.equal(managerDashboard.manager.overdue, 1)
+    const memberDashboard = await request(actors.member, 'GET', `tasks/dashboard?teamId=${teamId}`)
+    assert.equal(memberDashboard.mine.todo, 2)
+    assert.equal(memberDashboard.manager, undefined)
+    assert.equal(
+      (await request(actors.viewer, 'GET', `tasks/dashboard?teamId=${teamId}`)).manager,
+      undefined,
+    )
+    await request(actors.outsider, 'GET', `tasks/dashboard?teamId=${teamId}`, undefined, 403)
+    const memberNotifications = await request(actors.member, 'GET', 'org/notifications')
+    const readable = memberNotifications.find((item) => item.action === 'task.deadline_approaching')
+    const unreadBefore = (await request(actors.member, 'GET', 'org/notifications/unread-count'))
+      .count
+    await request(actors.outsider, 'PUT', `org/notifications/${readable._id}/read`, {}, 404)
+    await request(actors.member, 'PUT', `org/notifications/${readable._id}/read`, {})
+    await request(actors.member, 'PUT', `org/notifications/${readable._id}/read`, {})
+    assert.equal(
+      (await request(actors.member, 'GET', 'org/notifications/unread-count')).count,
+      unreadBefore - 1,
+    )
+    const departedCreator = await request(actors.admin, 'POST', 'tasks', {
+      ...retryBody,
+      requestId: randomUUID(),
+      title: '创建者退出后的截止提醒',
+    })
+    await request(actors.owner, 'POST', `tasks/${departedCreator.id}/assign`, {
+      teamId,
+      version: departedCreator.version,
+      assigneeId: actors.member.id,
+    })
+    const adminMemberships = (await model('User').findById(actors.admin.id)).memberships
+    await model('User').updateOne({ _id: actors.admin.id }, { $set: { memberships: [] } })
+    await operations.tick()
+    assert.equal(
+      await model('Notification').countDocuments({
+        resourceId: departedCreator.id,
+        recipientId: actors.member.id,
+        action: 'task.deadline_approaching',
+      }),
+      1,
+    )
+    assert.equal(
+      await model('Notification').countDocuments({
+        resourceId: departedCreator.id,
+        recipientId: actors.admin.id,
+        action: 'task.deadline_approaching',
+      }),
+      0,
+    )
+    await model('User').updateOne(
+      { _id: actors.admin.id },
+      { $set: { memberships: adminMemberships } },
     )
     const foreign = await request(actors.outsider, 'POST', 'org/enterprise', { name: '外部企业' })
     const foreignTeam = await request(actors.outsider, 'POST', 'org/team', {
@@ -333,12 +435,11 @@ async function main() {
     const progressed = await request(actors.viewer, 'GET', `tasks/${task.id}?teamId=${teamId}`)
     assert.equal(progressed.progress.status, 'completed')
     assert.equal(progressed.status, 'in_progress')
-    const { createServer } = await import(pathToFileURL(webRequire.resolve('vite')).href)
-    vite = await createServer({
+    const { preview } = await import(pathToFileURL(webRequire.resolve('vite')).href)
+    vite = await preview({
       root: path.join(root, 'apps/web'),
-      server: { host: '127.0.0.1', port: 0, proxy: { '/api': await app.getUrl() } },
+      preview: { host: '127.0.0.1', port: 0, proxy: { '/api': await app.getUrl() } },
     })
-    await vite.listen()
     const { chromium } = require(path.join(browserModules, 'playwright'))
     browser = await chromium.launch({ channel: 'msedge', headless: true })
     let page
@@ -423,6 +524,20 @@ async function main() {
       decision: 'reject',
       reason: '增强蓝色品牌氛围',
     })
+    await model('Task').collection.updateOne(
+      { _id: new (apiRequire('mongoose').Types.ObjectId)(task.id) },
+      { $set: { status: 'in_progress', updatedAt: new Date(Date.now() - 600000) } },
+    )
+    await operations.reconcile()
+    task = await request(actors.member, 'GET', `tasks/${task.id}?teamId=${teamId}`)
+    assert.equal(task.status, 'rejected')
+    assert.equal(
+      await model('AuditLog').countDocuments({
+        action: 'task.resume_recovered',
+        resourceId: task.id,
+      }),
+      1,
+    )
     const optimize = workflowService.optimize.bind(workflowService)
     workflowService.optimize = async () => {
       throw new Error('验收注入：返修启动失败')
@@ -545,12 +660,23 @@ async function main() {
     await page.goto(`${webUrl}team-tasks/${task.id}?teamId=${teamId}`)
     await page.getByText('任务时间线', { exact: true }).waitFor()
     assert.equal(await page.getByRole('button', { name: '取消任务', exact: true }).count(), 0)
+    await page.goto(`${webUrl}notifications`)
+    await page.getByRole('button', { name: '刷新通知' }).waitFor()
+    const completedDashboard = await request(
+      actors.owner,
+      'GET',
+      `tasks/dashboard?teamId=${teamId}`,
+    )
+    assert.equal(completedDashboard.manager.completedWeek, 1)
     console.log(
-      'PASS：Task 五角色、派发接收、Mongo/Redis/S3 七节点 Demo、固定组织与强制知识、旧 worker 取消隔离、浏览器工作台与刷新',
+      'PASS：V3 五角色、幂等创建与截止提醒、仪表盘、异常对账、Mongo/Redis/S3 七节点 Demo、两轮提交审核、旧 worker 取消隔离、production Edge 工作台刷新与通知',
     )
   } finally {
     await browser?.close()
-    await vite?.close()
+    if (vite)
+      await new Promise((resolve, reject) =>
+        vite.httpServer.close((error) => (error ? reject(error) : resolve())),
+      )
     await queue?.obliterate({ force: true })
     if (connection) await connection.dropDatabase()
     await app?.close()

@@ -14,7 +14,7 @@ export type { RoleValue as Role, SpaceType } from '@brand-flow/contracts'
 
 export interface AuditLogData {
   _id: string
-  actorId: string
+  actorId?: string
   enterpriseId: string
   teamId?: string
   action: string

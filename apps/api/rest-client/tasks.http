@@ -3,6 +3,9 @@
 @teamId = REPLACE_WITH_TEAM_ID
 @taskId = REPLACE_WITH_TASK_ID
 @assigneeId = REPLACE_WITH_MEMBER_ID
+@workId = REPLACE_WITH_WORK_ID
+@workVersionId = REPLACE_WITH_WORK_VERSION_ID
+@submissionId = REPLACE_WITH_SUBMISSION_ID
 
 ### 创建草稿
 POST {{baseUrl}}/tasks
@@ -28,3 +31,47 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {"teamId":"{{teamId}}","version":1}
+
+### 任务统计
+GET {{baseUrl}}/tasks/dashboard?teamId={{teamId}}
+Authorization: Bearer {{token}}
+
+### 开始创作（后续所有 version 使用详情中的最新值）
+POST {{baseUrl}}/tasks/{{taskId}}/start
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","version":2}
+
+### 当前可提交版本
+GET {{baseUrl}}/tasks/{{taskId}}/deliverables?teamId={{teamId}}
+Authorization: Bearer {{token}}
+
+### 提交完成成果
+POST {{baseUrl}}/tasks/{{taskId}}/submit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","version":3,"workId":"{{workId}}","workVersionId":"{{workVersionId}}","comment":"成果说明"}
+
+### 管理者驳回（替换最新 version 与 submissionId）
+POST {{baseUrl}}/tasks/{{taskId}}/review
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","version":5,"submissionId":"{{submissionId}}","decision":"reject","reason":"请按品牌意见调整"}
+
+### 负责人返修
+POST {{baseUrl}}/tasks/{{taskId}}/resume
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"teamId":"{{teamId}}","version":6}
+
+### 提交历史
+GET {{baseUrl}}/tasks/{{taskId}}/submissions?teamId={{teamId}}
+Authorization: Bearer {{token}}
+
+### 时间线
+GET {{baseUrl}}/tasks/{{taskId}}/timeline?teamId={{teamId}}
+Authorization: Bearer {{token}}

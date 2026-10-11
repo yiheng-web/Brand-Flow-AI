@@ -113,6 +113,7 @@ export interface TaskData {
   updatedAt: string
 }
 export interface CreateTaskRequest {
+  requestId?: string
   teamId: string
   title: string
   description?: string
@@ -125,4 +126,18 @@ export interface TaskPage {
   total: number
   page: number
   pageSize: number
+}
+export interface TaskMetrics {
+  pending: number
+  inProgress: number
+  reviewing: number
+  overdue: number
+  completedWeek: number
+  todo: number
+  rejected: number
+  completed: number
+}
+export interface TaskDashboardData {
+  mine: TaskMetrics
+  manager?: TaskMetrics
 }

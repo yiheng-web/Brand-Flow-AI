@@ -13,13 +13,16 @@ export class NotificationResponseDto {
 
 export class AuditLogResponseDto {
   @ApiProperty() _id!: string
-  @ApiProperty() actorId!: string
+  @ApiPropertyOptional({ description: '自动事件无用户 actor' }) actorId?: string
   @ApiProperty() enterpriseId!: string
   @ApiPropertyOptional() teamId?: string
   @ApiProperty() action!: string
   @ApiProperty() resourceType!: string
   @ApiProperty() resourceId!: string
-  @ApiProperty({ type: Object, description: '仅 role、status、isRequired 状态字段' })
+  @ApiProperty({
+    type: Object,
+    description: 'role、status、isRequired；任务拒绝派发事件另含 reason',
+  })
   metadata!: Record<string, string | boolean>
   @ApiProperty({ format: 'date-time' }) createdAt!: string
 }

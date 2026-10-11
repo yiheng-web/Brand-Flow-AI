@@ -6,6 +6,7 @@ import { listTasks } from '@/api/tasks'
 import { useUserStore } from '@/store/useUserStore'
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/design-system/components'
 import TaskCreate from './task-create'
+import TaskDashboard from './dashboard'
 import { TASK_LABELS } from './task-labels'
 import styles from '../tasks/tasks.module.css'
 
@@ -52,6 +53,7 @@ export default function TeamTasksPage() {
   return (
     <div className={styles.page}>
       <PageHeader title="团队任务" description="派发、执行与交付审核" />
+      <TaskDashboard key={teamId} teamId={teamId} revision={revision} />
       <Space wrap>
         <Select
           aria-label="任务团队"

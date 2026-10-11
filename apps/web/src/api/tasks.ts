@@ -2,6 +2,9 @@ import apiClient from './index'
 import type { CreateTaskRequest, TaskData, TaskPage, TaskStatus } from '@brand-flow/contracts'
 import type { AuditLogData } from './org'
 import type { SubmissionData, TaskDeliverable } from '@brand-flow/contracts'
+import type { TaskDashboardData } from '@brand-flow/contracts'
+export const getTaskDashboard = (teamId: string): Promise<TaskDashboardData> =>
+  apiClient.get('/tasks/dashboard', { params: { teamId } })
 export const getSubmissions = (task: TaskData): Promise<SubmissionData[]> =>
   apiClient.get(`/tasks/${task.id}/submissions`, { params: { teamId: task.teamId } })
 export const getDeliverables = (task: TaskData): Promise<TaskDeliverable[]> =>

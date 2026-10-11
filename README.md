@@ -230,3 +230,9 @@ V1 运行环境为 **Node.js 24 LTS + pnpm 10.29.3**。开发执行 `pnpm dev:al
 生产镜像入口为 `apps/api/Dockerfile` 与 `apps/web/Dockerfile`，生产示例为 `deploy/docker-compose.prod.yml`，包含固定版本数据库、SPA/API/SSE 代理。生产必需环境变量、私有 MinIO/S3 签名和 CORS、Redis/Mongo 认证、SiliconFlow、可信代理及备份回滚步骤见 [V1 部署文档](docs/v1-deployment.md)。
 
 完整自动验收使用 `pnpm test:v1 <专用Mongo地址> <Playwright模块目录>`，实际验收范围和剩余外部联调项见 [V1 发布清单](docs/v1-release-checklist.md)。
+
+## V3 团队任务闭环
+
+`/team-tasks` 支持管理者创建/派发、负责人接受/拒绝、固定要求的 AI 创作、成果提交、审核驳回与新版本重交；`/notifications` 展示本人通知。任务统计由 API 按团队和权限聚合，状态写入采用事务与版本校验。
+
+三阶段验收依次运行 `pnpm test:v1`、`pnpm test:v2`、`pnpm test:v3`，使用专用 Mongo 副本集、Redis、Garage S3-compatible 和 Edge，模型使用显式 Demo。数据关系、权限矩阵、验证结果及生产阻塞见 [V3 发布验收](docs/release-readiness-v3.md)。现有生产 Compose 的 standalone Mongo 必须替换或覆盖为认证副本集后才能使用组织和任务事务。

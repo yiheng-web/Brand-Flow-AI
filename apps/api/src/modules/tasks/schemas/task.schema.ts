@@ -6,6 +6,8 @@ import type { TaskStatus, TaskPriority, TaskRequirement } from '@brand-flow/cont
 
 @Schema({ timestamps: true })
 export class Task {
+  @Prop() createRequestId?: string
+  @Prop() creationFingerprint?: string
   @Prop({ required: true }) title!: string
   @Prop({ default: '' }) description!: string
   @Prop({ type: MongoSchema.Types.ObjectId, required: true }) enterpriseId!: Types.ObjectId
@@ -21,10 +23,16 @@ export class Task {
   @Prop() declineReason?: string
   @Prop({ default: 0 }) version!: number
   @Prop({ type: Date }) completedAt?: Date
+  @Prop({ type: Date }) deadlineNotifiedFor?: Date
+  @Prop({ type: Date }) overdueReportedFor?: Date
   createdAt!: Date
   updatedAt!: Date
 }
 export type TaskDocument = HydratedDocument<Task>
 export const TaskSchema = SchemaFactory.createForClass(Task)
+TaskSchema.index(
+  { creatorId: 1, createRequestId: 1 },
+  { unique: true, partialFilterExpression: { createRequestId: { $type: 'string' } } },
+)
 TaskSchema.index({ enterpriseId: 1, teamId: 1, status: 1, assigneeId: 1, deadline: 1 })
 TaskSchema.index({ enterpriseId: 1, teamId: 1, creatorId: 1, createdAt: -1 })

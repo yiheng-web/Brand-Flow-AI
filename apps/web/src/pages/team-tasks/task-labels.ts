@@ -11,6 +11,10 @@ export const TASK_LABELS: Record<TaskStatus, string> = {
   cancelled: '已取消',
 }
 export const TASK_EVENT_LABELS: Record<string, string> = {
+  'task.deadline_approaching': '任务即将到期',
+  'task.overdue': '任务已逾期',
+  'task.resume_failed': '返修启动失败，可重试',
+  'task.resume_recovered': '返修中断已恢复，可重试',
   'task.created': '创建任务',
   'task.updated': '编辑草稿',
   'task.assign': '派发任务',

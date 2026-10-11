@@ -396,6 +396,8 @@ export class WorkflowService implements OnModuleInit, OnModuleDestroy {
 
   async updateBrief(id: string, dto: UpdateBriefDto, userId: string, entId?: string) {
     const workflow = await this.verifyWorkflowAccess(id, userId, entId, true)
+    if (workflow.taskId && dto.needsComposition !== workflow.needsComposition)
+      throw new BadRequestException('任务输出模式已固定')
     const result = (workflow.result as WorkflowResult | undefined) ?? {}
     if (workflow.status !== 'awaiting_user' || workflow.awaitingAction !== 'confirm_brief') {
       throw new BadRequestException('当前工作流不接受 Brief 修改')

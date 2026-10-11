@@ -42,6 +42,7 @@ export default function TaskCreate({
   const [revision, setRevision] = useState(0)
   const busy = useRef(false)
   const savedTask = useRef<TaskData | undefined>(undefined)
+  const [requestId] = useState(() => crypto.randomUUID())
   useEffect(() => {
     let active = true
     Promise.all([getSpaceMembers(teamId), getKnowledgeList(teamId), getAssets(teamId)])
@@ -74,6 +75,7 @@ export default function TaskCreate({
         return
       }
       const body: CreateTaskRequest = {
+        requestId,
         teamId,
         title: values.title.trim(),
         description: values.description,

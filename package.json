@@ -20,7 +20,8 @@
     "prepare": "husky",
     "preinstall": "node scripts/check-node.mjs",
     "test:v1": "node scripts/smoke-v1.cjs",
-    "test:v2": "node scripts/smoke-v2.cjs"
+    "test:v2": "node scripts/smoke-v2.cjs",
+    "test:v3": "node scripts/smoke-tasks.cjs"
   },
   "pnpm": {
     "overrides": {

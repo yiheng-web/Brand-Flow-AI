@@ -9,6 +9,7 @@ import {
   IsMongoId,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -25,6 +26,10 @@ export class TaskRequirementDto extends OmitType(CreateWorkflowDto, ['spaceId'] 
   @IsOptional() @IsString() @MaxLength(100) channel?: string
 }
 export class CreateTaskDto {
+  @ApiPropertyOptional({ description: '创建请求幂等键；重试必须使用相同内容' })
+  @IsOptional()
+  @IsUUID()
+  requestId?: string
   @ApiProperty() @IsMongoId() teamId!: string
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) title!: string
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(5000) description?: string
@@ -39,7 +44,9 @@ export class CreateTaskDto {
   @Type(() => TaskRequirementDto)
   requirementSnapshot!: TaskRequirementDto
 }
-export class UpdateTaskDto extends PartialType(OmitType(CreateTaskDto, ['teamId'] as const)) {
+export class UpdateTaskDto extends PartialType(
+  OmitType(CreateTaskDto, ['teamId', 'requestId'] as const),
+) {
   @ApiProperty() @IsInt() @Min(0) version!: number
 }
 export class TaskCommandDto {

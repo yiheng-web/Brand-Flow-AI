@@ -4,7 +4,7 @@ import type { HydratedDocument } from 'mongoose'
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false }, minimize: false })
 export class AuditLog {
-  @Prop({ type: MongooseSchema.Types.ObjectId, required: true }) actorId!: Types.ObjectId
+  @Prop({ type: MongooseSchema.Types.ObjectId }) actorId?: Types.ObjectId
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true }) enterpriseId!: Types.ObjectId
   @Prop({ type: MongooseSchema.Types.ObjectId }) teamId?: Types.ObjectId
   @Prop({ required: true }) action!: string

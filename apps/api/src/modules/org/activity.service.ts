@@ -28,17 +28,17 @@ export class ActivityService {
   ) {}
 
   async record(
-    actorId: string,
+    actorId: string | null,
     scope: ActivityScope,
     action: string,
     resourceType: string,
     resourceId: string,
-    metadata: { role?: string; status?: string; isRequired?: boolean } = {},
+    metadata: { role?: string; status?: string; isRequired?: boolean; reason?: string } = {},
     session?: ClientSession,
     recipients: string[] = [],
   ): Promise<void> {
     if (scope.spaceType === 'personal') return
-    assertObjectId(actorId)
+    if (actorId) assertObjectId(actorId)
     assertObjectId(scope.enterpriseId!)
     const context = {
       enterpriseId: new Types.ObjectId(scope.enterpriseId),
@@ -50,11 +50,13 @@ export class ActivityService {
         .filter((key) => Reflect.get(metadata, key) !== undefined)
         .map((key) => [key, Reflect.get(metadata, key)]),
     )
+    if (resourceType === 'task' && action === 'task.decline' && metadata.reason)
+      redacted.reason = metadata.reason.slice(0, 2000)
     await this.audits.create(
       [
         {
           ...context,
-          actorId: new Types.ObjectId(actorId),
+          actorId: actorId ? new Types.ObjectId(actorId) : undefined,
           action,
           resourceType,
           resourceId,
