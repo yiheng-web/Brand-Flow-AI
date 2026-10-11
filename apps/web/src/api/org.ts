@@ -12,6 +12,38 @@ import type {
 } from '@brand-flow/contracts'
 export type { RoleValue as Role, SpaceType } from '@brand-flow/contracts'
 
+export interface AuditLogData {
+  _id: string
+  actorId: string
+  enterpriseId: string
+  teamId?: string
+  action: string
+  resourceType: string
+  resourceId: string
+  metadata: Record<string, string | boolean>
+  createdAt: string
+}
+
+export interface NotificationData {
+  _id: string
+  recipientId: string
+  enterpriseId: string
+  teamId?: string
+  action: string
+  resourceId: string
+  createdAt: string
+  readAt?: string
+}
+
+export const getSpaceAudits = (spaceId: string, before?: string): Promise<AuditLogData[]> =>
+  apiClient.get(`/org/spaces/${spaceId}/audits`, { params: { before } })
+export const getNotifications = (): Promise<NotificationData[]> =>
+  apiClient.get('/org/notifications')
+export const getUnreadNotificationCount = (): Promise<{ count: number }> =>
+  apiClient.get('/org/notifications/unread-count')
+export const markNotificationRead = (id: string): Promise<{ success: boolean }> =>
+  apiClient.put(`/org/notifications/${id}/read`)
+
 // 创建企业请求参数
 export interface CreateEnterpriseParams {
   name: string

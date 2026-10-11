@@ -1,5 +1,9 @@
 # 🚀 Brand-Flow AI
 
+V2 组织协作已提供企业/团队生命周期、邀请与统一 RBAC、组织知识继承、共享素材/作品、组织 Workflow、审计及通知基础。权限以服务端当前成员关系为准；角色降级、退出和停用后，旧 JWT 不保留原资源权限。发布与回归步骤见 [V2 发布清单](docs/v2-release-checklist.md)，产品权限见 [组织权限矩阵](docs/org-rbac.md)。
+
+组织写操作要求 MongoDB 副本集。完成构建后，使用专用 Mongo27019、Redis6381 与可用 Docker，运行 `pnpm test:v2 mongodb://127.0.0.1:27019 <Playwright node_modules 路径>`；脚本自动启动隔离 Garage S3、使用随机数据库/队列前缀和 Demo 模型，不调用付费 Provider。个人回归保留 `pnpm test:v1`，详见发布清单。
+
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)

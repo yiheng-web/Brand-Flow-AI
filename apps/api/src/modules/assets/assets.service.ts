@@ -17,6 +17,7 @@ import { SaveAssetToKnowledgeDto } from './dto/assets.dto'
 import { Visibility, OwnerType } from '@/common/enums'
 import { StorageService } from '@/modules/storage/storage.service'
 import { KnowledgeService } from '@/modules/knowledge/knowledge.service'
+import { OrgService } from '@/modules/org/org.service'
 
 interface UploadedAssetFile {
   originalname: string
@@ -33,6 +34,7 @@ export class AssetsService {
     private readonly authorization: AuthorizationService,
     private readonly storageService: StorageService,
     private readonly knowledgeService: KnowledgeService,
+    private readonly orgService: OrgService,
   ) {}
 
   async createAsset(userId: string, enterpriseId: string | undefined, createDto: CreateAssetDto) {
@@ -231,14 +233,38 @@ export class AssetsService {
       asset.visibility,
     )
 
-    // Uploaded files live in the private bucket, so remove the object as part
-    // of the same business delete path that removes the database record.
-    if (asset.objectKey) {
-      this.assertAssetObject(asset, asset.objectKey)
-      await this.storageService.deleteObject(asset.objectKey)
+    const remove = async (session?: import('mongoose').ClientSession) => {
+      if (asset.ownerType !== OwnerType.USER)
+        await this.authorization.assertCanManageAssets(userId, asset.ownerId.toString(), session)
+      // 对象先删除；数据库失败时保留记录，重试可完成删除，不丢失审计。
+      if (asset.objectKey) {
+        this.assertAssetObject(asset, asset.objectKey)
+        await this.storageService.deleteObject(asset.objectKey)
+      }
+      const deleted =
+        asset.ownerType === OwnerType.USER
+          ? await this.assetModel.findByIdAndDelete(assetId)
+          : await this.assetModel.findOneAndDelete(
+              { _id: assetId, ownerId: asset.ownerId },
+              { session },
+            )
+      if (deleted && asset.ownerType !== OwnerType.USER)
+        await this.orgService.activity.record(
+          userId,
+          {
+            spaceType: asset.ownerType,
+            spaceId: asset.ownerId.toString(),
+            enterpriseId: asset.enterpriseId?.toString(),
+          },
+          'asset.deleted',
+          'asset',
+          assetId,
+          {},
+          session,
+        )
     }
-
-    await this.assetModel.findByIdAndDelete(assetId)
+    if (asset.ownerType === OwnerType.USER) await remove()
+    else await this.orgService.memberships.transaction(asset.enterpriseId!.toString(), remove)
     return { success: true }
   }
 

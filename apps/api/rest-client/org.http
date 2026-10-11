@@ -121,3 +121,20 @@ Content-Type: application/json
 ### 撤销本人发出的邀请
 POST {{baseUrl}}/org/invitations/{{invitationId}}/cancel
 Authorization: Bearer {{accessToken}}
+
+### 管理员读取当前空间审计；下一页添加 before=<上一页最后一条 _id>
+GET {{baseUrl}}/org/spaces/{{spaceId}}/audits
+Authorization: Bearer {{accessToken}}
+
+### 本人通知
+GET {{baseUrl}}/org/notifications
+Authorization: Bearer {{accessToken}}
+
+### 本人未读通知数
+GET {{baseUrl}}/org/notifications/unread-count
+Authorization: Bearer {{accessToken}}
+
+### 标记本人通知已读
+@notificationId = 替换为通知_id
+PUT {{baseUrl}}/org/notifications/{{notificationId}}/read
+Authorization: Bearer {{accessToken}}

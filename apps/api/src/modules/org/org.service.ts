@@ -8,6 +8,7 @@ import { assertObjectId } from '@/common/personal-scope'
 import { AuthorizationService } from './authorization.service'
 import { MembershipService } from './membership.service'
 import { InvitationService } from './invitation.service'
+import { ActivityService } from './activity.service'
 import type {
   CreateEnterpriseDto,
   CreateTeamDto,
@@ -36,6 +37,7 @@ export class OrgService {
     readonly memberships: MembershipService,
     readonly invitations: InvitationService,
     private readonly config: ConfigService,
+    readonly activity: ActivityService,
   ) {}
 
   async createEnterprise(userId: string, createDto: CreateEnterpriseDto) {
@@ -59,6 +61,19 @@ export class OrgService {
       user.memberships.push({ enterpriseId: enterprise._id, role: Role.OWNER })
       user.currentEnterpriseId = enterprise._id
       await user.save({ session })
+      await this.activity.record(
+        userId,
+        {
+          spaceType: 'enterprise',
+          spaceId: enterprise._id.toString(),
+          enterpriseId: enterprise._id.toString(),
+        },
+        'enterprise.created',
+        'enterprise',
+        enterprise._id.toString(),
+        {},
+        session,
+      )
       return enterprise
     })
   }
@@ -90,11 +105,21 @@ export class OrgService {
         }))
       )
         throw new BadRequestException('该企业名称已被使用')
-      return this.enterpriseModel.findByIdAndUpdate(
+      const enterprise = await this.enterpriseModel.findByIdAndUpdate(
         id,
         { $set: update },
         { new: true, session, runValidators: true },
       )
+      await this.activity.record(
+        userId,
+        initial,
+        dto.status === 'disabled' ? 'enterprise.disabled' : 'enterprise.updated',
+        'enterprise',
+        id,
+        { status: dto.status },
+        session,
+      )
+      return enterprise
     })
   }
 
@@ -120,11 +145,21 @@ export class OrgService {
         ))
       )
         throw new BadRequestException('该企业下已存在同名团队')
-      return this.teamModel.findOneAndUpdate(
+      const team = await this.teamModel.findOneAndUpdate(
         { _id: id, enterpriseId: space.enterpriseId },
         { $set: update },
         { new: true, session, runValidators: true },
       )
+      await this.activity.record(
+        userId,
+        space,
+        dto.status === 'archived' ? 'team.archived' : 'team.updated',
+        'team',
+        id,
+        { status: dto.status },
+        session,
+      )
+      return team
     })
   }
 
@@ -196,6 +231,15 @@ export class OrgService {
         userId,
         { $push: { memberships: { enterpriseId, teamId: team._id, role: Role.ADMIN } } },
         { session },
+      )
+      await this.activity.record(
+        userId,
+        { spaceType: 'team', spaceId: team._id.toString(), enterpriseId },
+        'team.created',
+        'team',
+        team._id.toString(),
+        {},
+        session,
       )
       return team
     })

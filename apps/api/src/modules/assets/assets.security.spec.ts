@@ -47,6 +47,7 @@ describe('Assets 上传与个人归属', () => {
     new AuthorizationService({} as never, {} as never, {} as never),
     storage as never,
     knowledge as never,
+    {} as never,
   )
   const file = (buffer: Buffer, mimetype = 'image/png') => ({
     originalname: 'image.png',

@@ -32,6 +32,7 @@ describe('邀请生命周期', () => {
     users as never,
     policy,
     memberships as never,
+    { record: jest.fn() } as never,
   )
   let invitation: {
     _id: Types.ObjectId

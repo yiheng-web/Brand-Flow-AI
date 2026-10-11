@@ -27,6 +27,7 @@ Module._resolveFilename = function (request, ...args) {
   )
 }
 process.env.KNOWLEDGE_VECTOR_MODE = 'disabled'
+process.env.BRAND_FLOW_DEMO_MODE = 'true'
 const load = (name, file) => apiRequire(`./dist/modules/${file}`)[name]
 const OrgModule = load('OrgModule', 'org/org.module')
 const KnowledgeModule = load('KnowledgeModule', 'knowledge/knowledge.module')
@@ -44,6 +45,8 @@ const WorkflowReferencesService = load(
   'workflow/workflow-references.service',
 )
 const StorageService = load('StorageService', 'storage/storage.service')
+const WorkflowProcessor = load('WorkflowProcessor', 'workflow/workflow.processor')
+const { WORKFLOW_QUEUE } = apiRequire('./dist/modules/workflow/workflow.constants')
 const schemas = [
   ['Asset', 'assets/asset.schema'],
   ['Work', 'works/schemas/work.schema'],
@@ -64,7 +67,7 @@ async function main() {
   const objects = new Map()
   const signed = []
   // 使用内存对象存储验证业务边界与补偿，不连接真实 MinIO 或模型 Provider。
-  const storage = {
+  let storage = {
     uploadObject: async ({ key, body, contentType }) => {
       objects.set(key, { bytes: Buffer.from(body), contentType })
       return { key, bucket: 'test' }
@@ -87,8 +90,32 @@ async function main() {
       objects.delete(key)
     },
   }
-  let app, connection, browser, vite, workflowService
+  let app, connection, browser, vite, workflowService, s3Fixture, queue, worker
   try {
+    if (process.env.COLLAB_REAL_STORAGE === 'true') {
+      const { startS3Fixture } = require('./garage-fixture.cjs')
+      const { ConfigService } = apiRequire('@nestjs/config')
+      const { randomBytes } = require('node:crypto')
+      const access = `GK${randomBytes(16).toString('hex')}`
+      const secret = randomBytes(32).toString('hex')
+      s3Fixture = await startS3Fixture(access, secret, 'v2-collab')
+      storage = new StorageService(
+        new ConfigService({
+          MINIO_ENDPOINT: '127.0.0.1',
+          MINIO_PORT: s3Fixture.port,
+          MINIO_ACCESS_KEY: access,
+          MINIO_SECRET_KEY: secret,
+          MINIO_BUCKET: 'v2-collab',
+          MINIO_REGION: 'us-east-1',
+        }),
+      )
+      await storage.checkReady()
+      const sign = storage.getSignedUrl.bind(storage)
+      storage.getSignedUrl = async (...args) => {
+        signed.push(args[0])
+        return sign(...args)
+      }
+    }
     class SmokeApp {}
     NestModule({
       imports: [
@@ -117,6 +144,7 @@ async function main() {
           useValue: {
             create: (...args) => workflowService.create(...args),
             getWorkflowDetail: (...args) => workflowService.getWorkflowDetail(...args),
+            listWorkflows: (...args) => workflowService.listWorkflows(...args),
           },
         },
       ],
@@ -146,6 +174,34 @@ async function main() {
       app.get(AuthorizationService),
       app.get(WorkflowReferencesService),
     )
+    if (s3Fixture) {
+      const { Queue, Worker } = apiRequire('bullmq')
+      const redis = { host: '127.0.0.1', port: 6381 }
+      queue = new Queue(WORKFLOW_QUEUE, { connection: redis, prefix: dbName })
+      workflowService = new WorkflowService(
+        model('Workflow'),
+        model('WorkflowNode'),
+        model('WorkflowRevision'),
+        queue,
+        model('Knowledge'),
+        storage,
+        app.get(AuthorizationService),
+        app.get(WorkflowReferencesService),
+      )
+      await workflowService.onModuleInit()
+      const processor = new WorkflowProcessor(
+        model('Workflow'),
+        model('WorkflowNode'),
+        model('WorkflowRevision'),
+        model('KnowledgeItem'),
+        storage,
+        app.get(WorkflowReferencesService),
+      )
+      worker = new Worker(WORKFLOW_QUEUE, (job) => processor.process(job), {
+        connection: redis,
+        prefix: dbName,
+      })
+    }
     const base = await app.getUrl()
     const password = randomUUID()
     const register = async (email) => {
@@ -409,29 +465,25 @@ async function main() {
     await model('WorkVersion').updateOne({ _id: version._id }, { $set: { spaceId: foreign._id } })
     await assert.rejects(migrateCollabResources(connection, true), /跨空间/)
     await model('WorkVersion').updateOne({ _id: version._id }, { $set: { spaceId: team._id } })
-    await connection
-      .collection('works')
-      .updateOne(
-        { _id: new (apiRequire('mongoose').Types.ObjectId)(work._id) },
-        {
-          $set: {
-            creatorId: member.user.id,
-            ownerId: member.user.id,
-            ownerType: 'user',
-            visibility: 'private',
-            enterpriseId: enterprise._id,
-          },
+    await connection.collection('works').updateOne(
+      { _id: new (apiRequire('mongoose').Types.ObjectId)(work._id) },
+      {
+        $set: {
+          creatorId: member.user.id,
+          ownerId: member.user.id,
+          ownerType: 'user',
+          visibility: 'private',
+          enterpriseId: enterprise._id,
         },
-      )
-    await connection
-      .collection('workversions')
-      .updateOne(
-        { _id: new (apiRequire('mongoose').Types.ObjectId)(work.versions[0]._id) },
-        {
-          $set: { workId: work._id, createdBy: member.user.id },
-          $unset: { spaceId: '', spaceType: '', enterpriseId: '' },
-        },
-      )
+      },
+    )
+    await connection.collection('workversions').updateOne(
+      { _id: new (apiRequire('mongoose').Types.ObjectId)(work.versions[0]._id) },
+      {
+        $set: { workId: work._id, createdBy: member.user.id },
+        $unset: { spaceId: '', spaceType: '', enterpriseId: '' },
+      },
+    )
     assert.equal(
       (
         await connection
@@ -549,14 +601,282 @@ async function main() {
         'PASS Edge: 素材/作品个人-团队-企业切换、创建者、组织参考选择、工作台空间、390px布局',
       )
     }
+    const notifications = await call(member, 'GET', 'org/notifications')
+    assert.ok(notifications.length > 0)
+    assert.ok(notifications.every((item) => item.recipientId === member.user.id))
+    const count = (await call(member, 'GET', 'org/notifications/unread-count')).count
+    await call(outsider, 'PUT', `org/notifications/${notifications[0]._id}/read`, {}, 404)
+    await call(member, 'PUT', `org/notifications/${notifications[0]._id}/read`, {})
+    assert.equal((await call(member, 'GET', 'org/notifications/unread-count')).count, count - 1)
+    await call(member, 'PUT', `org/notifications/${notifications[0]._id}/read`, {})
+    assert.equal((await call(member, 'GET', 'org/notifications/unread-count')).count, count - 1)
+    for (const actor of [member, viewer, outsider])
+      await call(actor, 'GET', `org/spaces/${team._id}/audits`, undefined, 403)
+    const teamAudits = await call(admin, 'GET', `org/spaces/${team._id}/audits`)
+    assert.ok(
+      teamAudits.length > 0 &&
+        teamAudits.every((log) => log.teamId === team._id && log.enterpriseId === enterprise._id),
+    )
+    await call(admin, 'GET', `org/spaces/${enterprise._id}/audits`, undefined, 403)
+    const auditCount = await model('AuditLog').countDocuments({})
+    const notificationCount = await model('Notification').countDocuments({})
+    const auditModel = model('AuditLog')
+    const createAudit = auditModel.create
+    auditModel.create = async () => {
+      throw new Error('验收注入审计写入故障')
+    }
+    try {
+      await call(
+        owner,
+        'PUT',
+        `org/spaces/${team._id}/members/${member.user.id}`,
+        { role: 'viewer' },
+        500,
+      )
+    } finally {
+      auditModel.create = createAudit
+    }
+    assert.equal(
+      (await model('User').findById(member.user.id)).memberships.find(
+        (item) => String(item.teamId) === team._id,
+      ).role,
+      'member',
+    )
+    assert.equal(await model('AuditLog').countDocuments({}), auditCount)
+    assert.equal(await model('Notification').countDocuments({}), notificationCount)
+    await call(owner, 'PUT', `org/enterprise/${enterprise._id}`, { actorId: outsider.user.id }, 400)
+    await call(owner, 'PUT', `org/enterprise/${enterprise._id}`, { name: '验收企业' })
+    await call(owner, 'PUT', `org/team/${team._id}`, { description: '审计验收' })
+    await call(owner, 'PUT', `knowledge/${baseKnowledge._id}`, { description: '审计验收' })
+    const auditItem = await call(owner, 'POST', `knowledge/${baseKnowledge._id}/items`, {
+      title: '审计条目',
+      content: '验收资料',
+      constraintLevel: 'optional',
+    })
+    await call(owner, 'PUT', `knowledge/${baseKnowledge._id}/items/${auditItem.item._id}`, {
+      title: '编辑资料',
+    })
+    if (s3Fixture) {
+      const queuedFlow = await call(member, 'POST', 'workflows/create', {
+        prompt: '生成团队品牌产品海报，无文字，不合成',
+        spaceId: team._id,
+        selectedKnowledgeBaseIds: [baseKnowledge._id],
+        references: [
+          { assetId: teamAsset._id, role: 'product' },
+          { assetId: logo._id, role: 'logo' },
+        ],
+      })
+      const until = async (predicate) => {
+        for (let attempt = 0; attempt < 300; attempt++) {
+          const flow = await model('Workflow').findById(queuedFlow.id)
+          assert.notEqual(flow.status, 'failed', flow.errorMessage)
+          if (predicate(flow)) return flow
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        throw new Error('团队真实队列执行超时')
+      }
+      await workflowService.start(
+        queuedFlow.id,
+        { needsComposition: false },
+        member.user.id,
+        enterprise._id,
+      )
+      await until((flow) => flow.awaitingAction === 'confirm_brief')
+      await workflowService.confirmBrief(queuedFlow.id, member.user.id, enterprise._id)
+      const direction = await until((flow) => flow.awaitingAction === 'select_direction')
+      await workflowService.updateNodeOutput(
+        queuedFlow.id,
+        'creativeDirection',
+        { selectedDirectionId: direction.result.creativeDirection.directions[0].id },
+        member.user.id,
+        enterprise._id,
+      )
+      await workflowService.runNode(queuedFlow.id, 'prompt', member.user.id, enterprise._id)
+      const generated = await until((flow) => flow.awaitingAction === 'select_candidate')
+      await workflowService.updateNodeOutput(
+        queuedFlow.id,
+        'generate',
+        { selectedCandidateId: generated.result.generate.candidates[0].id },
+        member.user.id,
+        enterprise._id,
+      )
+      await workflowService.runNode(queuedFlow.id, 'compose', member.user.id, enterprise._id)
+      const completed = await until((flow) => flow.status === 'completed')
+      assert.ok(completed.result.finalEvaluation.passed)
+      const queuedWork = await save(member, queuedFlow, team._id, '真实队列团队作品')
+      const exported = await call(viewer, 'POST', `works/${queuedWork._id}/export`, {
+        format: 'png',
+      })
+      assert.equal((await fetch(exported.downloadUrl)).status, 200)
+      console.log(
+        'PASS V2 Redis/Mongo/S3: 团队知识和参考图→真实 BullMQ 七节点 Demo→作品版本→Viewer 导出',
+      )
+    }
+    await call(owner, 'DELETE', `knowledge/${baseKnowledge._id}/items/${auditItem.item._id}`)
+    const deletedKnowledge = await call(owner, 'POST', 'knowledge', {
+      spaceId: team._id,
+      name: '待删除知识库',
+    })
+    await call(owner, 'DELETE', `knowledge/${deletedKnowledge._id}`)
+    await call(owner, 'DELETE', `assets/${teamAsset._id}`)
+    if (s3Fixture) {
+      const response = await fetch(await storage.getSignedUrl(teamAsset.objectKey))
+      assert.equal(response.status, 404)
+    }
+    await call(owner, 'PUT', `org/spaces/${team._id}/members/${member.user.id}`, { role: 'viewer' })
+    await createFlow(member, team._id, [], 403)
+    await call(member, 'POST', `org/spaces/${team._id}/leave`, {})
+    await call(member, 'GET', `works/${work._id}`, undefined, 403)
+    await call(owner, 'DELETE', `org/spaces/${team._id}/members/${viewer.user.id}`)
+    await call(owner, 'DELETE', `org/team/${sibling._id}`)
+    const pending = await call(owner, 'POST', `org/spaces/${team._id}/invitations`, {
+      email: 'pending@collab.test',
+      role: 'member',
+    })
+    await call(owner, 'POST', `org/invitations/${pending.invitation.id}/cancel`, {})
+    const rejected = await call(owner, 'POST', `org/spaces/${team._id}/invitations`, {
+      email: outsider.user.email,
+      role: 'member',
+    })
+    await call(outsider, 'POST', `org/invitations/${rejected.invitation.id}/reject`, {})
+    // 先建立企业成员关系，再验证 Owner 转移及旧 JWT 的即时权限降级。
+    const ownershipInvite = await call(owner, 'POST', `org/spaces/${enterprise._id}/invitations`, {
+      email: outsider.user.email,
+      role: 'member',
+    })
+    await call(outsider, 'POST', `org/invitations/${ownershipInvite.invitation.id}/accept`, {})
+    await call(owner, 'PUT', `org/enterprise/${enterprise._id}/owner`, {
+      targetUserId: outsider.user.id,
+    })
+    await call(
+      owner,
+      'PUT',
+      `org/enterprise/${enterprise._id}/owner`,
+      { targetUserId: member.user.id },
+      403,
+    )
+    await call(outsider, 'PUT', `org/enterprise/${enterprise._id}`, { status: 'disabled' })
+    const logs = await model('AuditLog').find({ enterpriseId: enterprise._id }).lean()
+    const ownerLogs = await call(outsider, 'GET', `org/spaces/${enterprise._id}/audits`)
+    assert.ok(ownerLogs.length > 0 && ownerLogs.length <= 50)
+    const olderLogs = await call(
+      outsider,
+      'GET',
+      `org/spaces/${enterprise._id}/audits?before=${ownerLogs.at(-1)._id}`,
+    )
+    assert.ok(olderLogs.every((log) => log._id < ownerLogs.at(-1)._id))
+    for (const action of [
+      'enterprise.created',
+      'enterprise.updated',
+      'enterprise.disabled',
+      'team.created',
+      'team.updated',
+      'team.archived',
+      'invitation.created',
+      'invitation.accepted',
+      'invitation.rejected',
+      'invitation.cancelled',
+      'member.role_changed',
+      'member.left',
+      'member.removed',
+      'enterprise.owner_transferred',
+      'knowledge.created',
+      'knowledge.updated',
+      'knowledge.item_created',
+      'knowledge.item_updated',
+      'knowledge.item_deleted',
+      'knowledge.deleted',
+      'asset.deleted',
+    ])
+      assert.ok(
+        logs.some((log) => log.action === action),
+        `缺少审计：${action}；已有 ${logs.map((log) => log.action).join(',')}`,
+      )
+    assert.ok(
+      logs.every(
+        (log) =>
+          log.actorId &&
+          log.resourceId &&
+          log.createdAt &&
+          Object.keys(log.metadata).every((key) => ['role', 'status', 'isRequired'].includes(key)),
+      ),
+    )
+    for (const route of [
+      'org/spaces/invalid/audits',
+      'org/spaces/' + enterprise._id + '/audits?before=invalid',
+      'org/notifications/invalid/read',
+      'org/team/invalid',
+      'org/enterprise/invalid',
+      'assets/invalid',
+      'works/invalid',
+      'knowledge/invalid',
+      'workflows/invalid',
+      'assets?spaceId=invalid',
+      'works?spaceId=invalid',
+      'workflows?spaceId=invalid',
+      'org/teams?enterpriseId=invalid',
+      'org/spaces/invalid/members',
+      'works/invalid/versions',
+      'knowledge/invalid/items/invalid',
+    ]) {
+      const response = await fetch(`${base}/api/${route}`, {
+        method: route.endsWith('/read') ? 'PUT' : 'GET',
+        headers: { Authorization: `Bearer ${owner.access_token}` },
+      })
+      assert.ok([400, 404].includes(response.status), `${route}: ${response.status}`)
+    }
+    for (const [method, route, body] of [
+      ['PUT', 'org/spaces/invalid/members/invalid', { role: 'member' }],
+      ['PUT', `org/enterprise/${enterprise._id}/owner`, { targetUserId: 'invalid' }],
+      ['POST', 'org/invitations/invalid/accept', {}],
+      ['POST', 'org/invitations/invalid/reject', {}],
+      ['POST', 'org/invitations/invalid/cancel', {}],
+      ['POST', 'org/spaces/invalid/leave', {}],
+      ['DELETE', 'assets/invalid'],
+      ['DELETE', 'works/invalid'],
+      ['DELETE', 'knowledge/invalid'],
+      ['POST', 'works/invalid/versions/invalid/export', { format: 'png' }],
+      ['POST', 'workflows/create', { prompt: 'ID 校验', spaceId: 'invalid' }],
+      [
+        'POST',
+        'workflows/create',
+        {
+          prompt: 'ID 校验',
+          spaceId: 'personal',
+          references: [{ assetId: 'invalid', role: 'logo' }],
+        },
+      ],
+    ]) {
+      const response = await fetch(`${base}/api/${route}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${owner.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      })
+      assert.ok([400, 404].includes(response.status), `${method} ${route}: ${response.status}`)
+    }
+    console.log(
+      'PASS V2 审计/通知: 五角色隔离、已读幂等、伪造 actor 拒绝、生命周期事件、降级/退出、ObjectId 边界' +
+        (s3Fixture ? '；真实 S3 上传/版本/导出/删除' : '；MockStorage'),
+    )
     console.log(
       'PASS Mongo/HTTP: 同团队共享、Viewer只读、创建者/管理员编辑、跨企业素材/工作流/作品/对象拒绝、版本继承/导出/幂等、public迁移',
     )
   } finally {
     await browser?.close()
     await vite?.close()
+    await worker?.close()
+    if (queue) {
+      await workflowService?.onModuleDestroy()
+      assert.equal(queue.opts.prefix, dbName)
+      await queue.obliterate({ force: true })
+      await queue.close()
+    }
     if (connection?.readyState === 1) await connection.dropDatabase()
     await app?.close()
+    await s3Fixture?.close()
   }
 }
 main().catch((error) => {

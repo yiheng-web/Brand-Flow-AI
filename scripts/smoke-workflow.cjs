@@ -35,6 +35,7 @@ const { trackWorkflow, persistWorkflowState, adoptWorkflowNodes } = apiRequire(
   './dist/modules/workflow/workflow-state',
 )
 const { WORKFLOW_QUEUE } = apiRequire('./dist/modules/workflow/workflow.constants')
+const { AuthorizationService } = apiRequire('./dist/modules/org/authorization.service')
 Module._resolveFilename = resolve
 const agentRequire = createRequire(path.join(root, 'packages/agent/package.json'))
 const core = agentRequire('./dist/v1-workflow')
@@ -78,9 +79,9 @@ async function main() {
         taskQueue,
         null,
         null,
-        null,
-        { countDocuments: async () => 0 },
-        {},
+        new AuthorizationService(null, null, null),
+        undefined,
+        undefined,
       )
     service = createService(queue)
     const legacy = await service.create({ prompt: '升级前的任务', spaceId: 'personal' }, a)

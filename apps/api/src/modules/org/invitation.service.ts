@@ -12,6 +12,7 @@ import { Role } from '@brand-flow/contracts'
 import type { CreateInvitationResult, InvitationData } from '@brand-flow/contracts'
 import { AuthorizationService } from './authorization.service'
 import { MembershipService } from './membership.service'
+import { ActivityService } from './activity.service'
 import { Invitation, type InvitationDocument } from './schemas/invitation.schema'
 import { User, type UserDocument } from './schemas/user.schema'
 import { assertObjectId } from '@/common/personal-scope'
@@ -26,6 +27,7 @@ export class InvitationService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly authorization: AuthorizationService,
     private readonly memberships: MembershipService,
+    private readonly activity: ActivityService,
   ) {}
 
   async create(
@@ -70,6 +72,16 @@ export class InvitationService {
             },
           ],
           { session },
+        )
+        await this.activity.record(
+          userId,
+          space,
+          'invitation.created',
+          'invitation',
+          invitation._id.toString(),
+          { role },
+          session,
+          target ? [target._id.toString()] : [],
         )
         return { invitation: this.toData(invitation, false, true), inviteCode: code }
       })
@@ -160,6 +172,20 @@ export class InvitationService {
       }
       invitation.status = decision
       await invitation.save({ session })
+      await this.activity.record(
+        userId,
+        {
+          spaceType: invitation.teamId ? 'team' : 'enterprise',
+          spaceId: invitation.spaceId,
+          enterpriseId: invitation.enterpriseId.toString(),
+        },
+        `invitation.${decision}`,
+        'invitation',
+        id,
+        { role: invitation.targetRole },
+        session,
+        [invitation.inviterId.toString(), userId],
+      )
       return this.toData(invitation, false, false)
     })
   }
@@ -183,6 +209,19 @@ export class InvitationService {
       if (invitation.status !== 'pending') throw new BadRequestException('邀请已处理')
       invitation.status = invitation.expiresAt <= new Date() ? 'expired' : 'cancelled'
       await invitation.save({ session })
+      await this.activity.record(
+        userId,
+        {
+          spaceType: invitation.teamId ? 'team' : 'enterprise',
+          spaceId: invitation.spaceId,
+          enterpriseId: invitation.enterpriseId.toString(),
+        },
+        `invitation.${invitation.status}`,
+        'invitation',
+        id,
+        {},
+        session,
+      )
       return this.toData(invitation, false, false)
     })
   }

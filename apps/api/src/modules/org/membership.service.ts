@@ -11,6 +11,7 @@ import { Model, Types } from 'mongoose'
 import type { ClientSession } from 'mongoose'
 import { Role } from '@brand-flow/contracts'
 import { AuthorizationService } from './authorization.service'
+import { ActivityService } from './activity.service'
 import type { AuthorizedSpace } from './authorization.service'
 import { Enterprise, type EnterpriseDocument } from './schemas/enterprise.schema'
 import { User, type UserDocument } from './schemas/user.schema'
@@ -23,6 +24,7 @@ export class MembershipService {
     @InjectModel(Enterprise.name) private readonly enterpriseModel: Model<EnterpriseDocument>,
     private readonly authorization: AuthorizationService,
     private readonly config: ConfigService,
+    private readonly activity: ActivityService,
   ) {}
 
   async transaction<T>(
@@ -82,6 +84,16 @@ export class MembershipService {
       this.authorization.assertCanChangeMember(space, membership.role, role)
       membership.role = role
       await target.save({ session })
+      await this.activity.record(
+        userId,
+        space,
+        'member.role_changed',
+        'user',
+        targetId,
+        { role },
+        session,
+        [targetId],
+      )
       return { success: true }
     })
   }
@@ -128,6 +140,16 @@ export class MembershipService {
         target.set('currentEnterpriseId', undefined)
       }
       await target.save({ session })
+      await this.activity.record(
+        userId,
+        space,
+        leaving ? 'member.left' : 'member.removed',
+        'user',
+        targetId,
+        {},
+        session,
+        [targetId],
+      )
       return { success: true }
     })
   }
@@ -170,6 +192,16 @@ export class MembershipService {
       next.role = Role.OWNER
       await actor.save({ session })
       await target.save({ session })
+      await this.activity.record(
+        userId,
+        space,
+        'enterprise.owner_transferred',
+        'user',
+        targetId,
+        { role: Role.OWNER },
+        session,
+        [userId, targetId],
+      )
       return { success: true }
     })
   }

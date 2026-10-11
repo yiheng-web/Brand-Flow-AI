@@ -19,7 +19,8 @@
     "test": "turbo run test",
     "prepare": "husky",
     "preinstall": "node scripts/check-node.mjs",
-    "test:v1": "node scripts/smoke-v1.cjs"
+    "test:v1": "node scripts/smoke-v1.cjs",
+    "test:v2": "node scripts/smoke-v2.cjs"
   },
   "pnpm": {
     "overrides": {

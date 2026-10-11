@@ -33,6 +33,7 @@ describe('成员生命周期', () => {
     enterprises as never,
     policy,
     new ConfigService(),
+    { record: jest.fn() } as never,
   )
 
   beforeEach(() => {

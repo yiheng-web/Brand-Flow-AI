@@ -58,6 +58,7 @@ const workflowService = new WorkflowService(
         new AuthorizationService({} as never, {} as never, {} as never),
         {} as never,
         {} as never,
+        {} as never,
       ),
     },
   ],

@@ -58,23 +58,29 @@ export class KnowledgeService implements OnModuleInit {
       throw new BadRequestException('个人空间不能设置组织强制知识库')
     }
 
-    return this.ruleTransaction(userId, scope, async (session) => {
-      const document = {
-        name: this.normalizeName(dto.name),
-        description: dto.description,
-        pineconeNamespace: dto.pineconeNamespace,
-        isRequired: dto.isRequired ?? false,
-        spaceId: scope.spaceId,
-        spaceType: scope.spaceType,
-        enterpriseId: scope.enterpriseId ? new Types.ObjectId(scope.enterpriseId) : undefined,
-        creatorId: new Types.ObjectId(userId),
-      }
-      return this.withDuplicateError(async () => {
-        if (!session) return this.knowledgeModel.create(document)
-        const [knowledge] = await this.knowledgeModel.create([document], { session })
-        return knowledge
-      })
-    })
+    return this.ruleTransaction(
+      userId,
+      scope,
+      'knowledge.created',
+      scope.spaceId,
+      async (session) => {
+        const document = {
+          name: this.normalizeName(dto.name),
+          description: dto.description,
+          pineconeNamespace: dto.pineconeNamespace,
+          isRequired: dto.isRequired ?? false,
+          spaceId: scope.spaceId,
+          spaceType: scope.spaceType,
+          enterpriseId: scope.enterpriseId ? new Types.ObjectId(scope.enterpriseId) : undefined,
+          creatorId: new Types.ObjectId(userId),
+        }
+        return this.withDuplicateError(async () => {
+          if (!session) return this.knowledgeModel.create(document)
+          const [knowledge] = await this.knowledgeModel.create([document], { session })
+          return knowledge
+        })
+      },
+    )
   }
 
   async findAll(userId: string, spaceId: string) {
@@ -97,7 +103,7 @@ export class KnowledgeService implements OnModuleInit {
     if (dto.isRequired !== undefined && scope.spaceType === 'personal') {
       throw new BadRequestException('个人空间不能设置组织强制知识库')
     }
-    return this.ruleTransaction(userId, scope, async (session) => {
+    return this.ruleTransaction(userId, scope, 'knowledge.updated', id, async (session) => {
       if (dto.isRequired === true) await this.assertRules(knowledge, scope, [], undefined, session)
       return this.withDuplicateError(() =>
         this.knowledgeModel
@@ -154,52 +160,58 @@ export class KnowledgeService implements OnModuleInit {
     ) {
       throw new BadRequestException('规则标题和正文不能为空，总正文最多 100000 字符')
     }
-    const storedItems = await this.ruleTransaction(userId, scope, async (session) => {
-      await this.assertRules(
-        knowledge,
-        scope,
-        items.map((item, index) => ({
-          ...item,
-          id: `import:${index}`,
-          metadata: { inheritanceConfirmed: confirmInheritance },
-        })),
-        undefined,
-        session,
-      )
-      const stored: KnowledgeItemDocument[] = []
-      for (const [index, payload] of items.entries()) {
-        const importKey = createHash('sha256')
-          .update(JSON.stringify([batchId, index]))
-          .digest('hex')
-        const filter = { knowledgeId: knowledge._id, importKey }
-        const document = this.scopedItemData(userId, knowledge, scope, {
-          ...payload,
-          sourceType: 'import',
-          metadata: { importBatchId: batchId, inheritanceConfirmed: confirmInheritance },
-        })
-        let item: KnowledgeItemDocument | null
-        try {
-          item = await this.knowledgeItemModel.findOneAndUpdate(
-            filter,
-            { $setOnInsert: { ...document, importKey } },
-            { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true, session },
-          )
-        } catch (error: unknown) {
-          if (!this.isDuplicateError(error)) throw error
-          item = await this.knowledgeItemModel.findOne(filter)
+    const storedItems = await this.ruleTransaction(
+      userId,
+      scope,
+      'knowledge.items_imported',
+      knowledgeId,
+      async (session) => {
+        await this.assertRules(
+          knowledge,
+          scope,
+          items.map((item, index) => ({
+            ...item,
+            id: `import:${index}`,
+            metadata: { inheritanceConfirmed: confirmInheritance },
+          })),
+          undefined,
+          session,
+        )
+        const stored: KnowledgeItemDocument[] = []
+        for (const [index, payload] of items.entries()) {
+          const importKey = createHash('sha256')
+            .update(JSON.stringify([batchId, index]))
+            .digest('hex')
+          const filter = { knowledgeId: knowledge._id, importKey }
+          const document = this.scopedItemData(userId, knowledge, scope, {
+            ...payload,
+            sourceType: 'import',
+            metadata: { importBatchId: batchId, inheritanceConfirmed: confirmInheritance },
+          })
+          let item: KnowledgeItemDocument | null
+          try {
+            item = await this.knowledgeItemModel.findOneAndUpdate(
+              filter,
+              { $setOnInsert: { ...document, importKey } },
+              { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true, session },
+            )
+          } catch (error: unknown) {
+            if (!this.isDuplicateError(error)) throw error
+            item = await this.knowledgeItemModel.findOne(filter)
+          }
+          if (!item) throw new Error('导入条目未持久化，重试时保持原 batchId')
+          if (
+            item.title !== payload.title ||
+            item.content !== payload.content ||
+            item.constraintLevel !== payload.constraintLevel
+          ) {
+            throw new ConflictException('该批次已导入不同内容，请重新解析后再确认；原条目已保留')
+          }
+          stored.push(item)
         }
-        if (!item) throw new Error('导入条目未持久化，重试时保持原 batchId')
-        if (
-          item.title !== payload.title ||
-          item.content !== payload.content ||
-          item.constraintLevel !== payload.constraintLevel
-        ) {
-          throw new ConflictException('该批次已导入不同内容，请重新解析后再确认；原条目已保留')
-        }
-        stored.push(item)
-      }
-      return stored
-    })
+        return stored
+      },
+    )
     const results = []
     for (const item of storedItems) results.push(await this.syncItemVector(item, scope))
     const vectorized = results.every((result) => result.vectorized)
@@ -293,58 +305,74 @@ export class KnowledgeService implements OnModuleInit {
     const knowledge = await this.findKnowledgeById(userId, knowledgeId)
     const scope = await this.assertCanManage(userId, knowledge)
     assertObjectId(itemId)
-    const item = await this.ruleTransaction(userId, scope, async (session) => {
-      const previous = await this.knowledgeItemModel.findOne(
-        { _id: itemId, knowledgeId: knowledge._id },
-        null,
-        { session },
-      )
-      if (!previous) throw new NotFoundException('知识项不存在或无权访问')
-      const metadata =
-        dto.content !== undefined
-          ? {
-              ...previous.metadata,
-              ...dto.metadata,
-              inheritanceConfirmed: dto.metadata?.inheritanceConfirmed === true,
-            }
-          : (dto.metadata ?? previous.metadata)
-      if ((dto.status ?? previous.status) === 'active')
-        await this.assertRules(
-          knowledge,
-          scope,
-          [{ ...previous.toObject(), ...dto, metadata, id: itemId }],
-          itemId,
-          session,
+    const item = await this.ruleTransaction(
+      userId,
+      scope,
+      'knowledge.item_updated',
+      itemId,
+      async (session) => {
+        const previous = await this.knowledgeItemModel.findOne(
+          { _id: itemId, knowledgeId: knowledge._id },
+          null,
+          { session },
         )
-      return this.knowledgeItemModel.findOneAndUpdate(
-        { _id: itemId, knowledgeId: knowledge._id },
-        { ...dto, ...(dto.content !== undefined ? { metadata } : {}) },
-        {
-          new: true,
-          runValidators: true,
-          session,
-        },
-      )
-    })
+        if (!previous) throw new NotFoundException('知识项不存在或无权访问')
+        const metadata =
+          dto.content !== undefined
+            ? {
+                ...previous.metadata,
+                ...dto.metadata,
+                inheritanceConfirmed: dto.metadata?.inheritanceConfirmed === true,
+              }
+            : (dto.metadata ?? previous.metadata)
+        if ((dto.status ?? previous.status) === 'active')
+          await this.assertRules(
+            knowledge,
+            scope,
+            [{ ...previous.toObject(), ...dto, metadata, id: itemId }],
+            itemId,
+            session,
+          )
+        return this.knowledgeItemModel.findOneAndUpdate(
+          { _id: itemId, knowledgeId: knowledge._id },
+          { ...dto, ...(dto.content !== undefined ? { metadata } : {}) },
+          {
+            new: true,
+            runValidators: true,
+            session,
+          },
+        )
+      },
+    )
     if (item) await this.syncItemVector(item, scope)
     return item
   }
 
   async removeItem(userId: string, knowledgeId: string, itemId: string) {
     const knowledge = await this.findKnowledgeById(userId, knowledgeId)
-    await this.assertCanManage(userId, knowledge)
+    const scope = await this.assertCanManage(userId, knowledge)
     const item = await this.findItem(userId, knowledgeId, itemId)
-    await removeKnowledgeVectors(knowledgeId, itemId)
-    await this.knowledgeItemModel.findByIdAndDelete(item._id)
+    await this.ruleTransaction(userId, scope, 'knowledge.item_deleted', itemId, async (session) => {
+      await removeKnowledgeVectors(knowledgeId, itemId)
+      await this.knowledgeItemModel.findOneAndDelete(
+        { _id: item._id, knowledgeId: knowledge._id },
+        { session },
+      )
+    })
     return { success: true }
   }
 
   async remove(userId: string, id: string) {
     const knowledge = await this.findKnowledgeById(userId, id)
-    await this.assertCanManage(userId, knowledge)
-    await removeKnowledgeVectors(id)
-    await this.knowledgeItemModel.deleteMany({ knowledgeId: knowledge._id })
-    await this.knowledgeModel.findByIdAndDelete(knowledge._id)
+    const scope = await this.assertCanManage(userId, knowledge)
+    await this.ruleTransaction(userId, scope, 'knowledge.deleted', id, async (session) => {
+      await removeKnowledgeVectors(id)
+      await this.knowledgeItemModel.deleteMany({ knowledgeId: knowledge._id }, { session })
+      await this.knowledgeModel.findOneAndDelete(
+        { _id: knowledge._id, spaceId: knowledge.spaceId },
+        { session },
+      )
+    })
     return { success: true }
   }
 
@@ -388,18 +416,24 @@ export class KnowledgeService implements OnModuleInit {
   ) {
     if (!payload.title.trim() || !payload.content.trim())
       throw new BadRequestException('知识项标题和正文不能为空')
-    return this.ruleTransaction(userId, scope, async (session) => {
-      await this.assertRules(knowledge, scope, [{ ...payload, id: 'new' }], undefined, session)
-      if (!session)
-        return this.knowledgeItemModel.create(
-          this.scopedItemData(userId, knowledge, scope, payload),
+    return this.ruleTransaction(
+      userId,
+      scope,
+      'knowledge.item_created',
+      knowledge._id.toString(),
+      async (session) => {
+        await this.assertRules(knowledge, scope, [{ ...payload, id: 'new' }], undefined, session)
+        if (!session)
+          return this.knowledgeItemModel.create(
+            this.scopedItemData(userId, knowledge, scope, payload),
+          )
+        const [item] = await this.knowledgeItemModel.create(
+          [this.scopedItemData(userId, knowledge, scope, payload)],
+          { session },
         )
-      const [item] = await this.knowledgeItemModel.create(
-        [this.scopedItemData(userId, knowledge, scope, payload)],
-        { session },
-      )
-      return item
-    })
+        return item
+      },
+    )
   }
 
   async retryVectorSync(userId: string, knowledgeId: string, itemId: string) {
@@ -448,13 +482,32 @@ export class KnowledgeService implements OnModuleInit {
   private async ruleTransaction<T>(
     userId: string,
     scope: KnowledgeScope,
+    action: string,
+    resourceId: string,
     operation: (session?: ClientSession) => Promise<T>,
   ): Promise<T> {
     if (scope.spaceType === 'personal') return operation()
     // 与成员/状态变更复用企业事务锁，防止并发规则写入各自通过过期校验。
     return this.orgService.memberships.transaction(scope.enterpriseId!, async (session) => {
       await this.orgService.authorization.assertCanManageKnowledge(userId, scope.spaceId, session)
-      return operation(session)
+      const result = await operation(session)
+      const id =
+        (action === 'knowledge.created' || action === 'knowledge.item_created') &&
+        result &&
+        typeof result === 'object' &&
+        '_id' in result
+          ? String(result._id)
+          : resourceId
+      await this.orgService.activity.record(
+        userId,
+        scope,
+        action,
+        action.includes('item_') ? 'knowledgeItem' : 'knowledge',
+        id,
+        {},
+        session,
+      )
+      return result
     })
   }
 

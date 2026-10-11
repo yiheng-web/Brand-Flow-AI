@@ -576,3 +576,24 @@ interface UserInfo {
 新增持久化字段：User.runningWorkflowLeases（默认空字符串数组）和 Workflow.executionLease（可选执行令牌）。这些字段由服务端维护，客户端不能分配、续用或清除名额。现有工作流/节点/SSE 状态协议保持不变。
 
 配置、部署与验收见 [V1 部署文档](../../docs/v1-deployment.md)，请求示例见 [health.http](rest-client/health.http)。
+
+## V2 组织审计与通知
+
+所有接口要求 JWT，身份来自 `req.user.sub`，普通响应仍使用 `{ success, data }`。
+
+| 接口                                               | 业务响应与权限                                                                                                                                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /org/spaces/:spaceId/audits?before=<auditId>` | 最多 50 条，按 `_id` 倒序；`before` 为独占游标。仅当前空间 OWNER/ADMIN；企业管理员可读本企业全部团队记录，团队管理员只读本团队。停用/归档后仍按现有组织管理权限读取；个人空间返回 400 |
+| `GET /org/notifications`                           | 本人最近 50 条，不接受客户端 recipientId                                                                                                                                              |
+| `GET /org/notifications/unread-count`              | `{ count: number }`，统计本人全部未读通知                                                                                                                                             |
+| `PUT /org/notifications/:id/read`                  | `{ success: true }`；只能标记本人通知，重复操作不重复扣数，其他人的通知返回 404                                                                                                       |
+
+AuditLog：`_id, actorId, enterpriseId, teamId?, action, resourceType, resourceId, metadata, createdAt`。
+Notification：`_id, recipientId, enterpriseId, teamId?, action, resourceId, createdAt, readAt?`。
+ID 为字符串，时间为 ISO8601；metadata 只保存 `role/status/isRequired`，不保存邮箱、邀请码、Token、知识正文或任意客户端 metadata。两个新 collection 的关联字段为真实 ObjectId，有租户/收件人索引。
+
+审计与组织、邀请、成员、组织知识写入同一 Mongo 事务；审计写入失败使业务回滚。邀请创建通知已注册受邀人，接受/拒绝通知双方；角色变更、移除/退出通知当事人，所有权转移通知双方。未注册受邀人仍通过已有邀请列表在注册后处理，不创建虚构用户通知。
+
+事件包括 `enterprise.created/updated/disabled/owner_transferred`、`team.created/updated/archived`、`invitation.created/accepted/rejected/cancelled/expired`、`member.role_changed/removed/left`、`knowledge.created/updated/deleted/items_imported/item_created/item_updated/item_deleted`、`asset.deleted`。恢复组织状态记录 updated。素材删除先清理 S3 对象，再在组织事务内删除记录并写审计；数据库失败时保留记录供重试。
+
+接口示例见 [org.http](rest-client/org.http)，权限矩阵与验收命令见 [V2 发布清单](../../docs/v2-release-checklist.md)。

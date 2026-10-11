@@ -1,4 +1,11 @@
 import { MembershipService } from './membership.service'
+import { ActivityService } from './activity.service'
+import {
+  AuditLog,
+  AuditLogSchema,
+  Notification,
+  NotificationSchema,
+} from './schemas/activity.schema'
 import { InvitationService } from './invitation.service'
 import { Invitation, InvitationSchema } from './schemas/invitation.schema'
 import { AuthorizationService } from './authorization.service'
@@ -23,6 +30,8 @@ import { OrgController } from './org.controller'
       }),
     }),
     MongooseModule.forFeature([
+      { name: AuditLog.name, schema: AuditLogSchema },
+      { name: Notification.name, schema: NotificationSchema },
       { name: User.name, schema: UserSchema },
       { name: Invitation.name, schema: InvitationSchema },
       { name: Team.name, schema: TeamSchema },
@@ -30,7 +39,13 @@ import { OrgController } from './org.controller'
     ]),
   ],
   controllers: [OrgController],
-  providers: [OrgService, AuthorizationService, MembershipService, InvitationService],
-  exports: [MongooseModule, OrgService, AuthorizationService],
+  providers: [
+    OrgService,
+    AuthorizationService,
+    MembershipService,
+    InvitationService,
+    ActivityService,
+  ],
+  exports: [MongooseModule, OrgService, AuthorizationService, ActivityService],
 })
 export class OrgModule {}

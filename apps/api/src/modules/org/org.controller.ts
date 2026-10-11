@@ -14,6 +14,12 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { OrgService } from './org.service'
 import {
+  AuditLogResponseDto,
+  NotificationResponseDto,
+  UnreadCountResponseDto,
+  MarkNotificationReadResponseDto,
+} from './dto/activity-response.dto'
+import {
   CreateEnterpriseDto,
   CreateTeamDto,
   InviteSpaceMemberDto,
@@ -45,6 +51,38 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard) // 保护整个路由，同时启用角色守卫
 export class OrgController {
   constructor(private readonly orgService: OrgService) {}
+
+  @Get('spaces/:spaceId/audits')
+  @ApiSuccessArrayResponse(AuditLogResponseDto)
+  @ApiOperation({ summary: '管理员读取组织审计，每页最多 50 条' })
+  audits(
+    @Req() req: { user: { sub: string } },
+    @Param('spaceId') spaceId: string,
+    @Query('before') before?: string,
+  ) {
+    return this.orgService.activity.listAudits(req.user.sub, spaceId, before)
+  }
+
+  @Get('notifications')
+  @ApiSuccessArrayResponse(NotificationResponseDto)
+  @ApiOperation({ summary: '读取本人最近 50 条通知' })
+  notifications(@Req() req: { user: { sub: string } }) {
+    return this.orgService.activity.listNotifications(req.user.sub)
+  }
+
+  @Get('notifications/unread-count')
+  @ApiSuccessResponse(UnreadCountResponseDto)
+  @ApiOperation({ summary: '读取本人未读通知数' })
+  unreadCount(@Req() req: { user: { sub: string } }) {
+    return this.orgService.activity.unreadCount(req.user.sub)
+  }
+
+  @Put('notifications/:id/read')
+  @ApiSuccessResponse(MarkNotificationReadResponseDto)
+  @ApiOperation({ summary: '标记本人通知已读' })
+  markRead(@Req() req: { user: { sub: string } }, @Param('id') id: string) {
+    return this.orgService.activity.markRead(req.user.sub, id)
+  }
 
   @Post('enterprise')
   @ApiOperation({ summary: '创建企业' })

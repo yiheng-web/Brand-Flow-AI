@@ -31,9 +31,10 @@ describe('组织空间统一 RBAC', () => {
     {} as never,
     {} as never,
     {} as never,
+    { record: jest.fn() } as never,
   )
   const model = { create: jest.fn(), findOne: jest.fn(), findByIdAndDelete: jest.fn() }
-  const assets = new AssetsService(model as never, policy, {} as never, {} as never)
+  const assets = new AssetsService(model as never, policy, {} as never, {} as never, org)
   const knowledge = new KnowledgeService(model as never, {} as never, org)
   const workflow = new WorkflowService(
     model as never,
